@@ -1,0 +1,10 @@
+build/
+obj*/
+out/
+romfs/
+.env*
+*.pem
+*.key
+*.log
+*.md
+!README.md

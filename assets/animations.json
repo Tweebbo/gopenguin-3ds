@@ -1,0 +1,155 @@
+{
+  "sequences": [
+    {
+      "action": 1,
+      "start": 0,
+      "count": 1
+    },
+    {
+      "action": 2,
+      "start": 1,
+      "count": 1
+    },
+    {
+      "action": 3,
+      "start": 2,
+      "count": 1
+    },
+    {
+      "action": 4,
+      "start": 3,
+      "count": 1
+    },
+    {
+      "action": 5,
+      "start": 4,
+      "count": 1
+    },
+    {
+      "action": 6,
+      "start": 5,
+      "count": 1
+    },
+    {
+      "action": 7,
+      "start": 6,
+      "count": 1
+    },
+    {
+      "action": 8,
+      "start": 7,
+      "count": 1
+    },
+    {
+      "action": 9,
+      "start": 8,
+      "count": 8
+    },
+    {
+      "action": 10,
+      "start": 16,
+      "count": 8
+    },
+    {
+      "action": 11,
+      "start": 24,
+      "count": 8
+    },
+    {
+      "action": 12,
+      "start": 32,
+      "count": 8
+    },
+    {
+      "action": 13,
+      "start": 40,
+      "count": 8
+    },
+    {
+      "action": 14,
+      "start": 48,
+      "count": 8
+    },
+    {
+      "action": 15,
+      "start": 56,
+      "count": 8
+    },
+    {
+      "action": 16,
+      "start": 64,
+      "count": 8
+    },
+    {
+      "action": 17,
+      "start": 72,
+      "count": 1
+    },
+    {
+      "action": 18,
+      "start": 73,
+      "count": 1
+    },
+    {
+      "action": 19,
+      "start": 74,
+      "count": 1
+    },
+    {
+      "action": 20,
+      "start": 75,
+      "count": 1
+    },
+    {
+      "action": 21,
+      "start": 76,
+      "count": 1
+    },
+    {
+      "action": 22,
+      "start": 77,
+      "count": 1
+    },
+    {
+      "action": 23,
+      "start": 78,
+      "count": 1
+    },
+    {
+      "action": 24,
+      "start": 79,
+      "count": 1
+    },
+    {
+      "action": 25,
+      "start": 80,
+      "count": 32
+    },
+    {
+      "action": 26,
+      "start": 112,
+      "count": 193
+    },
+    {
+      "action": 27,
+      "start": 305,
+      "count": 28
+    },
+    {
+      "action": 28,
+      "start": 333,
+      "count": 28
+    },
+    {
+      "action": 29,
+      "start": 361,
+      "count": 28
+    },
+    {
+      "action": 30,
+      "start": 389,
+      "count": 28
+    }
+  ],
+  "total": 417
+}

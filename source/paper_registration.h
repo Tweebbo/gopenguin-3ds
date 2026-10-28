@@ -1,0 +1,4 @@
+#pragma once
+#define PAPER_SCALE 0.928885493f
+#define PAPER_X 72.069674911f
+#define PAPER_Y 83.959241111f
