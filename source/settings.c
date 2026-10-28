@@ -21,11 +21,12 @@ bool settings_load(Settings *s,const char *path){
 #ifndef GP_LAN_ONLY
   if(!parsed.assets[0]&&strstr(parsed.network.api,"gopenguin.lol"))snprintf(parsed.assets,sizeof parsed.assets,"https://gopenguin.lol/native");
 #endif
+  parsed.batterySaver=json_is_true(json_object_get(root,"batterySaver"));
   *s=parsed;}
  json_decref(root);memset(buffer,0,sizeof buffer);return ok;
 }
 bool settings_save(const Settings *s,const char *path){
- json_t *root=json_pack("{s:s,s:s,s:s,s:s,s:s,s:s,s:b}","api",s->network.api,"world",s->network.world,"session",s->session,"name",s->name,"assets",s->assets,"donate",s->donate,"audio",s->audio);if(!root)return false;
+ json_t *root=json_pack("{s:s,s:s,s:s,s:s,s:s,s:s,s:b,s:b}","api",s->network.api,"world",s->network.world,"session",s->session,"name",s->name,"assets",s->assets,"donate",s->donate,"audio",s->audio,"batterySaver",s->batterySaver);if(!root)return false;
  char temp[256];int n=snprintf(temp,sizeof temp,"%s.tmp",path);bool ok=n>0&&n<(int)sizeof temp;
  if(ok){FILE *f=fopen(temp,"wb");ok=f&&json_dumpf(root,f,JSON_COMPACT)==0;if(f){if(fclose(f))ok=false;}if(ok){chmod(temp,0600);ok=rename(temp,path)==0;}if(!ok)remove(temp);}
  json_decref(root);return ok;

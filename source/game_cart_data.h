@@ -5,12 +5,13 @@
 static const unsigned CART_TRACK_LENGTH[CART_TRACKS]={29,29,29,30,29};
 static const unsigned CART_TRACK_DATA[CART_TRACKS][30]={{1,1,4,2,1,5,3,1,1,4,2,5,3,1,1,1,4,2,4,2,1,1,5,3,5,3,1,1,6},{1,1,5,3,1,4,2,5,3,1,4,2,1,1,1,4,2,1,5,3,4,2,1,1,5,3,1,1,6},{1,1,1,5,3,1,1,1,4,2,1,4,2,1,5,3,4,2,1,5,3,1,4,2,5,3,1,1,6},{1,1,5,3,1,4,2,1,1,4,2,1,5,3,1,4,2,5,3,5,3,1,1,4,2,4,2,1,1,6},{1,1,1,5,3,4,2,1,4,2,1,1,5,3,1,5,3,4,2,1,5,3,1,1,4,2,1,1,6}};
 /** Cart parts tinted with the player colour (cart.json tints), as named in the native bank. */
-#define CART_TINTS 13
+#define CART_TINTS 14
 static const char *const CART_TINT_PATHS[CART_TINTS]={"root.game_mc.cart_mc.art#1#2.tint2",
  "root.game_mc.cart_mc.art#1.tint3",
  "root.game_mc.cart_mc.art#2.tint2",
  "root.game_mc.cart_mc.art#3.tint2",
  "root.game_mc.cart_mc.art#4#2.tint2",
+ "root.game_mc.cart_mc.art#4.penguin_mc",
  "root.game_mc.cart_mc.art#4.tint2",
  "root.game_mc.cart_mc.art#5.tint2",
  "root.game_mc.cart_mc.art#6.tint2",

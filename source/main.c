@@ -29,6 +29,7 @@
 #include "client_data.h"
 #include "profile.h"
 #include "membership.h"
+#include "../vendor/qrcodegen/qrcodegen.h"
 #include "gp_update.h"
 #include "inventory_ui.h"
 #include "paper_registration.h"
@@ -58,6 +59,7 @@ typedef struct {C3D_Tex tex;Tex3DS_SubTexture sub;bool loaded;} Texture;
 static Texture icons,emotes,islandMap,islandMapLow,fontTexture,paperBody,paperDetail,minimap,bookCovers,body[PENGUIN_PAGES],detail[PENGUIN_PAGES],sceneAtlas[SWL_MAX_PAGES];
 static SWLScene *scene;
 static bool sceneOK=true;
+static bool isNew3DS;
 static C3D_RenderTarget *sceneTop,*sceneBottom;
 static IslandNav *navigation;
 static const IslandRoom *currentRoom;
@@ -582,8 +584,14 @@ static void toggle_audio(void){
  if(enabled&&!gp_audio_available()){gp_audio_set_enabled(false);modal_message("Audio is unavailable. Check that DSP support is installed.");return;}
  settings.audio=enabled;settings_save(&settings,SETTINGS_FILE);
 }
+static void power_apply(void){osSetSpeedupEnable(isNew3DS&&!settings.batterySaver);C3D_FrameRate(isNew3DS&&!settings.batterySaver?60:30);}
+static void toggle_battery(void){
+ settings.batterySaver=!settings.batterySaver;power_apply();
+ if(!settings_save(&settings,SETTINGS_FILE))modal_message("Could not save the battery setting on SD.");
+ else modal_message(settings.batterySaver?"Battery saver on: 30 FPS and normal CPU speed. Chat and crossplay remain connected. On an original 3DS, CPU and frame rate already use this setting.":"Battery saver off. New 3DS uses the faster CPU and up to 60 FPS.");
+}
 /** B4: show, save, restore and rename the shared Tweebbo/GoPenguin identity. */
-static void account_open(void){demo.tab=18;demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;message("Access codes work on GoPenguin web, mobile and 3DS.");}
+static void account_open(void){demo.tab=18;demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;message("Use device codes to continue on PC, phone or 3DS.");}
 static void account_show_code(void){
  if(!settings.session[0]){modal_message("Connect to GoPenguin first. Your access code is created when your penguin joins.");return;}
  char text[260];snprintf(text,sizeof text,"Your private access code:\n\nTWEEBBO-%s\n\nKeep it private: it gives access to your penguin.",settings.session);modal_message(text);
@@ -598,19 +606,52 @@ static void account_save_recovery(void){
  bool ok=!fclose(file);
  modal_message(ok?"Recovery file saved to /3ds/gopenguin/recovery.json.":"Could not finish the recovery file on the SD card.");
 }
+static bool account_backup_session(void);
 static void account_recover(void){
  char code[160]="";
- if(!keyboard(code,sizeof code,"TWEEBBO- access code",false))return;
+ if(!keyboard(code,sizeof code,"Device code or TWEEBBO- recovery code",false))return;
+ if(!account_backup_session()){modal_message("Could not save your current penguin. Check the SD card before switching.");return;}
  if(!pnet_account_recover(&settings.network,code)){
   modal_message(pnet_account_state()==PNET_ACCOUNT_BUSY?"Wait for the current account request to finish.":"Set the GoPenguin server (API and world URLs) in Help first.");
   return;
  }
  message("Checking the access code...");
 }
-static void account_backup_session(void){
- if(!settings.session[0])return;
- FILE *file=fopen(DATA_DIR "/previous-session.txt","wb");
- if(file){fprintf(file,"TWEEBBO-%s\n",settings.session);fclose(file);}
+static char deviceCode[16];
+static u64 deviceExpires;
+static uint8_t deviceQr[qrcodegen_BUFFER_LEN_FOR_VERSION(8)];
+static void device_open(void){
+ if(!settings.session[0]){modal_message("Connect to GoPenguin first.");return;}
+ if(pnet_account_state()==PNET_ACCOUNT_BUSY){modal_message("Wait for the current account request to finish.");return;}
+ memset(deviceCode,0,sizeof deviceCode);memset(deviceQr,0,sizeof deviceQr);deviceExpires=0;demo.tab=21;
+ if(!pnet_account_device_link(&settings.network,settings.session))modal_message("Could not create a device code. Try again.");
+}
+static void device_draw(void){
+ text(12,33,13,0x003366,"Continue on PC or phone");
+ bool valid=deviceCode[0]&&osGetTime()<deviceExpires;
+ if(valid){
+  text(12,62,16,0x003366,deviceCode);
+  wrapped(12,91,9,0x003366,"Scan the QR, or open gopenguin.lol and choose Account > Enter device code.",178,4);
+  char remaining[64];unsigned seconds=(unsigned)((deviceExpires-osGetTime())/1000);snprintf(remaining,sizeof remaining,"Expires in %u:%02u",seconds/60,seconds%60);text(12,136,10,0x003366,remaining);
+  int n=qrcodegen_getSize(deviceQr),scale=2,side=(n+8)*scale;float left=204+(108-side)/2.0f;
+  rect(left,56,side,side,0xffffff);
+  for(int y=0;y<n;y++)for(int x=0;x<n;x++)if(qrcodegen_getModule(deviceQr,x,y))rect(left+(x+4)*scale,56+(y+4)*scale,scale,scale,0x000000);
+ }else wrapped(12,65,11,0x003366,pnet_account_state()==PNET_ACCOUNT_BUSY?"Creating your private device code...":"This code is no longer available. Tap New code to try again.",294,4);
+ button(8,150,148,24,"Save recovery file",-1);button(164,150,148,24,"Recovery code",-1);
+ button(8,178,148,24,"New code",-1);button(164,178,148,24,"Back",-1);
+ if(valid)text(204,138,8,0x003366,"Keep this code private.");
+}
+static void device_touch(int x,int y){
+ if(y>=150&&y<174){if(x<160)account_save_recovery();else account_show_code();}
+ else if(y>=178&&y<202){if(x<160)device_open();else{memset(deviceCode,0,sizeof deviceCode);demo.tab=18;}}
+}
+static bool account_backup_session(void){
+ if(!settings.session[0])return true;
+ FILE *file=fopen(DATA_DIR "/previous-session.txt.tmp","wb");
+ if(!file)return false;
+ bool ok=fprintf(file,"TWEEBBO-%s\n",settings.session)>0;
+ if(fclose(file))ok=false;
+ return ok&&!rename(DATA_DIR "/previous-session.txt.tmp",DATA_DIR "/previous-session.txt");
 }
 static bool account_read_previous(char *out,size_t cap){
  FILE *file=fopen(DATA_DIR "/previous-session.txt","rb");if(!file)return false;
@@ -650,22 +691,23 @@ static void account_rename(void){
 static void account_draw(void){
  const PNetState state=pnet_state();
  text(12,33,12,0x003366,"Your penguin");
- box(7,50,306,52,0xffffff);
+ text(235,35,9,0x003366,"v" GOPENGUIN_VERSION);
+ box(7,50,306,38,0xffffff);
  char line[120];snprintf(line,sizeof line,"%s",settings.name[0]?settings.name:demo.actors[0].name[0]?demo.actors[0].name:"Not connected");
  text(15,57,13,0x003366,line);
  const char *status=state==PNET_ONLINE?"Online":state==PNET_OFFLINE?"Not connected":state==PNET_SIGN_IN?"Sign in again":"Connecting...";
  if(state==PNET_ONLINE)snprintf(line,sizeof line,"%s - ID %u",status,pnet_id());else snprintf(line,sizeof line,"%s",status);
- text(15,79,10,0x003366,line);
- text(15,92,9,0x5a6b7b,"Version " GOPENGUIN_VERSION);
- button(8,112,148,26,"Show my code",-1);button(164,112,148,26,"Save recovery file",-1);
- button(8,142,148,26,"Restore a code",-1);button(164,142,148,26,"Change name",-1);
- button(8,172,96,26,settings.audio?"Audio: on":"Audio: off",-1);button(112,172,96,26,"Previous",-1);button(216,172,96,26,"Updates",-1);
- text(12,202,9,0x003366,"Private code: no e-mail or password needed.");
+ text(15,74,10,0x003366,line);
+ button(8,94,148,24,"Use on PC / phone",-1);button(164,94,148,24,"Enter device code",-1);
+ button(8,122,148,24,"Recovery code",-1);button(164,122,148,24,"Change name",-1);
+ button(8,150,96,24,settings.audio?"Audio: on":"Audio: off",-1);button(112,150,96,24,"Previous",-1);button(216,150,96,24,"Updates",-1);
+ button(8,178,304,24,settings.batterySaver?"Battery saver: on":"Battery saver: off",-1);
 }
 static void account_touch(int x,int y){
- if(y>=112&&y<138){if(x<160)account_show_code();else account_save_recovery();return;}
- if(y>=142&&y<168){if(x<160)account_recover();else account_rename();return;}
- if(y>=172&&y<198){if(x<104)toggle_audio();else if(x<208)account_restore_previous();else{demo.tab=20;if(gp_update_view().state==GP_UPD_IDLE)gp_update_check();}return;}
+ if(y>=178&&y<202){toggle_battery();return;}
+ if(y>=94&&y<118){if(x<160)device_open();else account_recover();return;}
+ if(y>=122&&y<146){if(x<160)account_recover();else account_rename();return;}
+ if(y>=150&&y<174){if(x<104)toggle_audio();else if(x<208)account_restore_previous();else{demo.tab=20;if(gp_update_view().state==GP_UPD_IDLE)gp_update_check();}return;}
 }
 static void update_draw(void){
  GPUpdateView view=gp_update_view();char line[96];
@@ -1196,7 +1238,7 @@ static void games_touch(int x,int y){
 }
 /** Lower-screen header: the room in Room, otherwise the open section. */
 static const char *section_title(void){
- static const char *const sections[]={"Room","Map","Me","People","Help","Chat","Books","Player","Mail","Postcards","Public igloos","Igloo styles","Puffles","Puffles","Puffles","Igloo music","Games","Lobby","Account","Membership","Updates"};
+ static const char *const sections[]={"Room","Map","Me","People","Help","Chat","Books","Player","Mail","Postcards","Public igloos","Igloo styles","Puffles","Puffles","Puffles","Igloo music","Games","Lobby","Account","Membership","Updates","Device code"};
  if(demo.tab==0&&currentRoom)return currentRoom->title;
  return demo.tab<COUNT(sections)?sections[demo.tab]:"Penguin";
 }
@@ -1250,6 +1292,7 @@ static void bottom(void){
  }else if(demo.tab==18){account_draw();
  }else if(demo.tab==19){membership_draw();
  }else if(demo.tab==20){update_draw();
+ }else if(demo.tab==21){device_draw();
  }else if(demo.tab==7){player_draw();
  }else if(demo.tab==4){
   button(8,32,96,22,"News",-1);button(112,32,96,22,"Puffles",-1);button(216,32,96,22,"Account",-1);
@@ -1350,6 +1393,7 @@ static void touch(int x,int y){
  else if(demo.tab==18)account_touch(x,y);
  else if(demo.tab==19)membership_touch(x,y);
  else if(demo.tab==20)update_touch(x,y);
+ else if(demo.tab==21)device_touch(x,y);
  else if(demo.tab==4){
   if(y>=32&&y<54){
    if(x<108)newspaper_show();
@@ -1365,8 +1409,9 @@ static void touch(int x,int y){
 }
 int main(int argc,char **argv){
  gp_update_init(argc>0?argv[0]:NULL);
- gfxInitDefault();romfsInit();bool new3ds=false;APT_CheckNew3DS(&new3ds);osSetSpeedupEnable(new3ds);C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);C3D_FrameRate(new3ds?60:30);C2D_Init(8192);C2D_Prepare();C2D_SetTintMode(C2D_TintMult);
+ gfxInitDefault();romfsInit();APT_CheckNew3DS(&isNew3DS);C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);C2D_Init(8192);C2D_Prepare();C2D_SetTintMode(C2D_TintMult);
  mkdir("sdmc:/3ds",0777);mkdir(DATA_DIR,0700);settings_load(&settings,SETTINGS_FILE);
+ power_apply();
 #ifndef GP_LAN_ONLY
  if(settings.session[0])pnet_start(&settings.network,settings.session,"","",false);
  else if(!pnet_start_guest(&settings.network))message("Could not start the connection. Check Server in Help.");
@@ -1448,6 +1493,12 @@ int main(int argc,char **argv){
     if(!settings_save(&settings,SETTINGS_FILE))message("Character restored, but the session could not be saved on SD.");
     if(settings.network.api[0]&&settings.network.world[0])pnet_start(&settings.network,settings.session,"","",false);
     demo.tab=0;if(kind==3){char created[96];snprintf(created,sizeof created,"Welcome, %s!",accountName[0]?accountName:"penguin");message(created);}else message(accountName[0]?accountName:"Welcome back to your penguin.");
+   }else if(kind==5&&demo.tab==21){
+    char url[96];uint8_t temporary[qrcodegen_BUFFER_LEN_FOR_VERSION(8)];
+    snprintf(url,sizeof url,"https://gopenguin.lol/#device=%s",accountSession);
+    if(qrcodegen_encodeText(url,temporary,deviceQr,qrcodegen_Ecc_MEDIUM,qrcodegen_VERSION_MIN,8,qrcodegen_Mask_AUTO,true)){
+     snprintf(deviceCode,sizeof deviceCode,"%.12s",accountSession);deviceExpires=osGetTime()+600000;
+    }else modal_message("Could not draw the device QR. Tap New code to try again.");
    }else if(kind==4){modal_message("Thank ye! Your message is in my logbook for the GoPenguin crew.");
    }else if(kind==2&&accountName[0]){
     snprintf(settings.name,sizeof settings.name,"%s",accountName);
@@ -1466,9 +1517,9 @@ int main(int argc,char **argv){
    if(!strcmp(packet.command,"gpstaff")){staffCount=0;for(unsigned i=0;i<packet.count&&staffCount<64;i++){const char *colon=strchr(packet.args[i],':');unsigned id=(unsigned)strtoul(packet.args[i],NULL,10);if(colon&&id){staffIds[staffCount]=id;staffRole[staffCount++]=colon[1];}}pnet_message_free(&packet);continue;}
    if(!strcmp(packet.command,"gpmsg")&&packet.count>=3){
     if(!strcmp(packet.args[0],"update")){gp_update_check();pnet_message_free(&packet);continue;}
-    bool kick=!strcmp(packet.args[0],"kick"),ban=!strcmp(packet.args[0],"ban");char notice[1024];
+    bool kick=!strcmp(packet.args[0],"kick"),ban=!strcmp(packet.args[0],"ban"),moved=!strcmp(packet.args[0],"moved");char notice[1024];
     snprintf(notice,sizeof notice,"%s\n%s%s",packet.args[1],packet.args[2],kick?"\nYou can come back in one minute.":"");
-    if(kick||ban){kickStop=true;kickResume=kick?osGetTime()+60000:0;}
+    if(kick||ban||moved){kickStop=true;kickResume=kick?osGetTime()+60000:0;}
     modal_message(notice);pnet_message_free(&packet);continue;
    }
    if(game&&game_port_packet(game,packet.command,packet.count,packet.args)){

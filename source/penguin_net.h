@@ -25,6 +25,7 @@ typedef enum {PNET_ACCOUNT_IDLE,PNET_ACCOUNT_BUSY,PNET_ACCOUNT_OK,PNET_ACCOUNT_E
 bool pnet_account_recover(const PNetConfig *config,const char *code);
 /** Create a new penguin without a password, like the web guest flow. */
 bool pnet_account_guest(const PNetConfig *config);
+bool pnet_account_device_link(const PNetConfig *config,const char *session);
 /** Rename the penguin behind `session`; identity, coins and inventory stay. */
 /** Captain Rockhopper's logbook; the result arrives through pnet_account_take with kind 4. */
 bool pnet_suggest(const PNetConfig *config,const char *session,const char *category,const char *message,const char *request_id);

@@ -27,9 +27,10 @@ typedef struct Message {struct Message *next;size_t len;char data[];} Message;
 typedef struct {Message *head,*tail;unsigned count;size_t bytes;} Queue;
 static struct {
  Mutex mutex;Worker worker;bool started,quit,newSession,create,guest,manualRoom;
- PNetConfig config;char session[160],name[64],password[129],status[160];
+ PNetConfig config;char session[160],name[64],password[129],status[160],transfer[49];
  unsigned id;PNetState state;Queue incoming,outgoing;
 } N;
+static char pendingTransfer[49],pendingSession[160];
 typedef struct {Ws socket;Endpoint api;char apiPath[96],key[160],error[160],buffer[PACKET_BYTES];unsigned id;size_t buffered;bool joined,signedIn;} Connection;
 static bool push(Queue *q,const char *data,size_t len){
  if(len>PACKET_BYTES||q->count>=QUEUE_COUNT||q->bytes+len>QUEUE_BYTES)return false;
@@ -70,7 +71,8 @@ static void receive(const u8 *bytes,int length,void *user){
    lock(&N.mutex);bool accepted=push(&N.incoming,text,len+1);unlock(&N.mutex);
    if(!accepted){c->joined=false;state(PNET_RETRYING,"Too many pending world updates. Reconnecting...");return;}
    PNetMessage m;if(pnet_parse(text,&m)){
-    if(!strcmp(m.command,"l")){char id[20];snprintf(id,sizeof id,"%u",c->id);c->signedIn=raw(c,"j#js",3,(const char *[]){id,c->key,"en"});}
+    if(!strcmp(m.command,"gpmsg")&&m.count>=1&&!strcmp(m.args[0],"moved")){lock(&N.mutex);N.quit=true;unlock(&N.mutex);}
+    if(!strcmp(m.command,"l")){lock(&N.mutex);N.transfer[0]=0;unlock(&N.mutex);char id[20];snprintf(id,sizeof id,"%u",c->id);c->signedIn=raw(c,"j#js",3,(const char *[]){id,c->key,"en"});}
     else if(!strcmp(m.command,"js")){
      lock(&N.mutex);bool manual=N.manualRoom;unlock(&N.mutex);
      if(manual){c->joined=true;state(PNET_ONLINE,"Connected to GoPenguin");}
@@ -109,7 +111,8 @@ static bool authenticate(Connection *c){
   }
   snprintf(session,sizeof session,"%s",token);lock(&N.mutex);snprintf(N.session,sizeof N.session,"%s",token);N.newSession=true;unlock(&N.mutex);json_decref(reply);
  }
- json_t *reply=request(c,"world-key",session,NULL,&status);const char *key=reply?json_string_value(json_object_get(reply,"worldKey")):NULL;json_int_t id=reply?json_integer_value(json_object_get(reply,"penguinId")):0;
+ char transferBody[80];lock(&N.mutex);snprintf(transferBody,sizeof transferBody,"{\"transfer\":\"%s\"}",N.transfer);unlock(&N.mutex);
+ json_t *reply=request(c,"world-key",session,transferBody,&status);memset(transferBody,0,sizeof transferBody);const char *key=reply?json_string_value(json_object_get(reply,"worldKey")):NULL;json_int_t id=reply?json_integer_value(json_object_get(reply,"penguinId")):0;
  const char *code=reply?json_string_value(json_object_get(reply,"code")):NULL;
  bool ok=status==200&&key&&strlen(key)<sizeof c->key&&!strstr(key,"]]>")&&id>0&&id<=0x7fffffff;
  if(ok){
@@ -138,7 +141,7 @@ static void worker(void *unused){
      if(!out)break;
      online=ws_send_text(&c->socket,(const u8 *)out->data,(int)out->len);free(out);sent++;
     }
-    if(online)online=ws_poll(&c->socket,sent?0:5,receive,c);
+    if(online)online=ws_poll(&c->socket,sent?0:16,receive,c);
     if(!c->joined&&now_ms()>deadline)online=false;
     if(c->joined)delay=1;
    }
@@ -159,6 +162,7 @@ static bool start_mode(const PNetConfig *config,const char *session,const char *
 #endif
  if(!config||!config->api[0]||!config->world[0]||strlen(session?session:"")>=sizeof N.session||strlen(name?name:"")>=sizeof N.name||strlen(password?password:"")>=sizeof N.password)return false;
  pnet_stop();memset(&N,0,sizeof N);mutex_init(&N.mutex);N.config=*config;N.create=create;N.guest=guest;snprintf(N.session,sizeof N.session,"%s",session?session:"");snprintf(N.name,sizeof N.name,"%s",name?name:"");snprintf(N.password,sizeof N.password,"%s",password?password:"");snprintf(N.status,sizeof N.status,"Starting the connection...");N.state=PNET_CONNECTING;N.started=true;
+ if(session&&pendingSession[0]&&!strcmp(session,pendingSession)){snprintf(N.transfer,sizeof N.transfer,"%s",pendingTransfer);memset(pendingTransfer,0,sizeof pendingTransfer);memset(pendingSession,0,sizeof pendingSession);}
 #ifdef __3DS__
  s32 priority=0x30;svcGetThreadPriority(&priority,CUR_THREAD_HANDLE);N.worker=threadCreate(worker,NULL,64*1024,priority>0x19?priority-1:priority,-2,false);if(!N.worker){N.started=false;return false;}
 #else
@@ -206,7 +210,7 @@ bool pnet_join(unsigned room,int x,int y){if(!N.started)return false;lock(&N.mut
 typedef struct {
  Mutex mutex;Worker worker;bool started,done;int kind;PNetAccountState state;
  PNetConfig config;char code[160],session[160],name[64],category[16],text[1024];
- char outSession[160],outName[64],error[160];
+ char outSession[160],outName[64],outTransfer[49],error[160];
 } Account;
 static Account ACCOUNT;
 
@@ -241,21 +245,30 @@ static json_t *account_request(const PNetConfig *config,const char *endpoint,con
 static void account_worker(void *unused){
  (void)unused;char error[160];if(!conn_global_init(error,sizeof error)){account_finish(PNET_ACCOUNT_ERROR,error);return;}
  json_t *reply=NULL;
- json_t *body=ACCOUNT.kind==3?NULL:ACCOUNT.kind==4?json_pack("{s:s,s:s,s:s,s:s}","category",ACCOUNT.category,"message",ACCOUNT.text,"platform","3ds","request_id",ACCOUNT.code):json_pack("{s:s}",ACCOUNT.kind==1?"code":"name",ACCOUNT.kind==1?ACCOUNT.code:ACCOUNT.name);
- char *payload=ACCOUNT.kind==3?malloc(3):body?json_dumps(body,JSON_COMPACT):NULL;if(ACCOUNT.kind==3&&payload)memcpy(payload,"{}",3);if(body)json_decref(body);
+ bool empty=ACCOUNT.kind==3||ACCOUNT.kind==5;
+ json_t *body=empty?NULL:ACCOUNT.kind==4?json_pack("{s:s,s:s,s:s,s:s}","category",ACCOUNT.category,"message",ACCOUNT.text,"platform","3ds","request_id",ACCOUNT.code):json_pack("{s:s}",ACCOUNT.kind==1?"code":"name",ACCOUNT.kind==1?ACCOUNT.code:ACCOUNT.name);
+ char *payload=empty?malloc(3):body?json_dumps(body,JSON_COMPACT):NULL;if(empty&&payload)memcpy(payload,"{}",3);if(body)json_decref(body);
  if(!payload){account_finish(PNET_ACCOUNT_ERROR,"Not enough memory for the account request.");conn_global_exit();return;}
  int status=0;
- const char *endpoint=ACCOUNT.kind==1?"recovery":ACCOUNT.kind==2?"rename":ACCOUNT.kind==4?"suggestions":"guest";
- reply=account_request(&ACCOUNT.config,endpoint,ACCOUNT.kind==2||ACCOUNT.kind==4?ACCOUNT.session:NULL,payload,&status,error,sizeof error);
+ bool deviceCode=ACCOUNT.kind==1&&strlen(ACCOUNT.code)<=16;
+ const char *endpoint=ACCOUNT.kind==1?(deviceCode?"device/redeem":"recovery"):ACCOUNT.kind==2?"rename":ACCOUNT.kind==4?"suggestions":ACCOUNT.kind==5?"device/link":"guest";
+ reply=account_request(&ACCOUNT.config,endpoint,ACCOUNT.kind==2||ACCOUNT.kind==4||ACCOUNT.kind==5?ACCOUNT.session:NULL,payload,&status,error,sizeof error);
  memset(payload,0,strlen(payload));free(payload);
  const char *message=reply?json_string_value(json_object_get(reply,"error")):NULL;
- if(ACCOUNT.kind==4){
+ if(ACCOUNT.kind==5){
+  const char *code=reply?json_string_value(json_object_get(reply,"code")):NULL;
+  if(status==200&&code&&strlen(code)==12&&!strncmp(code,"GP-",3)){
+   lock(&ACCOUNT.mutex);snprintf(ACCOUNT.outSession,sizeof ACCOUNT.outSession,"%s",code);unlock(&ACCOUNT.mutex);account_finish(PNET_ACCOUNT_OK,NULL);
+  }else account_finish(PNET_ACCOUNT_ERROR,message?message:"Could not create a device code. Try again.");
+ }else if(ACCOUNT.kind==4){
   if(status>=200&&status<300)account_finish(PNET_ACCOUNT_OK,NULL);
   else account_finish(PNET_ACCOUNT_ERROR,message?message:error[0]?error:"Captain Rockhopper could not receive your message. Try again.");
  }else if(ACCOUNT.kind==1||ACCOUNT.kind==3){
   const char *session=reply?json_string_value(json_object_get(reply,"session")):NULL;
   const char *name=reply?json_string_value(json_object_get(reply,"name")):NULL;
   if(status>=200&&status<300&&session&&*session&&strlen(session)<sizeof ACCOUNT.outSession){
+   const char *transfer=reply?json_string_value(json_object_get(reply,"transfer")):NULL;
+   if(transfer&&strlen(transfer)==48){lock(&ACCOUNT.mutex);snprintf(ACCOUNT.outTransfer,sizeof ACCOUNT.outTransfer,"%s",transfer);unlock(&ACCOUNT.mutex);}
    lock(&ACCOUNT.mutex);snprintf(ACCOUNT.outSession,sizeof ACCOUNT.outSession,"%s",session);snprintf(ACCOUNT.outName,sizeof ACCOUNT.outName,"%s",name?name:"");
    unlock(&ACCOUNT.mutex);account_finish(PNET_ACCOUNT_OK,NULL);
   }else account_finish(PNET_ACCOUNT_ERROR,message?message:error[0]?error:status==401?"This access code was not found.":ACCOUNT.kind==3?"Could not create the penguin.":"Could not recover the character.");
@@ -278,6 +291,20 @@ bool pnet_account_recover(const PNetConfig *config,const char *code){
  if(ACCOUNT.started)account_join();
  memset(&ACCOUNT,0,sizeof ACCOUNT);mutex_init(&ACCOUNT.mutex);ACCOUNT.kind=1;ACCOUNT.config=*config;ACCOUNT.state=PNET_ACCOUNT_BUSY;
  snprintf(ACCOUNT.code,sizeof ACCOUNT.code,"%s",code);
+#ifdef __3DS__
+ s32 priority=0x30;svcGetThreadPriority(&priority,CUR_THREAD_HANDLE);ACCOUNT.worker=threadCreate(account_worker,NULL,64*1024,priority>0x19?priority-1:priority,-2,false);
+ if(!ACCOUNT.worker){memset(&ACCOUNT,0,sizeof ACCOUNT);return false;}
+#else
+ if(pthread_create(&ACCOUNT.worker,NULL,account_trampoline,NULL)){memset(&ACCOUNT,0,sizeof ACCOUNT);return false;}
+#endif
+ ACCOUNT.started=true;return true;
+}
+bool pnet_account_device_link(const PNetConfig *config,const char *session){
+ if(!session||!*session||!config||!config->api[0])return false;
+ if(ACCOUNT.started&&!account_done())return false;
+ if(ACCOUNT.started)account_join();
+ memset(&ACCOUNT,0,sizeof ACCOUNT);mutex_init(&ACCOUNT.mutex);ACCOUNT.kind=5;ACCOUNT.config=*config;ACCOUNT.state=PNET_ACCOUNT_BUSY;
+ snprintf(ACCOUNT.session,sizeof ACCOUNT.session,"%s",session);
 #ifdef __3DS__
  s32 priority=0x30;svcGetThreadPriority(&priority,CUR_THREAD_HANDLE);ACCOUNT.worker=threadCreate(account_worker,NULL,64*1024,priority>0x19?priority-1:priority,-2,false);
  if(!ACCOUNT.worker){memset(&ACCOUNT,0,sizeof ACCOUNT);return false;}
@@ -342,6 +369,7 @@ PNetAccountState pnet_account_take(int *kind,char *session,size_t session_cap,ch
  if(session&&session_cap)snprintf(session,session_cap,"%s",ACCOUNT.outSession);
  if(name&&name_cap)snprintf(name,name_cap,"%s",ACCOUNT.outName);
  if(error&&error_cap)snprintf(error,error_cap,"%s",ACCOUNT.error);
+ if(value==PNET_ACCOUNT_OK&&ACCOUNT.kind==1&&ACCOUNT.outTransfer[0]){snprintf(pendingTransfer,sizeof pendingTransfer,"%s",ACCOUNT.outTransfer);snprintf(pendingSession,sizeof pendingSession,"%s",ACCOUNT.outSession);}
  ACCOUNT.state=PNET_ACCOUNT_IDLE;
  unlock(&ACCOUNT.mutex);
  account_join();

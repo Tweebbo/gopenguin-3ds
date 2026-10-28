@@ -24,6 +24,27 @@ The game reconnects with your saved penguin automatically.
 - Touch Me: clothes, inventory and your name. Touch your name or Edit to rename.
 - Help: account recovery, membership, catalogues and updates.
 
+## Continue on another device
+
+In Help → Account, choose **Use on PC / phone**. Scan the QR with your phone,
+or open gopenguin.lol and enter the short code in Account → Enter device code.
+Confirm your penguin's name to continue there.
+
+To move from PC or phone to 3DS, choose Account → Use on another device on the
+website, then enter its code in Help → Account → Enter device code on 3DS.
+Only the eight characters are needed; the `GP-` prefix and dashes are optional.
+Codes work once and expire after ten minutes. Keep them private. Your penguin,
+coins and belongings stay the same, and the previous character stays saved on
+the destination device. Permanent recovery codes and files still work.
+
+## Battery saver
+
+Help → Account → Battery saver saves your preference on the SD card.
+On New 3DS it uses the normal CPU clock and 30 FPS. Turn it off for the faster
+CPU and up to 60 FPS. Original 3DS already uses the normal clock and 30 FPS.
+Chat and crossplay remain connected in either mode. Actual battery life depends
+on your console, battery, brightness and wireless conditions.
+
 ## Updates
 
 GoPenguin checks for releases in the background and offers updates inside the
