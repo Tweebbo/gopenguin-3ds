@@ -28,6 +28,7 @@
 #include "transport/ws.h"
 #include "asset_cache.h"
 #include "wear.h"
+#include "room_dance.h"
 #include "client_data.h"
 #include "profile.h"
 #include "membership.h"
@@ -308,6 +309,7 @@ static bool enter_room(unsigned id,float x,float y){
  activeTrigger=~0u;memset(&overlay,0,sizeof overlay);
  hoveredIndex=~0u;hoverCount=0;
  gp_audio_scene(room->key);gp_audio_room(room->key);swl_sound_handler(scene,gp_audio_sound,NULL);swl_restart(scene);
+ if(id==120)room_dance_stable_floor(scene);
  epf_access_enter(&epfAccess,navigation,id,x,y,profile.epfReady,profile.epfAgent,&epfHooks);
  if(id==212)swl_visible(scene,"entryTriggers",false);
  room_latch_entry(x,y);
@@ -917,6 +919,7 @@ static void styles_update(void){
  styles.started=osGetTime();
 }
 static bool pets_send(void *unused,const char *command,unsigned count,const char *const *args){(void)unused;return pnet_state()==PNET_ONLINE&&pnet_send(command,count,args);}
+static bool pets_pose_ready(const Puffle *pet){return wear_pose_ready(asset_key(ASSET_PUFFLE,pet->type+1),pet->frame,1);}
 static void pets_enter(unsigned owner){if(petRoom==currentRoomId&&puffles.mine==pnet_id())return;puffles_room(&puffles,pnet_id(),owner);petRoom=currentRoomId;wantedPetOwner=owner?owner:pnet_id();}
 static void pets_adopt(unsigned type){
  if(type>=PUFFLES_COLOURS){modal_message("This puffle colour is unavailable.");return;}
@@ -1633,7 +1636,7 @@ int main(int argc,char **argv){
   if(networkState==PNET_ONLINE&&puffles.mine!=pnet_id()){puffles_init(&puffles,pets_send,NULL);petRoom=0;pets_enter(roomBank?igloo.layout.owner:0);}
   else if((networkState==PNET_OFFLINE||networkState==PNET_RETRYING||networkState==PNET_SIGN_IN)&&puffles.mine){puffles_init(&puffles,pets_send,NULL);petRoom=wantedPetOwner=0;}
   if(wantedPetOwner&&networkState==PNET_ONLINE&&!puffles.snapshotPending&&puffles_request(&puffles,wantedPetOwner))wantedPetOwner=0;
-  puffles_step(&puffles,&demo,dt);if(*puffles.error){modal_message(puffles.error);puffles.error[0]=0;}
+  puffles.poseReady=pets_pose_ready;puffles_step(&puffles,&demo,dt);if(*puffles.error){modal_message(puffles.error);puffles.error[0]=0;}
   if(igloo.awaitingStyle&&now-styles.started>15000){igloo.awaitingStyle=false;igloo.slotsReady=igloo.activeKnown=false;modal_message("The igloo change timed out. Refresh to check the server state before retrying.");}
   if(igloo.awaitingMusic&&now-musicStarted>15000){igloo.awaitingMusic=false;modal_message("The music change timed out. Reopen your igloo to check its saved music.");}
   if(*profile.error){if(game)message(profile.error);else modal_message(profile.error);profile.error[0]=0;}

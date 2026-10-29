@@ -8,7 +8,7 @@ const version=(await readFile(root+'/VERSION','utf8')).trim(),base=`https://gith
 if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('Invalid release version.');
 if(manifest.version!==version)throw Error('The packaged version differs from VERSION. Rebuild and repackage before publishing.');
 if(manifest.titleId!=='0004000007E90200'||validation.status!=='PASS'||manifest.status!=='release-candidate')throw Error('The release package has not passed its identity checks.');
-const latest={schema:1,titleId:manifest.titleId,version,notes:'Card-Jitsu and Card-Jitsu Fire, sharper cards, original Sensei access, corrected Bean Counters colours and smoother walking puffles. Your penguin and in-app updates are retained.'};
+const latest={schema:1,titleId:manifest.titleId,version,notes:'Town and more room music, complete puffle care animations, steadier dance-floor colours, crowded-room improvements and update download speed. Your saved penguin is retained. Install, then close and reopen GoPenguin.'};
 for(const kind of ['cia','3dsx']){
  const artifact=manifest.artifacts[kind],bytes=await readFile(folder+'/'+artifact.file);
  if(bytes.length!==artifact.bytes||createHash('sha256').update(bytes).digest('hex')!==artifact.sha256)throw Error('Artifact changed after validation: '+kind);

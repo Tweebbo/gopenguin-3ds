@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #ifdef __3DS__
 #include <3ds.h>
 typedef LightLock Mutex;
@@ -23,7 +24,7 @@ static void unlock(Mutex *m){pthread_mutex_unlock(m);}
 static void sleep_ms(unsigned n){struct timespec t={(time_t)(n/1000),(long)(n%1000)*1000000};nanosleep(&t,NULL);}
 #endif
 enum {QUEUE_COUNT=256,QUEUE_BYTES=1024*1024,PACKET_BYTES=65536};
-typedef struct Message {struct Message *next;size_t len;char data[];} Message;
+typedef struct Message {struct Message *next;size_t len;unsigned position,actor;bool barrier;char data[];} Message;
 typedef struct {Message *head,*tail;unsigned count;size_t bytes;} Queue;
 static struct {
  Mutex mutex;Worker worker;bool started,quit,newSession,create,guest,manualRoom;
@@ -34,11 +35,36 @@ static char pendingTransfer[49],pendingSession[160];
 typedef struct {Ws socket;Endpoint api;char apiPath[96],key[160],error[160],buffer[PACKET_BYTES];unsigned id;size_t buffered;bool joined,signedIn;} Connection;
 static bool push(Queue *q,const char *data,size_t len){
  if(len>PACKET_BYTES||q->count>=QUEUE_COUNT||q->bytes+len>QUEUE_BYTES)return false;
- Message *m=malloc(sizeof *m+len);if(!m)return false;m->next=NULL;m->len=len;memcpy(m->data,data,len);
+ Message *m=malloc(sizeof *m+len);if(!m)return false;m->next=NULL;m->len=len;m->position=m->actor=0;m->barrier=true;memcpy(m->data,data,len);
  if(q->tail)q->tail->next=m;else q->head=m;q->tail=m;q->count++;q->bytes+=len;return true;
 }
 static Message *pop(Queue *q){Message *m=q->head;if(m){q->head=m->next;if(!q->head)q->tail=NULL;q->count--;q->bytes-=m->len;}return m;}
 static void clear(Queue *q){Message *m;while((m=pop(q)))free(m);}
+static bool push_incoming(Queue *q,const char *data,size_t len){
+ unsigned position=0,actor=0;bool barrier=true;
+ if(len>10&&!strncmp(data,"%xt%",4)){
+  const char *end=strchr(data+4,'%');size_t command=end?(size_t)(end-data-4):0;
+  bool moving=command==2&&!memcmp(data+4,"sp",2);
+  bool acting=command==2&&(!memcmp(data+4,"sf",2)||!memcmp(data+4,"sa",2)||!memcmp(data+4,"sb",2)||!memcmp(data+4,"sm",2)||!memcmp(data+4,"se",2)||!memcmp(data+4,"ss",2));
+  const char *room=end?strchr(end+1,'%'):NULL,*id=room?room+1:NULL;unsigned value=0;
+  if((moving||acting)&&id&&*id>='1'&&*id<='9'){
+   const char *p=id;while(*p>='0'&&*p<='9'){unsigned digit=(unsigned)(*p-'0');if(value>(UINT_MAX-digit)/10){value=0;break;}value=value*10+digit;p++;}
+   if(*p=='%'&&value){actor=value;position=moving?value:0;barrier=false;}
+  }
+ }
+ Message *old=NULL,*oldPrevious=NULL,*previous=NULL;
+ /* Append the latest move after intervening events. A room/game boundary or an
+  * action by this penguin keeps its earlier move in the reliable sequence. */
+ if(position)for(Message *m=q->head;m;previous=m,m=m->next){
+  if(m->barrier||(m->actor==position&&!m->position)){old=oldPrevious=NULL;}
+  else if(m->position==position){old=m;oldPrevious=previous;}
+ }
+ if(len>PACKET_BYTES||q->count-(old?1:0)>=QUEUE_COUNT||q->bytes+len-(old?old->len:0)>QUEUE_BYTES)return false;
+ Message *m=malloc(sizeof *m+len);if(!m)return false;
+ *m=(Message){.len=len,.position=position,.actor=actor,.barrier=barrier};memcpy(m->data,data,len);
+ if(old){if(oldPrevious)oldPrevious->next=old->next;else q->head=old->next;if(q->tail==old)q->tail=oldPrevious;q->count--;q->bytes-=old->len;free(old);}
+ if(q->tail)q->tail->next=m;else q->head=m;q->tail=m;q->count++;q->bytes+=len;return true;
+}
 static void state(PNetState value,const char *text){lock(&N.mutex);N.state=value;snprintf(N.status,sizeof N.status,"%s",text);unlock(&N.mutex);}
 static bool stopping(void){lock(&N.mutex);bool quit=N.quit;unlock(&N.mutex);return quit;}
 static bool cancelled(void *unused){(void)unused;return stopping();}
@@ -68,7 +94,14 @@ static void receive(const u8 *bytes,int length,void *user){
  for(size_t i=0;i<c->buffered;i++)if(!c->buffer[i]){
   char *text=c->buffer+start;size_t len=i-start;
   if(len>=4&&!strncmp(text,"%xt%",4)){
-   lock(&N.mutex);bool accepted=push(&N.incoming,text,len+1);unlock(&N.mutex);
+   bool accepted=false;u64 queuedAt=now_ms();
+   /* Loading textures can pause the consumer. Bound memory and let TCP wait,
+    * rather than discarding account/game messages or immediately reconnecting. */
+   do{
+    lock(&N.mutex);accepted=push_incoming(&N.incoming,text,len+1);unlock(&N.mutex);
+    if(accepted||stopping()||now_ms()-queuedAt>=8000)break;
+    sleep_ms(2);
+   }while(true);
    if(!accepted){c->joined=false;state(PNET_RETRYING,"Too many pending world updates. Reconnecting...");return;}
    PNetMessage m;if(pnet_parse(text,&m)){
     if(!strcmp(m.command,"gpmsg")&&m.count>=1&&!strcmp(m.args[0],"moved")){lock(&N.mutex);N.quit=true;unlock(&N.mutex);}

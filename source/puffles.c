@@ -1,4 +1,5 @@
 #include "puffles.h"
+#include "puffle_actions.h"
 #include <errno.h>
 #include <math.h>
 #include <stdio.h>
@@ -94,7 +95,7 @@ static bool snapshot(Puffles *p,const PNetMessage *m){
  for(unsigned i=0;i<count;i++){Puffle *old=puffles_find(p,owner,rows[i].id);if(!old||old->revision<=p->snapshotRevision)put(p,&rows[i],i);}
  reconcile(p,owner);return true;
 }
-static void reaction(Puffle *pet,unsigned item){if(!pet)return;pet->reaction=item==27?1:item==37?2:3;pet->reactionTicks=0;pet->clock=0;}
+static void reaction(Puffle *pet,unsigned item){if(!pet)return;pet->reaction=item==27?1:item==37?2:item==4?4:item==5?5:item==8?6:3;pet->reactionTicks=0;pet->clock=0;pet->frame=puffle_action_frames[pet->reaction-1];}
 static bool observed(const Puffles *p,const Demo *world,unsigned owner){return owner==p->mine||owner==p->roomOwner||actor(world,owner)!=NULL;}
 bool puffles_apply(Puffles *p,const PNetMessage *m,const Demo *world){
  if(!strcmp(m->command,"pg"))return snapshot(p,m);
@@ -170,8 +171,10 @@ void puffles_step(Puffles *p,const Demo *world,float elapsed){
   p->accumulator-=1.0f/24;
   for(unsigned i=0;i<p->count;i++){
    Puffle *pet=&p->pets[i];if(pet->owner!=p->mine&&!puffles_visible(p,pet,world))continue;
-   pet->oldX=pet->x;pet->oldY=pet->y;pet->clock++;unsigned frame=pet->direction;
-   if(pet->reaction){pet->reactionTicks++;if(pet->reactionTicks>=(pet->reaction==2?120:48))pet->reaction=0;else frame=pet->reaction==2?24+pet->direction:pet->reaction==3?16+pet->direction:33+(pet->reactionTicks/6)%3;}
+   pet->oldX=pet->x;pet->oldY=pet->y;
+   if(pet->reaction&&p->poseReady&&!p->poseReady(pet))continue;
+   pet->clock++;unsigned frame=pet->direction;
+   if(pet->reaction){pet->reactionTicks++;if(pet->reactionTicks>puffle_action_lengths[pet->type][pet->reaction-1])pet->reaction=0;else frame=puffle_action_frames[pet->reaction-1];}
    if(!pet->reaction&&pet->walking){const Actor *owner=actor(world,pet->owner);if(owner){
     float dx=owner->x-20-pet->x,dy=owner->y+8-pet->y,distance=hypotf(dx,dy);
     if(distance>12||(owner->walking&&distance>1))pet->following=true;

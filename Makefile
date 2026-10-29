@@ -19,6 +19,12 @@ BUILD := obj-gpu-test
 SOURCES := source tests
 ROMFS := build/gpu-romfs
 endif
+ifeq ($(DANCE_GPU_TEST),1)
+TARGET := gopenguin-dance-gpu-test
+BUILD := obj-dance-gpu-test
+SOURCES := source tests
+ROMFS := build/dance-gpu-romfs
+endif
 ifeq ($(DEBUG_GAMES),1)
 TARGET := gopenguin-debug
 BUILD := obj-debug
@@ -64,8 +70,12 @@ export OFILES += pcm_stream.o
 export OFILES += offline_shop.o
 export OFILES += gp_update.o update_manifest.o download.o
 export OFILES += chat_keyboard.o chat_log.o chat_log_view.o
+export OFILES += wear_index.o
 ifeq ($(GPU_TEST),1)
 export OFILES := gpu_test.o swl.o swl_gpu.o swl_shader.shbin.o
+endif
+ifeq ($(DANCE_GPU_TEST),1)
+export OFILES := dance_gpu_test.o swl.o swl_gpu.o swl_shader.shbin.o
 endif
 export INCLUDE := -I$(CURDIR)/source -I$(CURDIR)/vendor/qrcodegen $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)

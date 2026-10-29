@@ -20,6 +20,7 @@ typedef struct {
  Puffle pets[PUFFLES_LIMIT];unsigned count,mine,roomOwner;
  PuffleWalk walks[CAST_COUNT+1];unsigned nWalks;
  PuffleSend send;void *user;
+ bool (*poseReady)(const Puffle *pet);
  unsigned long revision,epoch,snapshotEpoch,snapshotRevision;
  unsigned snapshotOwner,actionId,actionItem,adoptType,coins;
  bool snapshotPending,coinsChanged;PuffleAction action;
