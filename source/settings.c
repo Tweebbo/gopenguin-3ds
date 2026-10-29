@@ -31,3 +31,10 @@ bool settings_save(const Settings *s,const char *path){
  if(ok){FILE *f=fopen(temp,"wb");ok=f&&json_dumpf(root,f,JSON_COMPACT)==0;if(f){if(fclose(f))ok=false;}if(ok){chmod(temp,0600);ok=rename(temp,path)==0;}if(!ok)remove(temp);}
  json_decref(root);return ok;
 }
+bool settings_select_account(Settings *s,const char *session,const char *name,const char *path){
+ if(!session||!session[0]||strlen(session)>=sizeof s->session||(name&&strlen(name)>=sizeof s->name))return false;
+ Settings next=*s;snprintf(next.session,sizeof next.session,"%s",session);
+ if(name&&name[0])snprintf(next.name,sizeof next.name,"%s",name);
+ if(!settings_save(&next,path))return false;
+ *s=next;return true;
+}

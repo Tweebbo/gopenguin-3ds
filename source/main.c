@@ -641,10 +641,19 @@ static void account_save_recovery(void){
  modal_message(ok?"Recovery file saved to /3ds/gopenguin/recovery.json.":"Could not finish the recovery file on the SD card.");
 }
 static bool account_backup_session(void);
+static bool account_storage_ready(void){
+ if(settings_save(&settings,SETTINGS_FILE)&&account_backup_session())return true;
+ modal_message("Could not save your current penguin. Check the SD card before switching.");return false;
+}
+static bool account_select_session(const char *session,const char *name){
+ if((!strcmp(settings.session,session)||account_backup_session())&&settings_select_account(&settings,session,name,SETTINGS_FILE))return true;
+ char error[400];snprintf(error,sizeof error,"Could not save this penguin on SD. Your previous character is still selected. Keep this private recovery code to restore the new character:\n\nTWEEBBO-%s",session);
+ modal_message(error);return false;
+}
 static void account_recover(void){
  char code[160]="";
  if(!keyboard(code,sizeof code,"Device code or TWEEBBO- recovery code",false))return;
- if(!account_backup_session()){modal_message("Could not save your current penguin. Check the SD card before switching.");return;}
+ if(!account_storage_ready())return;
  if(!pnet_account_recover(&settings.network,code)){
   modal_message(pnet_account_state()==PNET_ACCOUNT_BUSY?"Wait for the current account request to finish.":"Set the GoPenguin server (API and world URLs) in Help first.");
   return;
@@ -699,6 +708,7 @@ static bool account_read_previous(char *out,size_t cap){
 static void account_restore_previous(void){
  char code[200]="";
  if(!account_read_previous(code,sizeof code)){modal_message("No previous character is saved on this SD card yet.");return;}
+ if(!account_storage_ready())return;
  if(!pnet_account_recover(&settings.network,code)){
   modal_message(pnet_account_state()==PNET_ACCOUNT_BUSY?"Wait for the current account request to finish.":"Set the GoPenguin server in Help first.");
   return;
@@ -706,6 +716,7 @@ static void account_restore_previous(void){
  message("Restoring the previous character...");
 }
 static void account_create(void){
+ if(!account_storage_ready())return;
  if(!pnet_account_guest(&settings.network)){
   modal_message(pnet_account_state()==PNET_ACCOUNT_BUSY?"Wait for the current account request to finish.":"Set the GoPenguin server in Help first.");
   return;
@@ -1535,19 +1546,20 @@ int main(int argc,char **argv){
    if(networkState==PNET_RETRYING||networkState==PNET_SIGN_IN)demo.count=1;
    previousState=networkState;
   }
-  if(pnet_take_session(settings.session,sizeof settings.session)&&!settings_save(&settings,SETTINGS_FILE))message("Connected. The session could not be saved on SD.");
+  char connectedSession[160];
+  if(pnet_take_session(connectedSession,sizeof connectedSession)&&!account_select_session(connectedSession,NULL))pnet_stop();
   PNetAccountState account=pnet_account_state();
   if(account==PNET_ACCOUNT_OK||account==PNET_ACCOUNT_ERROR){
    int kind=0;char accountSession[160]="",accountName[64]="",accountError[160]="";
    account=pnet_account_take(&kind,accountSession,sizeof accountSession,accountName,sizeof accountName,accountError,sizeof accountError);
    if(account==PNET_ACCOUNT_ERROR){if(!game)modal_message(accountError[0]?accountError:"The account request failed.");}
    else if((kind==1||kind==3)&&accountSession[0]){
-    account_backup_session();pnet_stop();snprintf(settings.session,sizeof settings.session,"%s",accountSession);
-    if(accountName[0])snprintf(settings.name,sizeof settings.name,"%s",accountName);
+    if(account_select_session(accountSession,accountName)){
+    pnet_stop();
     profile_init(&profile,false);memset(&social,0,sizeof social);memset(&igloo,0,sizeof igloo);inventoryUI.stamp=0;demo.count=1;previousState=PNET_OFFLINE;
-    if(!settings_save(&settings,SETTINGS_FILE))message("Character restored, but the session could not be saved on SD.");
     if(settings.network.api[0]&&settings.network.world[0])pnet_start(&settings.network,settings.session,"","",false);
     demo.tab=0;if(kind==3){char created[96];snprintf(created,sizeof created,"Welcome, %s!",accountName[0]?accountName:"penguin");message(created);}else message(accountName[0]?accountName:"Welcome back to your penguin.");
+    }
    }else if(kind==5&&demo.tab==21){
     char url[96];uint8_t temporary[qrcodegen_BUFFER_LEN_FOR_VERSION(8)];
     snprintf(url,sizeof url,"https://gopenguin.lol/#device=%s",accountSession);
