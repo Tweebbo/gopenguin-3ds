@@ -682,12 +682,7 @@ static void device_touch(int x,int y){
  if(y>=178&&y<202){if(x<160)device_open();else{memset(deviceCode,0,sizeof deviceCode);demo.tab=22;}}
 }
 static bool account_backup_session(void){
- if(!settings.session[0])return true;
- FILE *file=fopen(DATA_DIR "/previous-session.txt.tmp","wb");
- if(!file)return false;
- bool ok=fprintf(file,"TWEEBBO-%s\n",settings.session)>0;
- if(fclose(file))ok=false;
- return ok&&!rename(DATA_DIR "/previous-session.txt.tmp",DATA_DIR "/previous-session.txt");
+ return settings_backup_session(&settings,DATA_DIR "/previous-session.txt");
 }
 static void penguin_rename(void){
  if(!settings.session[0]){modal_message("Connect to GoPenguin before changing your penguin name.");return;}
