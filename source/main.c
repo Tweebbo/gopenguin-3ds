@@ -730,10 +730,13 @@ static void transfer_touch(int x,int y){
 }
 static void update_draw(void){
  GPUpdateView view=gp_update_view();char line[96];
+ static u64 speedAt,speedDone;static unsigned speedKB;u64 now=now_ms();
+ if(view.state!=GP_UPD_DOWNLOADING||!speedAt||view.done<speedDone||now-speedAt>(u64)view.elapsed*1000+2000){speedAt=view.state==GP_UPD_DOWNLOADING?now:0;speedDone=view.done;speedKB=0;}
+ else if(now-speedAt>=1000)speedKB=(unsigned)((u64)(view.done-speedDone)*1000/(now-speedAt)/1024);
  text(12,34,13,0x003366,"GoPenguin updates");snprintf(line,sizeof line,"Running: %s",GOPENGUIN_VERSION);text(12,58,11,0x003366,line);
  if(view.version[0]){snprintf(line,sizeof line,"%s: %s",view.state==GP_UPD_INSTALLED?"Installed":"Update",view.version);text(12,78,11,0x003366,line);}
  wrapped(12,102,10,0x003366,view.message[0]?view.message:"Check for a new GoPenguin version.",294,4);
- if(view.total&&(view.state==GP_UPD_DOWNLOADING||view.state==GP_UPD_VERIFYING||view.state==GP_UPD_INSTALLING)){snprintf(line,sizeof line,"%u%%  %u / %u MB",(unsigned)((u64)view.done*100/view.total),view.done/1048576,view.total/1048576);text(12,153,11,0x003366,line);}
+ if(view.total&&(view.state==GP_UPD_DOWNLOADING||view.state==GP_UPD_VERIFYING||view.state==GP_UPD_INSTALLING)){snprintf(line,sizeof line,"%u%%  %u / %u MB",(unsigned)((u64)view.done*100/view.total),view.done/1048576,view.total/1048576);size_t used=strlen(line);if(view.state==GP_UPD_DOWNLOADING&&speedKB){if(speedKB<1024)snprintf(line+used,sizeof line-used,"  %u KB/s",speedKB);else snprintf(line+used,sizeof line-used,"  %.1f MB/s",speedKB/1024.0);}text(12,153,11,0x003366,line);}
  if(view.state==GP_UPD_FINALIZING){snprintf(line,sizeof line,"%us elapsed. Keep the console awake.",view.elapsed);text(12,153,10,0x003366,line);}
  bool busy=gp_update_busy(view.state);const char *label=view.state==GP_UPD_CHECKING?"Checking...":view.state==GP_UPD_DOWNLOADING?"Downloading...":view.state==GP_UPD_VERIFYING?"Verifying...":view.state==GP_UPD_INSTALLING?"Installing...":view.state==GP_UPD_FINALIZING?"Finishing...":view.state==GP_UPD_INSTALLED?"Installed":view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0])?"Install / resume":"Check again";
  button_state(8,174,148,26,label,-1,!busy&&view.state!=GP_UPD_INSTALLED);
