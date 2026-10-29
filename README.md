@@ -19,10 +19,12 @@ The game reconnects with your saved penguin automatically.
 ## Play
 
 - Circle Pad: walk. Touch the room map to choose a destination.
-- Touch Chat or press A: open the touch keyboard. The world stays live while typing.
+- Press R or touch Chat to write. Press L to read the last 100 messages of this session.
+- In history, L/R turn pages, Up/Down scroll a line, A writes and B returns.
 - START sends chat, SELECT closes the keyboard, B deletes, X changes case and Y adds a space.
-- Touch Me: clothes, inventory and your name. Touch your name or Edit to rename.
-- Help: account recovery, membership, catalogues and updates.
+- In the keyboard, L also changes case and R switches letters/symbols.
+- Touch Me for clothes and inventory. Help → Account groups transfers, name and updates.
+- Your saved penguin connects automatically; the first connection gets a penguin automatically.
 
 ## Games
 
@@ -38,20 +40,21 @@ walking puffles follow smoothly without repeatedly switching to standing.
 
 ## Continue on another device
 
-In Help → Account, choose **Use on PC / phone**. Scan the QR with your phone,
+In Help → Account → Transfer penguin, choose **To PC**. Scan the QR with your phone,
 or open gopenguin.lol and enter the short code in Account → Enter device code.
 Confirm your penguin's name to continue there.
 
 To move from PC or phone to 3DS, choose Account → Use on another device on the
-website, then enter its code in Help → Account → Enter device code on 3DS.
+website, then enter its code in Help → Account → Transfer penguin → From PC on 3DS.
 Only the eight characters are needed; the `GP-` prefix and dashes are optional.
 Codes work once and expire after ten minutes. Keep them private. Your penguin,
 coins and belongings stay the same, and the previous character stays saved on
-the destination device. Permanent recovery codes and files still work.
+the destination device. Change your name in Help → Account → Change name.
+Changing your name keeps your connection and penguin ID.
 
 ## Battery saver
 
-Help → Account → Battery saver saves your preference on the SD card.
+Help → Battery saver saves your preference on the SD card.
 On New 3DS it uses the normal CPU clock and 30 FPS. Turn it off for the faster
 CPU and up to 60 FPS. Original 3DS already uses the normal clock and 30 FPS.
 Chat and crossplay remain connected in either mode. Actual battery life depends
@@ -73,7 +76,7 @@ Use devkitARM, libctru, citro2d, citro3d, Jansson, mbedTLS and zlib. The prepare
 Extract it in the repository, then run `make` in a configured devkitPro shell.
 `build.sh` provides the container equivalent. CIA packaging uses
 `node tools/package-native.mjs --release --tools /path/to/ctrtools`.
-The 1.1.2 CIA was packaged with makerom 0.18.4; makerom 0.19.0 has a known
+The 1.1.3 CIA was packaged with makerom 0.18.4; makerom 0.19.0 has a known
 minor-version encoding issue. The package checks verify the installed version.
 
 This is an unofficial fan project. Original game artwork belongs to its respective

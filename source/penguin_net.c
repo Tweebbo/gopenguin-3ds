@@ -120,7 +120,7 @@ static bool authenticate(Connection *c){
   lock(&N.mutex);N.id=c->id;
   if(code&&*code&&strlen(code)<sizeof N.session){snprintf(N.session,sizeof N.session,"%s",code);N.newSession=true;}
   unlock(&N.mutex);
- }else if(status==401)state(PNET_SIGN_IN,"Your session expired. Sign in again.");
+ }else if(status==401)state(PNET_SIGN_IN,"Could not verify your penguin. Try again or import from PC.");
  // A suspension or maintenance explains itself; the worker keeps retrying with backoff.
  else if((status==403||status==503)&&reply){const char *why=json_string_value(json_object_get(reply,"error"));if(why)snprintf(c->error,sizeof c->error,"%s",why);}
  if(reply)json_decref(reply);
@@ -248,7 +248,7 @@ static void account_worker(void *unused){
  bool empty=ACCOUNT.kind==3||ACCOUNT.kind==5;
  json_t *body=empty?NULL:ACCOUNT.kind==4?json_pack("{s:s,s:s,s:s,s:s}","category",ACCOUNT.category,"message",ACCOUNT.text,"platform","3ds","request_id",ACCOUNT.code):json_pack("{s:s}",ACCOUNT.kind==1?"code":"name",ACCOUNT.kind==1?ACCOUNT.code:ACCOUNT.name);
  char *payload=empty?malloc(3):body?json_dumps(body,JSON_COMPACT):NULL;if(empty&&payload)memcpy(payload,"{}",3);if(body)json_decref(body);
- if(!payload){account_finish(PNET_ACCOUNT_ERROR,"Not enough memory for the account request.");conn_global_exit();return;}
+ if(!payload){account_finish(PNET_ACCOUNT_ERROR,"Not enough memory for this request.");conn_global_exit();return;}
  int status=0;
  bool deviceCode=ACCOUNT.kind==1&&strlen(ACCOUNT.code)<=16;
  const char *endpoint=ACCOUNT.kind==1?(deviceCode?"device/redeem":"recovery"):ACCOUNT.kind==2?"rename":ACCOUNT.kind==4?"suggestions":ACCOUNT.kind==5?"device/link":"guest";
@@ -277,7 +277,7 @@ static void account_worker(void *unused){
   if(status>=200&&status<300&&name&&*name&&strlen(name)<sizeof ACCOUNT.outName){
    lock(&ACCOUNT.mutex);snprintf(ACCOUNT.outName,sizeof ACCOUNT.outName,"%s",name);ACCOUNT.outSession[0]=0;
    unlock(&ACCOUNT.mutex);account_finish(PNET_ACCOUNT_OK,NULL);
-  }else account_finish(PNET_ACCOUNT_ERROR,message?message:error[0]?error:status==401?"Your session expired. Sign in again.":"Could not change the name.");
+  }else account_finish(PNET_ACCOUNT_ERROR,message?message:error[0]?error:status==401?"Could not verify your penguin. Try again or import from PC.":"Could not change the name.");
  }
  if(reply)json_decref(reply);
  conn_global_exit();

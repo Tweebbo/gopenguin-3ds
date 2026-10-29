@@ -5,13 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 static bool field(json_t *root,const char *key,char *out,size_t cap){const char *s=json_string_value(json_object_get(root,key));if(!s||strlen(s)>=cap)return false;strcpy(out,s);return true;}
-bool settings_load(Settings *s,const char *path){
- memset(s,0,sizeof *s);s->audio=true;s->network.room=100;s->network.x=380;s->network.y=340;
-#ifndef GP_LAN_ONLY
- // Release builds play on gopenguin.lol out of the box (crossplay with the web); Help can still change it.
- snprintf(s->network.api,sizeof s->network.api,"https://gopenguin.lol");snprintf(s->network.world,sizeof s->network.world,"wss://gopenguin.lol/world");
- snprintf(s->assets,sizeof s->assets,"https://gopenguin.lol/native");
-#endif
+static bool load_file(Settings *s,const char *path){
  FILE *f=fopen(path,"rb");if(!f)return false;
  char buffer[2049];size_t n=fread(buffer,1,sizeof buffer,f);fclose(f);if(n>2048)return false;
  json_error_t error;json_t *root=json_loadb(buffer,n,JSON_REJECT_DUPLICATES,&error);if(!root)return false;
@@ -25,16 +19,43 @@ bool settings_load(Settings *s,const char *path){
   *s=parsed;}
  json_decref(root);memset(buffer,0,sizeof buffer);return ok;
 }
+bool settings_load(Settings *s,const char *path){
+ memset(s,0,sizeof *s);s->audio=true;s->network.room=100;s->network.x=380;s->network.y=340;
+#ifndef GP_LAN_ONLY
+ snprintf(s->network.api,sizeof s->network.api,"https://gopenguin.lol");snprintf(s->network.world,sizeof s->network.world,"wss://gopenguin.lol/world");
+ snprintf(s->assets,sizeof s->assets,"https://gopenguin.lol/native");
+#endif
+ if(load_file(s,path))return true;
+ char backup[256];int n=snprintf(backup,sizeof backup,"%s.bak",path);
+ return n>0&&n<(int)sizeof backup&&load_file(s,backup);
+}
 bool settings_save(const Settings *s,const char *path){
  json_t *root=json_pack("{s:s,s:s,s:s,s:s,s:s,s:s,s:b,s:b}","api",s->network.api,"world",s->network.world,"session",s->session,"name",s->name,"assets",s->assets,"donate",s->donate,"audio",s->audio,"batterySaver",s->batterySaver);if(!root)return false;
  char temp[256];int n=snprintf(temp,sizeof temp,"%s.tmp",path);bool ok=n>0&&n<(int)sizeof temp;
- if(ok){FILE *f=fopen(temp,"wb");ok=f&&json_dumpf(root,f,JSON_COMPACT)==0;if(f){if(fclose(f))ok=false;}if(ok){chmod(temp,0600);ok=rename(temp,path)==0;}if(!ok)remove(temp);}
+ if(ok){
+  FILE *f=fopen(temp,"wb");ok=f&&json_dumpf(root,f,JSON_COMPACT)==0;if(f&&fclose(f))ok=false;
+  if(ok){
+   chmod(temp,0600);
+   if(rename(temp,path)){
+    // The 3DS filesystem can refuse renaming over an existing file.
+    char backup[256];struct stat original;int length=snprintf(backup,sizeof backup,"%s.bak",path);
+    ok=length>0&&length<(int)sizeof backup&&!stat(path,&original)&&S_ISREG(original.st_mode);
+    if(ok){remove(backup);ok=rename(path,backup)==0;if(ok&&rename(temp,path)){rename(backup,path);ok=false;}}
+   }
+  }
+  if(!ok)remove(temp);
+ }
  json_decref(root);return ok;
 }
 bool settings_select_account(Settings *s,const char *session,const char *name,const char *path){
  if(!session||!session[0]||strlen(session)>=sizeof s->session||(name&&strlen(name)>=sizeof s->name))return false;
+ if(!strcmp(s->session,session)&&(!name||!name[0]||!strcmp(s->name,name)))return true;
  Settings next=*s;snprintf(next.session,sizeof next.session,"%s",session);
  if(name&&name[0])snprintf(next.name,sizeof next.name,"%s",name);
  if(!settings_save(&next,path))return false;
  *s=next;return true;
+}
+bool settings_remember_name(Settings *s,const char *name,const char *path){
+ if(!name||!name[0]||strlen(name)>=sizeof s->name)return false;
+ snprintf(s->name,sizeof s->name,"%s",name);return settings_save(s,path);
 }

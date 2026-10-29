@@ -20,6 +20,8 @@
 #include "penguin_net.h"
 #include "offline_shop.h"
 #include "chat_keyboard.h"
+#include "chat_log.h"
+#include "chat_log_view.h"
 #include "world_state.h"
 #include "settings.h"
 #include "transport/conn.h"
@@ -124,6 +126,8 @@ static InventoryWidgets inventoryWidgets;
 static json_t *shellText;
 static struct {bool open,confirm;unsigned purchase,kind,room;char command[20],argument[32];char text[1024];} modal;
 static ChatKeyboard chatKeyboard;
+static ChatLog chatLog;
+static ChatLogView chatHistory;
 static C2D_TextBuf chatGlyphs,chatMeasure;
 static unsigned roomInventoryStamp;
 static Overlay overlay;
@@ -384,6 +388,20 @@ static void top(void){
 static void button_label(float x,float y,unsigned size,unsigned colour,const char *label){FontBounds b=font_ink(size,label);text(x-(b.left+b.right)/2.0f,y-(b.top+b.bottom)/2.0f,size,colour,label);}
 static void button_state(float x,float y,float w,float h,const char *label,int ico,bool enabled){float dy=ui_button(x,y,w,h,enabled&&ui_touching(x,y,w,h),enabled)?1:0;if(ico>=0){float pixels=fminf(25,h-15);icon(ico,x+(w-pixels)/2,y+2+dy,pixels/32);}button_label(x+w/2,y+(ico>=0?h-7:h/2)+dy,11,enabled?0xffffff:0x003366,label);}
 static void button(float x,float y,float w,float h,const char *label,int ico){button_state(x,y,w,h,label,ico,true);}
+static void account_button(float x,float y,float w,float h,const char *label,int ico){
+ float dy=ui_button(x,y,w,h,ui_touching(x,y,w,h),true)?1:0;
+ icon(ico,x+7,y+(h-20)/2+dy,.625f);button_label(x+(w+25)/2,y+h/2+dy,11,0xffffff,label);
+}
+static void transfer_symbol(float x,float y,bool fromPC){
+ float pc=x+(fromPC?0:34),penguin=x+(fromPC?34:0);
+ rect(pc,y+3,22,15,0xffffff);rect(pc+2,y+5,18,11,0x003366);
+ rect(pc+9,y+18,4,3,0xffffff);rect(pc+5,y+21,12,2,0xffffff);
+ icon(2,penguin,y,.75f);text(x+25,y+7,11,0xffffff,">");
+}
+static void transfer_button(float y,bool fromPC,const char *label,const char *description){
+ float dy=ui_button(8,y,304,49,ui_touching(8,y,304,49),true)?1:0;
+ transfer_symbol(18,y+12+dy,fromPC);text(88,y+9+dy,12,0xffffff,label);text(88,y+28+dy,9,0xffffff,description);
+}
 static unsigned item_colour(unsigned id){return colours[id<16?id:0];}
 static void portrait(Actor *a){
  const float factor=112.0f/144,scale=PAPER_SCALE*factor,x=18+PAPER_X*factor,y=52+PAPER_Y*factor;
@@ -592,27 +610,14 @@ static bool chat_send(const char *value,void *unused){
  if(!pnet_send("m#sm",2,(const char *[]){id,value}))return false;
  actor_say(&demo.actors[0],value);return true;
 }
-static void chat(void){chat_keyboard_open(&chatKeyboard,chat_send,NULL);}
+static void chat(void){chatHistory.open=false;chat_keyboard_open(&chatKeyboard,chat_send,NULL);}
+static void history_open(void){stop_position();demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;chat_log_view_open(&chatHistory);}
+static float history_width(unsigned size,const char *text){return textWidth(size,text);}
+static void history_button(float x,float y,float w,float h,const char *label,bool enabled){button_state(x,y,w,h,label,-1,enabled);}
 static unsigned chat_keys(u32 keys){
  const u32 native[]={KEY_DUP,KEY_DDOWN,KEY_DLEFT,KEY_DRIGHT,KEY_A,KEY_B,KEY_X,KEY_Y,KEY_R,KEY_START,KEY_SELECT};
- unsigned out=0;for(unsigned i=0;i<sizeof native/sizeof *native;i++)if(keys&native[i])out|=1u<<i;return out;
+ unsigned out=keys&KEY_L?CHAT_SHIFT:0;for(unsigned i=0;i<sizeof native/sizeof *native;i++)if(keys&native[i])out|=1u<<i;return out;
 }
-static bool configure_server(void){
- PNetConfig config=settings.network;Endpoint endpoint;
- if(!keyboard(config.api,sizeof config.api,"GoPenguin API: https://server",false)||!keyboard(config.world,sizeof config.world,"World: wss://server/world",false))return false;
- if(!endpoint_parse(config.api,&endpoint)||!endpoint_parse(config.world,&endpoint)){message("Enter a valid HTTP API and WebSocket world URL.");return false;}
- pnet_stop();memset(settings.session,0,sizeof settings.session);settings.network=config;demo.count=1;if(!settings_save(&settings,SETTINGS_FILE))message("Could not save the server on the SD card.");return true;
-}
-static void sign_in(bool create){
- if(!settings.network.api[0]&&!configure_server())return;
- char name[64],password[129]="";snprintf(name,sizeof name,"%s",settings.name);
- if(!keyboard(name,sizeof name,"Penguin name",false)||!keyboard(password,sizeof password,"Password",true)){memset(password,0,sizeof password);return;}
- if(strlen(password)<8){memset(password,0,sizeof password);message("The password needs at least 8 characters.");return;}
- settings.network.room=currentRoomId>=2000&&!igloo.layout.owner?100:currentRoomId;settings.network.x=(int)demo.actors[0].x;settings.network.y=(int)demo.actors[0].y;snprintf(settings.name,sizeof settings.name,"%s",name);
- profile_init(&profile,false);memset(&social,0,sizeof social);memset(&igloo,0,sizeof igloo);inventoryUI.stamp=0;if(!pnet_start(&settings.network,"",name,password,create))message("Could not start the network connection.");
- memset(password,0,sizeof password);demo.tab=0;
-}
-static void configure_assets(void){char url[192];snprintf(url,sizeof url,"%s",settings.assets);if(!keyboard(url,sizeof url,"Native resources server URL",false))return;Endpoint endpoint;if(!endpoint_parse(url,&endpoint)){message("Enter a valid HTTP resources server URL.");return;}if(!asset_cache_start(url,DATA_DIR "/cache")){message("Could not start resource downloads.");return;}snprintf(settings.assets,sizeof settings.assets,"%s",url);if(!settings_save(&settings,SETTINGS_FILE))message("Could not save the resource server on SD.");}
 static void toggle_audio(void){
  bool enabled=!settings.audio;gp_audio_set_enabled(enabled);
  if(enabled&&!gp_audio_available()){gp_audio_set_enabled(false);modal_message("Audio is unavailable. Check that DSP support is installed.");return;}
@@ -624,41 +629,30 @@ static void toggle_battery(void){
  if(!settings_save(&settings,SETTINGS_FILE))modal_message("Could not save the battery setting on SD.");
  else modal_message(settings.batterySaver?"Battery saver on: 30 FPS and normal CPU speed. Chat and crossplay remain connected. On an original 3DS, CPU and frame rate already use this setting.":"Battery saver off. New 3DS uses the faster CPU and up to 60 FPS.");
 }
-/** B4: show, save, restore and rename the shared Tweebbo/GoPenguin identity. */
-static void account_open(void){demo.tab=18;demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;message("Use device codes to continue on PC, phone or 3DS.");}
-static void account_show_code(void){
- if(!settings.session[0]){modal_message("Connect to GoPenguin first. Your access code is created when your penguin joins.");return;}
- char text[260];snprintf(text,sizeof text,"Your private access code:\n\nTWEEBBO-%s\n\nKeep it private: it gives access to your penguin.",settings.session);modal_message(text);
-}
-static void account_save_recovery(void){
- if(!settings.session[0]){modal_message("Connect to GoPenguin first. Your access code is created when your penguin joins.");return;}
- char code[200],escaped[240],origin[240];snprintf(code,sizeof code,"TWEEBBO-%s",settings.session);
- json_escape(code,escaped,sizeof escaped);json_escape(settings.network.api,origin,sizeof origin);
- FILE *file=fopen(DATA_DIR "/recovery.json","wb");
- if(!file){modal_message("Could not write the recovery file on the SD card.");return;}
- fprintf(file,"{\"format\":\"gopenguin-character\",\"version\":1,\"origin\":\"%s\",\"accessCode\":\"%s\"}\n",origin,escaped);
- bool ok=!fclose(file);
- modal_message(ok?"Recovery file saved to /3ds/gopenguin/recovery.json.":"Could not finish the recovery file on the SD card.");
-}
+
+static void penguin_open(void){demo.tab=18;demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;message("Your penguin is saved automatically.");}
 static bool account_backup_session(void);
 static bool account_storage_ready(void){
  if(settings_save(&settings,SETTINGS_FILE)&&account_backup_session())return true;
  modal_message("Could not save your current penguin. Check the SD card before switching.");return false;
 }
 static bool account_select_session(const char *session,const char *name){
- if((!strcmp(settings.session,session)||account_backup_session())&&settings_select_account(&settings,session,name,SETTINGS_FILE))return true;
+ bool changed=strcmp(settings.session,session)!=0;
+ if((!changed||account_backup_session())&&settings_select_account(&settings,session,name,SETTINGS_FILE)){if(changed){chat_log_clear(&chatLog);memset(&chatHistory,0,sizeof chatHistory);}return true;}
  char error[400];snprintf(error,sizeof error,"Could not save this penguin on SD. Your previous character is still selected. Keep this private recovery code to restore the new character:\n\nTWEEBBO-%s",session);
  modal_message(error);return false;
 }
-static void account_recover(void){
- char code[160]="";
- if(!keyboard(code,sizeof code,"Device code or TWEEBBO- recovery code",false))return;
+static void penguin_import(void){
+ char code[17]="";
+ if(!keyboard(code,sizeof code,"PC: Account > Use on another device",false))return;
+ unsigned letters=0;for(const char *c=code;*c;c++)if(*c!=' '&&*c!='-')letters++;
+ if(letters!=8&&letters!=10){modal_message("On PC, choose Use on another device and enter its short code here.");return;}
  if(!account_storage_ready())return;
  if(!pnet_account_recover(&settings.network,code)){
-  modal_message(pnet_account_state()==PNET_ACCOUNT_BUSY?"Wait for the current account request to finish.":"Set the GoPenguin server (API and world URLs) in Help first.");
+  modal_message(pnet_account_state()==PNET_ACCOUNT_BUSY?"Wait for the current account request to finish.":"Could not connect. Check your connection and try again.");
   return;
  }
- message("Checking the access code...");
+ message("Bringing your penguin from PC...");
 }
 static char deviceCode[16];
 static u64 deviceExpires;
@@ -670,7 +664,7 @@ static void device_open(void){
  if(!pnet_account_device_link(&settings.network,settings.session))modal_message("Could not create a device code. Try again.");
 }
 static void device_draw(void){
- text(12,33,13,0x003366,"Continue on PC or phone");
+ text(12,33,13,0x003366,"Take your penguin to PC");
  bool valid=deviceCode[0]&&osGetTime()<deviceExpires;
  if(valid){
   text(12,62,16,0x003366,deviceCode);
@@ -680,13 +674,12 @@ static void device_draw(void){
   rect(left,56,side,side,0xffffff);
   for(int y=0;y<n;y++)for(int x=0;x<n;x++)if(qrcodegen_getModule(deviceQr,x,y))rect(left+(x+4)*scale,56+(y+4)*scale,scale,scale,0x000000);
  }else wrapped(12,65,11,0x003366,pnet_account_state()==PNET_ACCOUNT_BUSY?"Creating your private device code...":"This code is no longer available. Tap New code to try again.",294,4);
- button(8,150,148,24,"Save recovery file",-1);button(164,150,148,24,"Recovery code",-1);
+ text(12,153,10,0x003366,"Your progress follows your penguin.");
  button(8,178,148,24,"New code",-1);button(164,178,148,24,"Back",-1);
  if(valid)text(204,138,8,0x003366,"Keep this code private.");
 }
 static void device_touch(int x,int y){
- if(y>=150&&y<174){if(x<160)account_save_recovery();else account_show_code();}
- else if(y>=178&&y<202){if(x<160)device_open();else{memset(deviceCode,0,sizeof deviceCode);demo.tab=18;}}
+ if(y>=178&&y<202){if(x<160)device_open();else{memset(deviceCode,0,sizeof deviceCode);demo.tab=22;}}
 }
 static bool account_backup_session(void){
  if(!settings.session[0])return true;
@@ -696,34 +689,7 @@ static bool account_backup_session(void){
  if(fclose(file))ok=false;
  return ok&&!rename(DATA_DIR "/previous-session.txt.tmp",DATA_DIR "/previous-session.txt");
 }
-static bool account_read_previous(char *out,size_t cap){
- FILE *file=fopen(DATA_DIR "/previous-session.txt","rb");if(!file)return false;
- char line[200]={0};bool ok=fgets(line,sizeof line,file)!=NULL;fclose(file);
- if(!ok)return false;
- size_t n=strlen(line);
- while(n&&(line[n-1]=='\n'||line[n-1]=='\r'))line[--n]=0;
- if(!line[0])return false;
- snprintf(out,cap,"%s",line);return true;
-}
-static void account_restore_previous(void){
- char code[200]="";
- if(!account_read_previous(code,sizeof code)){modal_message("No previous character is saved on this SD card yet.");return;}
- if(!account_storage_ready())return;
- if(!pnet_account_recover(&settings.network,code)){
-  modal_message(pnet_account_state()==PNET_ACCOUNT_BUSY?"Wait for the current account request to finish.":"Set the GoPenguin server in Help first.");
-  return;
- }
- message("Restoring the previous character...");
-}
-static void account_create(void){
- if(!account_storage_ready())return;
- if(!pnet_account_guest(&settings.network)){
-  modal_message(pnet_account_state()==PNET_ACCOUNT_BUSY?"Wait for the current account request to finish.":"Set the GoPenguin server in Help first.");
-  return;
- }
- message("Creating your penguin...");
-}
-static void account_rename(void){
+static void penguin_rename(void){
  if(!settings.session[0]){modal_message("Connect to GoPenguin before changing your penguin name.");return;}
  char name[64];snprintf(name,sizeof name,"%s",settings.name[0]?settings.name:demo.actors[0].name);
  if(!keyboard(name,sizeof name,"Penguin name",false))return;
@@ -733,26 +699,39 @@ static void account_rename(void){
  }
  message("Saving your new name...");
 }
-static void account_draw(void){
+static void penguin_draw(void){
  const PNetState state=pnet_state();
  text(12,33,12,0x003366,"Your penguin");
  text(235,35,9,0x003366,"v" GOPENGUIN_VERSION);
  box(7,50,306,38,0xffffff);
  char line[120];snprintf(line,sizeof line,"%s",settings.name[0]?settings.name:demo.actors[0].name[0]?demo.actors[0].name:"Not connected");
  text(15,57,13,0x003366,line);
- const char *status=state==PNET_ONLINE?"Online":state==PNET_OFFLINE?"Not connected":state==PNET_SIGN_IN?"Sign in again":"Connecting...";
+ const char *status=state==PNET_ONLINE?"Online":state==PNET_OFFLINE?"Not connected":state==PNET_SIGN_IN?"Import from PC to reconnect":"Connecting...";
  if(state==PNET_ONLINE)snprintf(line,sizeof line,"%s - ID %u",status,pnet_id());else snprintf(line,sizeof line,"%s",status);
  text(15,74,10,0x003366,line);
- button(8,94,148,24,"Use on PC / phone",-1);button(164,94,148,24,"Enter device code",-1);
- button(8,122,148,24,"Recovery code",-1);button(164,122,148,24,"Change name",-1);
- button(8,150,96,24,settings.audio?"Audio: on":"Audio: off",-1);button(112,150,96,24,"Previous",-1);button(216,150,96,24,"Updates",-1);
- button(8,178,304,24,settings.batterySaver?"Battery saver: on":"Battery saver: off",-1);
+ text(12,96,10,0x003366,"Your penguin is saved automatically.");
+ float dy=ui_button(8,118,304,28,ui_touching(8,118,304,28),true)?1:0;
+ transfer_symbol(19,119+dy,true);button_label(192,132+dy,11,0xffffff,"Transfer penguin");
+ account_button(8,152,148,28,"Change name",2);button(164,152,148,28,"Updates",-1);
+ button(8,184,304,20,"Back to Help",-1);
 }
-static void account_touch(int x,int y){
- if(y>=178&&y<202){toggle_battery();return;}
- if(y>=94&&y<118){if(x<160)device_open();else account_recover();return;}
- if(y>=122&&y<146){if(x<160)account_recover();else account_rename();return;}
- if(y>=150&&y<174){if(x<104)toggle_audio();else if(x<208)account_restore_previous();else{demo.tab=20;if(gp_update_view().state==GP_UPD_IDLE)gp_update_check();}return;}
+static void penguin_touch(int x,int y){
+ if(y>=118&&y<146)demo.tab=22;
+ else if(y>=152&&y<180){if(x<160)penguin_rename();else{demo.tab=20;if(gp_update_view().state==GP_UPD_IDLE)gp_update_check();}}
+ else if(y>=184&&y<204)demo.tab=4;
+}
+static void transfer_draw(void){
+ text(12,34,12,0x003366,"Play with the same penguin");
+ text(12,54,10,0x003366,"Your name and progress come with you.");
+ transfer_button(77,true,"From PC","Bring your PC penguin here.");
+ transfer_button(133,false,"To PC","Continue on PC with this penguin.");
+ button(8,188,304,16,"Back to Account",-1);
+}
+static void transfer_touch(int x,int y){
+ if(x<8||x>=312)return;
+ if(y>=77&&y<126)penguin_import();
+ else if(y>=133&&y<182)device_open();
+ else if(y>=188&&y<204)demo.tab=18;
 }
 static void update_draw(void){
  GPUpdateView view=gp_update_view();char line[96];
@@ -1298,7 +1277,7 @@ static void games_touch(int x,int y){
 }
 /** Lower-screen header: the room in Room, otherwise the open section. */
 static const char *section_title(void){
- static const char *const sections[]={"Room","Map","Me","People","Help","Chat","Books","Player","Mail","Postcards","Public igloos","Igloo styles","Puffles","Puffles","Puffles","Igloo music","Games","Lobby","Account","Membership","Updates","Device code"};
+ static const char *const sections[]={"Room","Map","Me","People","Help","Chat","Books","Player","Mail","Postcards","Public igloos","Igloo styles","Puffles","Puffles","Puffles","Igloo music","Games","Lobby","Account","Membership","Updates","Device code","Transfer penguin"};
  if(demo.tab==0&&currentRoom)return currentRoom->title;
  return demo.tab<COUNT(sections)?sections[demo.tab]:"Penguin";
 }
@@ -1309,6 +1288,7 @@ static void bottom(void){
  if(modal.open){modal_draw();return;}
  if(lobbyUI.open||lobbyUI.moving||lobbyUI.leavePending){lobby_draw();return;}
  if(igloo.editing){editor_draw();header("Edit igloo");return;}
+ if(chatHistory.open&&!book.open){header("Chat history");const ChatLogWidgets widgets={box,text,history_width,history_button};chat_log_view_draw(&chatHistory,&chatLog,&widgets);return;}
 
  if(book.open){
   rect(0,28,320,177,0xffffff);
@@ -1322,7 +1302,7 @@ static void bottom(void){
  if(demo.tab==0){
   box(6,33,181,119,0xffffff);if(roomBank){ActorOrder order;make_order(&order,false,175.0f/760,9,36);scene_draw_to(sceneBottom,320,240,175.0f/760,110.0f/480,9,36,&order);}else image(&minimap,9,36,175,110,0xffffffff);
   for(unsigned i=0;i<demo.count;i++){Actor *a=&demo.actors[i];C2D_DrawCircleSolid(9+a->x*175/760,36+a->y*110/480,.5f,i?2:3,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));}
- if(roomBank){button(7,154,101,17,"Public igloos",-1);if(igloo.layout.owner==pnet_id())button(112,154,75,17,"Styles",-1);}else text(12,154,10,0x003366,"Touch to walk / Circle Pad");
+ if(roomBank){button(7,154,101,17,"Public igloos",-1);if(igloo.layout.owner==pnet_id())button(112,154,75,17,"Styles",-1);}else text(12,154,10,0x003366,"L: history  R: write");
   const char *actions[]={"Wave","Dance","Sit","Snowball","Chat","Zoom"};const int ico[]={-1,-1,-1,3,0,6},poses[]={25,26,17};
   for(int i=0;i<6;i++){
    float x=193+i%2*62,y=34+i/2*34;
@@ -1349,15 +1329,19 @@ static void bottom(void){
  }else if(demo.tab>=12&&demo.tab<=14){pets_draw();
  }else if(demo.tab==15){music_draw();
  }else if(demo.tab==16){games_draw();
- }else if(demo.tab==18){account_draw();
+ }else if(demo.tab==18){penguin_draw();
  }else if(demo.tab==19){membership_draw();
  }else if(demo.tab==20){update_draw();
  }else if(demo.tab==21){device_draw();
+ }else if(demo.tab==22){transfer_draw();
  }else if(demo.tab==7){player_draw();
  }else if(demo.tab==4){
-  button(8,32,96,22,"News",-1);button(112,32,96,22,"Puffles",-1);button(216,32,96,22,"Account",-1);
-  button(8,58,148,40,"Sign in",4);button(164,58,148,40,"Create penguin",4);button(8,103,148,40,"Server",8);button(164,103,148,40,"Disconnect",7);
-  box(8,148,148,22,0xffffff);center(82,152,11,0x003366,"Resources server");box(164,148,148,22,0xffffff);center(238,152,11,0x003366,"Games");box(8,176,148,23,0xffffff);center(82,181,11,0x003366,"Catalogues");box(164,176,148,23,0xffffff);char label[32];snprintf(label,sizeof label,"Mail (%u)",social.unread);center(238,181,11,0x003366,label);
+  button(8,32,96,24,"News",-1);button(112,32,96,24,"Puffles",-1);button(216,32,96,24,"Games",-1);
+  float dy=ui_button(8,62,304,56,ui_touching(8,62,304,56),true)?1:0;
+  icon(2,19,74+dy,1);text(61,73+dy,13,0xffffff,"Account");
+  text(61,95+dy,9,0xffffff,"Transfer your penguin or change its name.");
+  button(8,130,148,28,settings.audio?"Audio: on":"Audio: off",-1);button(164,130,148,28,settings.batterySaver?"Battery saver: on":"Battery saver: off",-1);
+  button(8,164,148,28,"Catalogues",-1);char label[32];snprintf(label,sizeof label,"Mail (%u)",social.unread);button(164,164,148,28,label,-1);
  }else{
   box(9,33,90,22,0xffffff);center(54,37,11,0x003366,"Safe chat");box(104,33,90,22,0xffffff);center(149,37,11,0x003366,"Emotes");box(199,33,112,22,0xffffff);center(255,37,11,0x003366,safeParent?"Up":"Give tour");
   if(emoteMenu){for(unsigned i=0;i<30;i++){float x=9+i%6*51,y=58+i/6*29;box(x,y,48,27,0xffffff);const EmoteArt *f=&emoteArt[i];float k=fminf(42.0f/f->w,24.0f/f->h);crop(&emotes,f->x,f->y,f->w,f->h,x+(48-f->w*k)/2,y+(27-f->h*k)/2,k,0xffffffff);}}
@@ -1456,20 +1440,20 @@ static void touch(int x,int y){
  else if(demo.tab>=12&&demo.tab<=14)pets_touch(x,y);
  else if(demo.tab==15)music_touch(x,y);
  else if(demo.tab==16)games_touch(x,y);
- else if(demo.tab==18)account_touch(x,y);
+ else if(demo.tab==18)penguin_touch(x,y);
  else if(demo.tab==19)membership_touch(x,y);
  else if(demo.tab==20)update_touch(x,y);
  else if(demo.tab==21)device_touch(x,y);
+ else if(demo.tab==22)transfer_touch(x,y);
  else if(demo.tab==4){
-  if(y>=32&&y<54){
+  if(y>=32&&y<56){
    if(x<108)newspaper_show();
    else if(x<212){if(pnet_state()!=PNET_ONLINE){modal_message("Connect to GoPenguin to manage puffles.");return;}demo.tab=12;petPage=0;puffles_request(&puffles,pnet_id());}
-   else account_open();
+   else{demo.tab=16;gamePage=0;}
   }
-  else if(y>=58&&y<98){if(x>=164)account_create();else sign_in(false);}
-  else if(y>=103&&y<143){if(x<160)configure_server();else{pnet_stop();puffles_init(&puffles,pets_send,NULL);demo.count=1;message("Disconnected. Your saved penguin is kept.");}}
-  else if(y>=148&&y<170){if(x<160)configure_assets();else{demo.tab=16;gamePage=0;}}
-  else if(y>=176&&y<200){if(x<160){demo.tab=6;bookListPage=0;}else{demo.tab=8;mailPage=0;pnet_send("l#mg",1,(const char *[]){"0"});}}
+  else if(y>=62&&y<118)penguin_open();
+  else if(y>=130&&y<158){if(x<160)toggle_audio();else toggle_battery();}
+  else if(y>=164&&y<192){if(x<160){demo.tab=6;bookListPage=0;}else{demo.tab=8;mailPage=0;pnet_send("l#mg",1,(const char *[]){"0"});}}
  }
  else if(demo.tab==5){if(y>=33&&y<55){if(x<100)emoteMenu=false;else if(x<195)emoteMenu=true;else if(safeParent){SafeMessage parent;if(client_safe(clientData,safeParent,&parent))safeParent=parent.parent;safePage=0;}else if(demo.actors[0].look[0]!=428)modal_message("You need to wear your Tour Guide hat to give a tour.");else{actor_say(&demo.actors[0],client_tour(clientData,currentRoomId));char id[20];snprintf(id,sizeof id,"%u",currentRoomId);pnet_send("u#sl",1,(const char *[]){id});demo.tab=0;}return;}if(emoteMenu&&x>=9&&y>=58&&y<203){unsigned id=(unsigned)(y-58)/29*6+(unsigned)(x-9)/51+1;if(id<=30){demo.actors[0].emote=id;demo.actors[0].chat[0]=0;demo.actors[0].bubbleTime=125.0f/24;char number[12];snprintf(number,sizeof number,"%u",id);pnet_send("u#se",1,(const char *[]){number});demo.tab=0;}}else if(!emoteMenu&&y>=58&&y<190){SafeMessage choices[6];unsigned total=client_safe_children(clientData,safeParent,safePage*6,choices,6),index=(unsigned)(y-58)/22;if(index<6&&safePage*6+index<total){SafeMessage choice=choices[index];if(client_safe_children(clientData,choice.id,0,NULL,0)){safeParent=choice.id;safePage=0;}else{actor_say(&demo.actors[0],choice.name);char id[20];snprintf(id,sizeof id,"%u",choice.id);pnet_send("u#ss",1,(const char *[]){id});demo.tab=0;}}}else if(!emoteMenu&&y>=192){unsigned total=client_safe_children(clientData,safeParent,0,NULL,0);if(x<75&&safePage)safePage--;if(x>=246&&(safePage+1)*6<total)safePage++;}}
 }
@@ -1480,7 +1464,7 @@ int main(int argc,char **argv){
  power_apply();
 #ifndef GP_LAN_ONLY
  if(settings.session[0])pnet_start(&settings.network,settings.session,"","",false);
- else if(!pnet_start_guest(&settings.network))message("Could not start the connection. Check Server in Help.");
+ else if(!pnet_start_guest(&settings.network))message("Could not connect. Check your connection and try again.");
 #endif
 #ifdef GP_LAN_ONLY
  FILE *loadFlag=fopen(DATA_DIR "/load-test","r");if(loadFlag){loadTesting=true;fclose(loadFlag);}
@@ -1498,7 +1482,7 @@ int main(int argc,char **argv){
  
  gp_audio_init("romfs:/audio",settings.audio);aptHook(&audioHook,audio_focus,NULL);puffles_init(&puffles,pets_send,NULL);
  const char *sceneError=NULL;demo_init(&demo,NULL);lobby_init(&lobby,game_send,NULL);
- inventoryWidgets=(InventoryWidgets){box,text,center,portrait,portrait_hit,keyboard,message,item_colour,account_rename};
+ inventoryWidgets=(InventoryWidgets){box,text,center,portrait,portrait_hit,keyboard,message,item_colour,penguin_rename};
  bool ok=clientData&&gpuOK&&load(&icons,"icons")&&load(&emotes,"emotes")&&load(&fontTexture,"font")&&load(&paperBody,"paper-body")&&load(&paperDetail,"paper-detail")&&load(&bookCovers,"book-covers");
  if(fontTexture.loaded)C3D_TexSetFilter(&fontTexture.tex,GPU_NEAREST,GPU_NEAREST);
  for(int i=0;i<PENGUIN_PAGES;i++){char name[30];snprintf(name,sizeof name,"penguin-body-%d",i);ok=load(&body[i],name)&&ok;snprintf(name,sizeof name,"penguin-detail-%d",i);ok=load(&detail[i],name)&&ok;}
@@ -1506,12 +1490,21 @@ int main(int argc,char **argv){
  if(!ok){consoleInit(GFX_BOTTOM,NULL);printf("Could not load demo assets.\n%s\nRun tools/export-scene.mjs and rebuild.\nPress START to exit.\n",sceneError?sceneError:"");while(aptMainLoop()){hidScanInput();if(hidKeysDown()&KEY_START)break;gspWaitForVBlank();}goto done;}
 #ifdef GP_LAN_ONLY
  if(settings.session[0])pnet_start(&settings.network,settings.session,"","",false);
+ else if(settings.network.api[0]&&settings.network.world[0])pnet_start_guest(&settings.network);
  else offline_begin();
 #endif
  if(settings.assets[0]&&!asset_cache_start(settings.assets,DATA_DIR "/cache"))message("Could not prepare the resource cache. Check your SD card and resource settings.");
  u64 last=osGetTime(),sample=last,lastMove=0,updateCheckAt=last+10000;char offeredUpdate[24]="";unsigned frames=0;float sceneClock=0,lastX=demo.actors[0].x,lastY=demo.actors[0].y;bool wasMoving=false;PNetState previousState=PNET_OFFLINE;
  while(aptMainLoop()){
   u64 now=osGetTime();float dt=(now-last)/1000.0f;last=now;if(dt>.1f)dt=.1f;hidScanInput();u32 down=hidKeysDown(),held=hidKeysHeld();
+  bool historyInput=chatHistory.open&&!modal.open&&!game&&!book.open;
+  if(historyInput){
+   unsigned keys=0;if(down&KEY_L)keys|=CHAT_LOG_OLDER;if(down&KEY_R)keys|=CHAT_LOG_NEWER;if(down&KEY_DUP)keys|=CHAT_LOG_UP;if(down&KEY_DDOWN)keys|=CHAT_LOG_DOWN;if(down&KEY_A)keys|=CHAT_LOG_WRITE;if(down&KEY_B)keys|=CHAT_LOG_CLOSE;
+   unsigned result=chat_log_view_input(&chatHistory,keys);
+   if((down&KEY_TOUCH)&&chatHistory.open){touchPosition point;hidTouchRead(&point);result=chat_log_view_touch(&chatHistory,point.px,point.py);}
+   if(result==CHAT_LOG_WRITE)chat();
+   down=held=0;
+  }
   bool keyboardInput=chatKeyboard.active&&!modal.open;
   if(keyboardInput){
    chat_keyboard_input(&chatKeyboard,chat_keys(down),chat_keys(held),now);
@@ -1528,7 +1521,7 @@ int main(int argc,char **argv){
    if(book.open&&book.bank&&book.zoom&&!modal.open&&(held&KEY_TOUCH)){touchPosition p;hidTouchRead(&p);if(p.py>=28&&p.py<205){SWLMatrix v=book_view(320,177,28,false);book.x=(p.px-v.x)/v.a;book.y=(p.py-v.y)/v.d;}}
    if(lobby_locked()&&!modal.open){if(down&KEY_B)lobby_close();}
    else if(igloo.editing&&!modal.open){editor_drag(held,hidKeysUp());if(down&KEY_X)editor_remove();if(down&KEY_Y)editor_turn(0,1);if(down&KEY_L)editor_turn(-1,0);if(down&KEY_R)editor_turn(1,0);if(down&KEY_A){editor_cancel_drag();editor.inventory=!editor.inventory;}if(down&KEY_B){if(editor.inventory)editor.inventory=false;else editor_save();}}
-   else if(!modal.open&&!book.open){if(down&KEY_X)action(25);if(down&KEY_Y)action(26);if(down&KEY_B){if(demo.tab)demo.tab=0;else action(17);}if(down&KEY_A){if(rockhopper_near())rockhopper_open();else if(!room_npc_action())chat();}if(down&(KEY_L|KEY_R))demo.zoom=!demo.zoom;}else if(down&KEY_B){if(modal.open)modal.open=false;else if(book.open)book.close=true;}
+   else if(!modal.open&&!book.open){if(down&KEY_X)action(25);if(down&KEY_Y)action(26);if(down&KEY_B){if(demo.tab)demo.tab=0;else action(17);}if(down&KEY_A){if(rockhopper_near())rockhopper_open();else if(!room_npc_action())chat();}if(down&KEY_L)history_open();else if(down&KEY_R)chat();}else if(down&KEY_B){if(modal.open)modal.open=false;else if(book.open)book.close=true;}
    if(book.open&&!modal.open&&(down&(KEY_L|KEY_R)))book_toggle_zoom(true);
    if(down&KEY_SELECT){if(demo.tab==1&&pnet_state()==PNET_OFFLINE)mapList=!mapList;else demo.stats=!demo.stats;}
   }
@@ -1568,11 +1561,9 @@ int main(int argc,char **argv){
     }else modal_message("Could not draw the device QR. Tap New code to try again.");
    }else if(kind==4){modal_message("Thank ye! Your message is in my logbook for the GoPenguin crew.");
    }else if(kind==2&&accountName[0]){
-    snprintf(settings.name,sizeof settings.name,"%s",accountName);
-    if(!settings_save(&settings,SETTINGS_FILE))message("Name changed, but it could not be saved on SD.");
-    pnet_stop();previousState=PNET_OFFLINE;
-    if(settings.network.api[0]&&settings.network.world[0])pnet_start(&settings.network,settings.session,"","",false);
-    demo.tab=0;char renamed[96];snprintf(renamed,sizeof renamed,"Your penguin is now %s.",accountName);message(renamed);
+    bool remembered=settings_remember_name(&settings,accountName,SETTINGS_FILE);
+    snprintf(demo.actors[0].name,sizeof demo.actors[0].name,"%.48s",accountName);
+    demo.tab=0;char renamed[160];snprintf(renamed,sizeof renamed,remembered?"Your penguin is now %s.":"Name changed to %s. SD name cache could not be updated.",accountName);message(renamed);
    }
   }
   if(membershipPaid){membershipPaid=false;pnet_stop();if(settings.network.api[0]&&settings.network.world[0])pnet_start(&settings.network,settings.session,"","",false);demo.tab=0;message("Donation confirmed. Thank you for supporting GoPenguin!");}
@@ -1614,10 +1605,12 @@ int main(int argc,char **argv){
    if(packet.count){
     Actor *from=world_actor(&demo,(unsigned)strtoul(packet.args[0],NULL,10));
     if(from){
-     if(!strcmp(packet.command,"ss")&&packet.count>=2){SafeMessage safe;if(client_safe(clientData,(unsigned)strtoul(packet.args[1],NULL,10),&safe))actor_say(from,safe.name);}
-     else if(!strcmp(packet.command,"sj")&&packet.count>=2){const char *joke=client_joke(clientData,(unsigned)strtoul(packet.args[1],NULL,10));if(*joke)actor_say(from,joke);}
-     else if(!strcmp(packet.command,"sl"))actor_say(from,client_tour(clientData,currentRoomId));
+     bool spoken=!strcmp(packet.command,"sm")&&packet.count>=2;
+     if(!strcmp(packet.command,"ss")&&packet.count>=2){SafeMessage safe;if(client_safe(clientData,(unsigned)strtoul(packet.args[1],NULL,10),&safe)){actor_say(from,safe.name);spoken=true;}}
+     else if(!strcmp(packet.command,"sj")&&packet.count>=2){const char *joke=client_joke(clientData,(unsigned)strtoul(packet.args[1],NULL,10));if(*joke){actor_say(from,joke);spoken=true;}}
+     else if(!strcmp(packet.command,"sl")){actor_say(from,client_tour(clientData,currentRoomId));spoken=true;}
      else if(!strcmp(packet.command,"sb")&&packet.count>=3&&from->id!=pnet_id())throw_to(from,(float)strtoul(packet.args[1],NULL,10),(float)strtoul(packet.args[2],NULL,10));
+     if(spoken)chat_log_append(&chatLog,from->id,from->name,from->chat,currentRoomId,osGetTime());
     }
    }
    if(!strcmp(packet.command,"ai")&&packet.count){Product product;if(client_product(clientData,0,(unsigned)strtoul(packet.args[0],NULL,10),&product)){char added[180];snprintf(added,sizeof added,"%.120s\nhas been added to your inventory.",product.name);modal_message(added);}}
@@ -1628,7 +1621,7 @@ int main(int argc,char **argv){
    if(room&&room!=currentRoomId){serverRoom=true;if(room>2000)open_igloo(room-2000);else{wantedRoom=room;wantedX=demo.actors[0].x;wantedY=demo.actors[0].y;}}pnet_message_free(&packet);}
   GPUpdateView releaseUpdate=gp_update_view();
   if(networkState==PNET_ONLINE&&now>=updateCheckAt&&releaseUpdate.state!=GP_UPD_DOWNLOADING&&releaseUpdate.state!=GP_UPD_INSTALLED){gp_update_check();updateCheckAt=now+300000;}
-  if(releaseUpdate.state==GP_UPD_AVAILABLE&&strcmp(offeredUpdate,releaseUpdate.version)&&!game&&!gameQueued&&!modal.open&&!book.open&&!chatKeyboard.active&&!igloo.editing){snprintf(offeredUpdate,sizeof offeredUpdate,"%s",releaseUpdate.version);modal_message("A new GoPenguin version is ready. Open Updates? Your penguin is kept.");modal.confirm=true;snprintf(modal.command,sizeof modal.command,"open-update");}
+  if(releaseUpdate.state==GP_UPD_AVAILABLE&&strcmp(offeredUpdate,releaseUpdate.version)&&!game&&!gameQueued&&!modal.open&&!book.open&&!chatKeyboard.active&&!chatHistory.open&&!igloo.editing){snprintf(offeredUpdate,sizeof offeredUpdate,"%s",releaseUpdate.version);modal_message("A new GoPenguin version is ready. Open Updates? Your penguin is kept.");modal.confirm=true;snprintf(modal.command,sizeof modal.command,"open-update");}
   // Removed by a moderator: stop reconnecting (a kick returns after one minute).
   if(kickStop){kickStop=false;pnet_stop();}
   if(kickResume&&osGetTime()>=kickResume){kickResume=0;if(settings.network.api[0]&&settings.network.world[0]&&settings.session[0])pnet_start(&settings.network,settings.session,"","",false);}
@@ -1647,7 +1640,7 @@ int main(int argc,char **argv){
   if(*profile.error){if(game)message(profile.error);else modal_message(profile.error);profile.error[0]=0;}
   if(!game){if(profile.inventoryRevision!=roomInventoryStamp)room_inventory();room_hover(held);}gp_audio_update();lobby_update(dt);
   if(room_tube_locked(&roomTube)&&(lobby_locked()||game||gameQueued||book.open||modal.open||demo.tab!=0||wantedRoom||waitingIgloo||wantedIgloo||(pnet_id()&&networkState!=PNET_ONLINE)))room_tube_cancel(&roomTube,&tubeHooks);
-  circlePosition pad;hidCircleRead(&pad);if(chatKeyboard.active||keyboardInput){memset(&pad,0,sizeof pad);down=held=0;}float dx=pad.dx/150.0f,dy=-pad.dy/150.0f;if(held&KEY_DLEFT)dx=-1;if(held&KEY_DRIGHT)dx=1;if(held&KEY_DUP)dy=-1;if(held&KEY_DDOWN)dy=1;if(book.open&&book.zoom&&!modal.open){SWLMatrix view=book_view(400,240,0,true);const float stage[]={0,0,760,480},*b=book.resourceId&&book.boundsReady?book.bounds:stage;float halfX=fminf(200/view.a,(b[2]-b[0])/2),halfY=fminf(120/view.d,(b[3]-b[1])/2);book.x=fmaxf(b[0]+halfX,fminf(b[2]-halfX,book.x+dx*240*dt));book.y=fmaxf(b[1]+halfY,fminf(b[3]-halfY,book.y+dy*240*dt));}if(lobby_locked()||room_tube_locked(&roomTube)||game||gameQueued||modal.open||book.open||igloo.editing||waitingIgloo||wantedIgloo)dx=dy=0;demo_step(&demo,dt,dx,dy);if(!game)lobby_progress(dt);if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++)furnitureTime[i]+=dt;overlay_step(&overlay,dt);if(noticeTime>0)noticeTime-=dt;
+  circlePosition pad;hidCircleRead(&pad);if(chatKeyboard.active||keyboardInput||chatHistory.open||historyInput){memset(&pad,0,sizeof pad);down=held=0;}float dx=pad.dx/150.0f,dy=-pad.dy/150.0f;if(held&KEY_DLEFT)dx=-1;if(held&KEY_DRIGHT)dx=1;if(held&KEY_DUP)dy=-1;if(held&KEY_DDOWN)dy=1;if(book.open&&book.zoom&&!modal.open){SWLMatrix view=book_view(400,240,0,true);const float stage[]={0,0,760,480},*b=book.resourceId&&book.boundsReady?book.bounds:stage;float halfX=fminf(200/view.a,(b[2]-b[0])/2),halfY=fminf(120/view.d,(b[3]-b[1])/2);book.x=fmaxf(b[0]+halfX,fminf(b[2]-halfX,book.x+dx*240*dt));book.y=fmaxf(b[1]+halfY,fminf(b[3]-halfY,book.y+dy*240*dt));}if(lobby_locked()||room_tube_locked(&roomTube)||game||gameQueued||modal.open||book.open||igloo.editing||waitingIgloo||wantedIgloo)dx=dy=0;demo_step(&demo,dt,dx,dy);if(!game)lobby_progress(dt);if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++)furnitureTime[i]+=dt;overlay_step(&overlay,dt);if(noticeTime>0)noticeTime-=dt;
   if(game||gameQueued){dx=dy=0;demo.actors[0].walking=false;}
   Actor *me=&demo.actors[0];bool moving=me->walking||hypotf(dx,dy)>.15f;
   if(actionPosition){actionPosition=false;lastX=me->x;lastY=me->y;wasMoving=false;lastMove=now;}
