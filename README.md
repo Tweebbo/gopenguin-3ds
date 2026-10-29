@@ -57,6 +57,8 @@ CPU and up to 60 FPS. Original 3DS already uses the normal clock and 30 FPS.
 Chat and crossplay remain connected in either mode. Actual battery life depends
 on your console, battery, brightness and wireless conditions.
 
+Talk to Captain Rockhopper in Town to receive his free background. You do not need to send a suggestion. The background stays in your inventory when you change your outfit.
+
 ## Updates
 
 GoPenguin checks for releases in the background and offers updates inside the
@@ -71,7 +73,7 @@ Use devkitARM, libctru, citro2d, citro3d, Jansson, mbedTLS and zlib. The prepare
 Extract it in the repository, then run `make` in a configured devkitPro shell.
 `build.sh` provides the container equivalent. CIA packaging uses
 `node tools/package-native.mjs --release --tools /path/to/ctrtools`.
-The 1.1.0 CIA was packaged with makerom 0.18.4; makerom 0.19.0 has a known
+The 1.1.1 CIA was packaged with makerom 0.18.4; makerom 0.19.0 has a known
 minor-version encoding issue. The package checks verify the installed version.
 
 This is an unofficial fan project. Original game artwork belongs to its respective

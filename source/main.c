@@ -489,6 +489,7 @@ static bool room_npc_action(void){
 static void rockhopper_open(void){
  if(pnet_state()!=PNET_ONLINE||!settings.session[0]){modal_message("Ahoy, matey! Connect to GoPenguin to write in my logbook.");return;}
  if(pnet_account_state()==PNET_ACCOUNT_BUSY){message("Captain Rockhopper is still reading your last message.");return;}
+ pnet_send("u#rh",0,NULL);
  char text[1024]="";SwkbdState kb;swkbdInit(&kb,SWKBD_TYPE_NORMAL,3,500);
  swkbdSetHintText(&kb,"Ahoy! A suggestion or bug for the GoPenguin crew");
  swkbdSetButton(&kb,SWKBD_BUTTON_LEFT,"Cancel",false);swkbdSetButton(&kb,SWKBD_BUTTON_MIDDLE,"Bug report",true);swkbdSetButton(&kb,SWKBD_BUTTON_RIGHT,"Suggestion",true);
