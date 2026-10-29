@@ -11,7 +11,8 @@ typedef struct {
  unsigned long revision;
  char name[49];
  float x,y,oldX,oldY;
- bool walking;
+ bool walking,following;
+ unsigned settled;
 } Puffle;
 typedef bool (*PuffleSend)(void *user,const char *command,unsigned count,const char *const *args);
 typedef struct {unsigned owner,id;unsigned long revision;} PuffleWalk;

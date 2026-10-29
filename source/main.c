@@ -31,6 +31,10 @@
 #include "membership.h"
 #include "../vendor/qrcodegen/qrcodegen.h"
 #include "gp_update.h"
+#ifdef GP_NINJA_GAMES
+#include "game_card_preview.h"
+#include "room_npc.h"
+#endif
 #include "inventory_ui.h"
 #include "paper_registration.h"
 #include "emotes.h"
@@ -84,8 +88,16 @@ static bool gameQueued,gameLeaving,gameSuspended,gameMultiplayerLost;
 static unsigned gameReturnRoom;
 static int gameReturnX,gameReturnY,gameTouchX,gameTouchY;
 static unsigned gamePage;
-static const char *gameKeys[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron"};
-static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters","Cart Surfer","Thin Ice","Ice Fishing","Find Four","Mancala","Sled Racing","Pizzatron 3000"};
+static const char *gameKeys[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron"
+#ifdef GP_NINJA_GAMES
+ ,"card","fire"
+#endif
+};
+static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters","Cart Surfer","Thin Ice","Ice Fishing","Find Four","Mancala","Sled Racing","Pizzatron 3000"
+#ifdef GP_NINJA_GAMES
+ ,"Card-Jitsu","Card-Jitsu Fire"
+#endif
+};
 static IglooGeometry *iglooGeometry;
 static MovieBank *roomBank;
 static float furnitureTime[IGLOO_ITEMS];
@@ -94,6 +106,9 @@ static bool floorPresent;
 static struct {int selected;bool dragging,moved,inventory;int oldX,oldY;float pressX,pressY;unsigned page,category,revision,count,items[IGLOO_OWNED];char search[61];u64 saveAt;} editor={.selected=-1};
 static unsigned wantedRoom,mapPage;
 static unsigned activeTrigger=~0u;
+#ifdef GP_NINJA_GAMES
+static RoomNpc roomNpc;
+#endif
 static float wantedX=-1,wantedY=-1,triggerDelay;
 static bool serverRoom;
 static float interpolation=1;
@@ -257,7 +272,13 @@ static void room_inventory(void){if(!navigation||!scene)return;for(unsigned i=0;
 static bool room_textures(const IslandRoom *room){
  if(roomBank&&room==&iglooRoomInfo)return movie_bank_reload_textures(roomBank);
  bool ok=true;unsigned bytes=0;for(unsigned i=0;i<room->pages;i++){char name[64];snprintf(name,sizeof name,"swl-%s-%u",room->key,i);if(!load(&sceneAtlas[i],name))return false;bytes+=sceneAtlas[i].tex.size;if(bytes>6u*1024u*1024u||sceneAtlas[i].tex.width!=SWL_ATLAS_WIDTH||sceneAtlas[i].tex.height!=SWL_ATLAS_HEIGHT)return false;}
- char name[64];snprintf(name,sizeof name,"mini-low-%s",room->key);return load(&minimap,name)&&ok;
+ char name[64];
+#ifdef GP_NINJA_GAMES
+ snprintf(name,sizeof name,room_npc_spec(room->id)?GP_NPC_MINIMAP_FORMAT:"mini-low-%s",room->key);
+#else
+ snprintf(name,sizeof name,"mini-low-%s",room->key);
+#endif
+ return load(&minimap,name)&&ok;
 }
 static unsigned tube_frame(void *unused,const char *path){(void)unused;return scene?swl_frame(scene,path):0;}
 static void tube_target(void *unused,const char *path,unsigned frame,const char *label,bool playing){(void)unused;if(scene)swl_target(scene,path,frame,label,playing);}
@@ -287,6 +308,9 @@ static bool enter_room(unsigned id,float x,float y){
  if(id==212)swl_visible(scene,"entryTriggers",false);
  room_latch_entry(x,y);
  room_tube_enter(&roomTube,id);room_inventory();pets_enter(0);lobby_room_enter(id);
+#ifdef GP_NINJA_GAMES
+ if(!room_npc_enter(&roomNpc,id,scene,"romfs:/npcs"))message("Could not load the Sensei interaction.");
+#endif
  return true;
 }
 static int floor_content(void *unused,const char *path,unsigned id,SWLArt *art,unsigned capacity){
@@ -305,6 +329,9 @@ static bool enter_pending_igloo(void){
  if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);roomBank=bank;scene=movie_bank_scene(bank);iglooGeometry=geometry;movie_bank_content(bank,floor_content,NULL);floorPresent=false;memset(furnitureTime,0,sizeof furnitureTime);navigation=geometry->navigation;geometry->navigation=NULL;
  currentRoom=&iglooRoomInfo;currentRoomId=igloo.layout.owner+2000;island_set_id(navigation,currentRoomId);sceneOK=true;demo.blocked=island_blocked;demo.room=navigation;demo.mask=NULL;float x,y;island_start(navigation,&x,&y);Actor *me=&demo.actors[0];me->x=me->tx=x;me->y=me->ty=y;me->walking=false;me->action=me->direction=1;me->clock=0;triggerDelay=1;activeTrigger=hoveredIndex=~0u;hoverCount=0;memset(&overlay,0,sizeof overlay);
  if(!serverRoom){demo.count=1;if(pnet_state()==PNET_ONLINE)pnet_join(currentRoomId,(int)x,(int)y);}serverRoom=false;wantedIgloo=false;demo.tab=0;renderedIglooType=type;
+#ifdef GP_NINJA_GAMES
+ room_npc_free(&roomNpc);
+#endif
  room_tube_enter(&roomTube,currentRoomId);pets_enter(igloo.layout.owner);gp_audio_scene(type==1?"igloo1":"");gp_audio_music(igloo.layout.music);swl_sound_handler(scene,gp_audio_sound,NULL);swl_restart(scene);epf_access_enter(&epfAccess,navigation,currentRoomId,x,y,profile.epfReady,profile.epfAgent,&epfHooks);room_latch_entry(x,y);room_inventory();lobby_room_enter(currentRoomId);return true;
 }
 // Offline preview economy (offline_shop.c): without a session, purchases and the owner's igloo use
@@ -453,6 +480,12 @@ static void rockhopper_sync(void){
  lobbyUI.artDirty=true;
 }
 static bool rockhopper_near(void){Actor *npc=world_actor(&demo,ROCKHOPPER_ID);if(!npc)return false;float dx=npc->x-demo.actors[0].x,dy=npc->y-demo.actors[0].y;return dx*dx+dy*dy<70.0f*70.0f;}
+static bool room_npc_action(void){
+#ifdef GP_NINJA_GAMES
+ const char *game=demo.tab?NULL:room_npc_near(&roomNpc,demo.actors[0].x,demo.actors[0].y);if(game){game_start(game);return true;}
+#endif
+ return false;
+}
 static void rockhopper_open(void){
  if(pnet_state()!=PNET_ONLINE||!settings.session[0]){modal_message("Ahoy, matey! Connect to GoPenguin to write in my logbook.");return;}
  if(pnet_account_state()==PNET_ACCOUNT_BUSY){message("Captain Rockhopper is still reading your last message.");return;}
@@ -998,6 +1031,15 @@ static void game_rect(void *unused,float x,float y,float w,float h,uint32_t colo
 static void game_button(void *unused,float x,float y,float w,float h,const char *label,bool pressed,bool enabled){(void)unused;float dy=ui_button(x,y,w,h,pressed,enabled)?1:0;button_label(x+w/2,y+h/2+dy,11,enabled?0xffffff:0x003366,label);}
 static GameResource game_resource(void *unused,const char *name,char *path,size_t capacity){
  (void)unused;unsigned id=0;
+#ifdef GP_NINJA_GAMES
+#ifdef GP_DEBUG_GAMES
+ if(!strcmp(name,"games/beans.gpk"))name="games/debug-beans.gpk";
+#endif
+ if(!strcmp(name,"games/debug-beans.gpk")||!strcmp(name,GP_CARD_BANK)||!strcmp(name,GP_CARD_ACTORS_BANK)||!strcmp(name,GP_FIRE_BANK)||card_preview_resource_name(name)){
+  if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;
+  FILE *file=fopen(path,"rb");if(!file)return GAME_RESOURCE_FAILED;fclose(file);return GAME_RESOURCE_READY;
+ }
+#endif
  for(unsigned n=0;n<COUNT(gameKeys);n++){
   char bank[80];snprintf(bank,sizeof bank,"games/%s.gpk",gameKeys[n]);if(!strcmp(name,bank))id=700001+n;
   snprintf(bank,sizeof bank,"games/%s-title.gpk",gameKeys[n]);if(!strcmp(name,bank))id=701001+n;
@@ -1183,6 +1225,9 @@ static void lobby_touch(int x,int y){
 }
 static void game_start(const char *key){
  if(game||gameQueued)return;
+#ifdef GP_NINJA_GAMES
+ const char *npcGame=room_npc_route(currentRoomId,key);bool fromSensei=npcGame!=NULL;if(npcGame)key=npcGame;
+#endif
  if(!game_port_supported(key)){modal_message("This game is not available yet.");return;}
  if(book.open||igloo.dirty||igloo.awaitingSave||igloo.awaitingStyle||igloo.awaitingMusic||styles.preparing){modal_message("Close the window and finish saving your igloo before playing.");return;}
  if(!strcmp(key,"four")||!strcmp(key,"mancala")||!strcmp(key,"sled")){
@@ -1194,6 +1239,9 @@ static void game_start(const char *key){
  if(lobby_locked()){message("Leave the multiplayer panel before starting another game.");return;}
  room_tube_cancel(&roomTube,&tubeHooks);
  game_snapshot(key);
+#ifdef GP_NINJA_GAMES
+ queuedGame.fromSensei=fromSensei;
+#endif
 }
 static void game_restore(void){
  bool table=queuedGame.table!=0,lost=gameMultiplayerLost||pnet_state()!=PNET_ONLINE;
@@ -1317,6 +1365,9 @@ static void room_hover(u32 held){
  for(unsigned i=0;i<hoverCount;i++){IslandHover hover=island_hover(navigation,hoverFirst+i);if(hover.path)swl_target(scene,hover.path,hover.over,NULL,hover.playOver);}
 }
 static void touch(int x,int y){
+#ifdef GP_NINJA_GAMES
+ roomNpc.approaching=false;
+#endif
  if(room_tube_locked(&roomTube)){if(y>=207){room_tube_cancel(&roomTube,&tubeHooks);demo.tab=x/64;}return;}
  if(igloo.editing&&!modal.open){editor_touch(x,y);return;}
  if(modal.open){
@@ -1367,6 +1418,9 @@ static void touch(int x,int y){
    float wx=(x-9)*760.0f/175,wy=(y-36)*480.0f/110;
    if(aiming){aiming=false;throw_to(&demo.actors[0],wx,wy);if(pnet_state()==PNET_ONLINE){char sx[20],sy[20];snprintf(sx,sizeof sx,"%d",(int)lroundf(wx));snprintf(sy,sizeof sy,"%d",(int)lroundf(wy));pnet_send("u#sb",2,(const char *[]){sx,sy});}return;}
    IslandButton button;
+#ifdef GP_NINJA_GAMES
+   float npcX,npcY;if(room_npc_click(&roomNpc,(int)wx,(int)wy,&npcX,&npcY)){demo_target(&demo,npcX,npcY);return;}
+#endif
    if(navigation&&epf_access_button(&epfAccess,(int)wx,(int)wy,&button)){
     bool scripted=false;
     for(unsigned i=0;i<island_events(navigation);i++){IslandEvent event=island_event(navigation,i);unsigned frame=*event.guard?swl_frame(scene,event.guard):1;if(event.type==2&&event.id==button.index&&frame>=event.min&&frame<=event.max){swl_target(scene,event.path,event.frame,NULL,event.playing);scripted=true;}}
@@ -1462,7 +1516,7 @@ int main(int argc,char **argv){
    if(book.open&&book.bank&&book.zoom&&!modal.open&&(held&KEY_TOUCH)){touchPosition p;hidTouchRead(&p);if(p.py>=28&&p.py<205){SWLMatrix v=book_view(320,177,28,false);book.x=(p.px-v.x)/v.a;book.y=(p.py-v.y)/v.d;}}
    if(lobby_locked()&&!modal.open){if(down&KEY_B)lobby_close();}
    else if(igloo.editing&&!modal.open){editor_drag(held,hidKeysUp());if(down&KEY_X)editor_remove();if(down&KEY_Y)editor_turn(0,1);if(down&KEY_L)editor_turn(-1,0);if(down&KEY_R)editor_turn(1,0);if(down&KEY_A){editor_cancel_drag();editor.inventory=!editor.inventory;}if(down&KEY_B){if(editor.inventory)editor.inventory=false;else editor_save();}}
-   else if(!modal.open&&!book.open){if(down&KEY_X)action(25);if(down&KEY_Y)action(26);if(down&KEY_B){if(demo.tab)demo.tab=0;else action(17);}if(down&KEY_A){if(rockhopper_near())rockhopper_open();else chat();}if(down&(KEY_L|KEY_R))demo.zoom=!demo.zoom;}else if(down&KEY_B){if(modal.open)modal.open=false;else if(book.open)book.close=true;}
+   else if(!modal.open&&!book.open){if(down&KEY_X)action(25);if(down&KEY_Y)action(26);if(down&KEY_B){if(demo.tab)demo.tab=0;else action(17);}if(down&KEY_A){if(rockhopper_near())rockhopper_open();else if(!room_npc_action())chat();}if(down&(KEY_L|KEY_R))demo.zoom=!demo.zoom;}else if(down&KEY_B){if(modal.open)modal.open=false;else if(book.open)book.close=true;}
    if(book.open&&!modal.open&&(down&(KEY_L|KEY_R)))book_toggle_zoom(true);
    if(down&KEY_SELECT){if(demo.tab==1&&pnet_state()==PNET_OFFLINE)mapList=!mapList;else demo.stats=!demo.stats;}
   }
@@ -1586,6 +1640,10 @@ int main(int argc,char **argv){
   if(actionPosition){actionPosition=false;lastX=me->x;lastY=me->y;wasMoving=false;lastMove=now;}
   if(networkState==PNET_ONLINE&&!lobby_locked()&&((moving&&now-lastMove>=100)||(!moving&&wasMoving))&&(fabsf(me->x-lastX)>.5f||fabsf(me->y-lastY)>.5f)){char x[20],y[20];float tx=me->walking?me->tx:me->x,ty=me->walking?me->ty:me->y;snprintf(x,sizeof x,"%d",(int)lroundf(tx));snprintf(y,sizeof y,"%d",(int)lroundf(ty));pnet_send("u#sp",2,(const char *[]){x,y});lastMove=now;lastX=me->x;lastY=me->y;}wasMoving=moving&&!lobby_locked();
   triggerDelay=fmaxf(0,triggerDelay-dt);IslandTrigger trigger;bool atTrigger=navigation&&epf_access_trigger(&epfAccess,(int)lroundf(demo.actors[0].x),(int)lroundf(demo.actors[0].y),&trigger);if(!atTrigger)activeTrigger=~0u;
+  bool approachingNpc=false;
+#ifdef GP_NINJA_GAMES
+  approachingNpc=room_npc_approaching(&roomNpc,me->x,me->y,me->walking,hypotf(dx,dy)>.15f||demo.tab!=0||game||gameQueued||book.open||modal.open);
+#endif
   bool tubeTrigger=atTrigger&&room_tube_supported(currentRoomId)&&!strcmp(trigger.framePath,"tubecontrol_mc");
   unsigned tubeMine=pnet_id()?pnet_id():1;
   bool tubeArmed=false;
@@ -1593,7 +1651,7 @@ int main(int argc,char **argv){
    if(!tubeTrigger||!moving)tubeArmed=room_tube_observe(&roomTube,tubeMine,tubeMine,tubeTrigger,(unsigned)me->colour,&tubeHooks);
    if(tubeArmed){me->walking=false;me->tx=me->x;me->ty=me->y;}
   }
-  if(!lobby_locked()&&!game&&!gameQueued&&!modal.open&&!book.open&&!igloo.editing&&!triggerDelay&&atTrigger&&trigger.index!=activeTrigger){
+  if(!approachingNpc&&!lobby_locked()&&!game&&!gameQueued&&!modal.open&&!book.open&&!igloo.editing&&!triggerDelay&&atTrigger&&trigger.index!=activeTrigger){
    unsigned frame=tubeTrigger?room_tube_frame(&roomTube):*trigger.framePath?swl_frame(scene,trigger.framePath):0;bool allowed=(!*trigger.framePath||(frame>=trigger.minFrame&&frame<=trigger.maxFrame))&&(!trigger.item||profile_has(&profile,trigger.item));
    if(allowed&&trigger.room&&trigger.room!=island_id(navigation)){
     if(tubeTrigger){RoomTubeDestination destination;if(room_tube_take(&roomTube,&destination)){wantedRoom=destination.room;wantedX=destination.x;wantedY=destination.y;activeTrigger=trigger.index;}}

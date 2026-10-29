@@ -1,0 +1,3 @@
+#pragma once
+#define BEANS_COLOUR_PATH_COUNT 18
+static const char *const BEANS_COLOUR_PATHS[]={"board.candyPeng.body","board.candyPeng.bodyShield","board.peng.body","board.peng.bodyShield","board.title_adv_mc#1121.body","board.title_adv_mc#1121.bodyShield","board.title_adv_mc#1140.bodyShield","board.title_adv_mc#265.body","board.title_adv_mc#265.bodyShield","board.title_adv_mc#547.body","board.title_adv_mc#547.bodyShield","board.title_mc.penguinTitle.body","board.title_norm_mc.instructions_screen#71.body","board.title_norm_mc.instructions_screen#71.bodyShield","board.title_norm_mc.instructions_screen#87.body","board.title_norm_mc.instructions_screen#87.bodyShield","board.title_norm_mc.instructions_screen.body","board.title_norm_mc.instructions_screen.body1"};

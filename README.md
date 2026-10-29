@@ -24,6 +24,18 @@ The game reconnects with your saved penguin automatically.
 - Touch Me: clothes, inventory and your name. Touch your name or Edit to rename.
 - Help: account recovery, membership, catalogues and updates.
 
+## Games
+
+Card-Jitsu and Card-Jitsu Fire are available from the Sensei in the Dojo and
+Fire Dojo, or from Help → Games. Get a starter deck from the game menu when
+needed. Left/Right inspects cards; A plays the selected card. Hold a card to
+inspect its full illustration, release to play, or drag outside to cancel.
+Matches and belt progress are saved by the server. Some cinematics and game
+audio remain work in progress.
+
+Bean Counters now keeps your penguin's colour in every carrying pose, and
+walking puffles follow smoothly without repeatedly switching to standing.
+
 ## Continue on another device
 
 In Help → Account, choose **Use on PC / phone**. Scan the QR with your phone,
@@ -59,6 +71,8 @@ Use devkitARM, libctru, citro2d, citro3d, Jansson, mbedTLS and zlib. The prepare
 Extract it in the repository, then run `make` in a configured devkitPro shell.
 `build.sh` provides the container equivalent. CIA packaging uses
 `node tools/package-native.mjs --release --tools /path/to/ctrtools`.
+The 1.1.0 CIA was packaged with makerom 0.18.4; makerom 0.19.0 has a known
+minor-version encoding issue. The package checks verify the installed version.
 
 This is an unofficial fan project. Original game artwork belongs to its respective
 owners. Third-party source notices are retained in `vendor` and the source files.

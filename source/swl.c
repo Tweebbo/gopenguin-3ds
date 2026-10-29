@@ -127,7 +127,7 @@ static bool run(SWLScene *s,Head *h){
  const uint8_t *t=symbol(s,TL,h->symbol),*f=row(s,FRAME,u32(t+4)+h->frame-1);
  for(unsigned i=0;i<u32(f+12)&&!s->error;i++){
   const uint8_t *c=row(s,CMD,u32(f+8)+i);unsigned op=u32(c),arg=u32(c+4),previous=h->frame;
-  if(s->version==2&&(u32(c+24)&2)){h->random^=h->random<<13;h->random^=h->random>>17;h->random^=h->random<<5;arg=1+h->random%arg;}
+  if(s->version==2&&(u32(c+24)&2)){h->random^=h->random<<13;h->random^=h->random>>17;h->random^=h->random<<5;unsigned first=u32(c+8);arg=(first?first:1)+h->random%arg;}
   if(s->version==2&&(u32(c+24)&4)){
    char path[SWL_PATH];if(!relative_path(s,path,h->path,string_at(s,arg)))break;
    Head *other=head_at(s,path);arg=other?other->frame:1;

@@ -3,6 +3,7 @@
 #include "game_controller.h"
 #include "game_beans_model.h"
 #include "game_beans_data.h"
+#include "game_beans_colour.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +29,10 @@ static double random01(void *user){Beans *b=user;uint32_t x=b->seed;x^=x<<13;x^=
 static void target(Beans *b,const char *path,unsigned frame,bool playing){swl_target(b->scene,path,frame,NULL,playing);}
 static void visible(Beans *b,const char *path,bool shown){swl_visible(b->scene,path,shown);}
 static void number(Beans *b,const char *path,unsigned value){char v[16];snprintf(v,sizeof v,"%u",value);game_bank_text(b->bank,path,v);}
+static void colour_penguin(Beans *b){
+ uint32_t rgb=game_port_descriptor(b->port)->colourRGB;if(!rgb)rgb=0x003366;
+ game_beans_colour(b->scene,rgb);
+}
 
 static void sync_hud(Beans *b){
  const BeansModel *m=&b->model;
@@ -79,6 +84,7 @@ static void sync_phase(Beans *b){
 static void sync_penguin(Beans *b){
  const BeansModel *m=&b->model;
  target(b,"board.peng",m->pose,false);
+ visible(b,"board.peng.bodyShield",true);colour_penguin(b);
  swl_transform(b->scene,"board.peng",(SWLMatrix){1,0,0,1,(float)m->x,345.65f});
  if(m->impact!=b->lastImpact){visible(b,"board.crash_mc",m->impact>0);if(m->impact){target(b,"board.crash_mc",m->impact,false);swl_transform(b->scene,"board.crash_mc",(SWLMatrix){1,0,0,1,(float)m->impactX,352.45f});}b->lastImpact=m->impact;}
  if(m->notify!=b->lastNotify){visible(b,"board.oneUpNotify",m->notify>0);if(m->notify){target(b,"board.oneUpNotify",m->notify,false);swl_transform(b->scene,"board.oneUpNotify",(SWLMatrix){1,0,0,1,(float)m->notifyX,335.7f});}b->lastNotify=m->notify;}
@@ -91,8 +97,7 @@ static void start(Beans *b){
  b->started=true;b->screen=SCREEN_GAME;
  beans_model_init(&b->model,random01,b);b->pointer=b->model.x;b->shownPhase=(BeansPhase)-1;
  target(b,"board",2,false);
- // PenguinClip.init: the shield body stays hidden in classic mode.
- visible(b,"board.peng.bodyShield",false);
+ visible(b,"board.peng.bodyShield",true);
  visible(b,"board.crash_mc",false);visible(b,"board.oneUpNotify",false);
  // Slot frame 1 is the first bag thrower: unused slots show the empty last frame.
  for(unsigned i=0;i<BEANS_SLOTS;i++){char path[24];snprintf(path,sizeof path,"board.s%u",i);target(b,path,BEANS_KINDS+1,false);b->slots[i]=(Slot){0};}
@@ -105,6 +110,7 @@ static bool ready(void *game){
  Beans *b=game;b->bank=game_port_bank(b->port,0);b->scene=game_bank_scene(b->bank);b->logo=game_bank_scene(game_port_bank(b->port,1));
  if(!b->scene||!b->logo)return false;
  target(b,"board",1,false);visible(b,"board.title_adv_mc",false);
+ colour_penguin(b);
  // playbackgroundAudio(): "backgroundLoop" at volume 45.
  game_port_sound(b->port,"backgroundLoop",45,true);
  return true;
@@ -112,7 +118,7 @@ static bool ready(void *game){
 
 static void tick(void *game){
  Beans *b=game;if(!b->scene)return;
- if(b->screen!=SCREEN_GAME||game_port_session(b->port)!=GAME_SESSION_PLAYING){swl_tick(b->scene);return;}
+ if(b->screen!=SCREEN_GAME||game_port_session(b->port)!=GAME_SESSION_PLAYING){swl_tick(b->scene);colour_penguin(b);return;}
  BeansModel *m=&b->model;
  if(m->phase!=BEANS_WON&&m->phase!=BEANS_LOST)beans_model_tick(m,b->pointer);
  swl_tick(b->scene);

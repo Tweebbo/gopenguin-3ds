@@ -170,9 +170,21 @@ void puffles_step(Puffles *p,const Demo *world,float elapsed){
   p->accumulator-=1.0f/24;
   for(unsigned i=0;i<p->count;i++){
    Puffle *pet=&p->pets[i];if(pet->owner!=p->mine&&!puffles_visible(p,pet,world))continue;
-   pet->oldX=pet->x;pet->oldY=pet->y;pet->clock++;unsigned frame=1;
+   pet->oldX=pet->x;pet->oldY=pet->y;pet->clock++;unsigned frame=pet->direction;
    if(pet->reaction){pet->reactionTicks++;if(pet->reactionTicks>=(pet->reaction==2?120:48))pet->reaction=0;else frame=pet->reaction==2?24+pet->direction:pet->reaction==3?16+pet->direction:33+(pet->reactionTicks/6)%3;}
-   if(!pet->reaction&&pet->walking){const Actor *owner=actor(world,pet->owner);if(owner){float dx=owner->x-20-pet->x,dy=owner->y+8-pet->y,distance=hypotf(dx,dy);if(distance>5){float step=fminf(distance,6);int angle=(int)(atan2f(dy,dx)*57.29577951308232f-90);if(angle<0)angle+=360;unsigned direction=(unsigned)floorf(angle/45.0f+.5f)+1;pet->direction=direction>8?1:direction;frame=pet->direction+8;pet->x+=dx/distance*step;pet->y+=dy/distance*step;}}}
+   if(!pet->reaction&&pet->walking){const Actor *owner=actor(world,pet->owner);if(owner){
+    float dx=owner->x-20-pet->x,dy=owner->y+8-pet->y,distance=hypotf(dx,dy);
+    if(distance>12||(owner->walking&&distance>1))pet->following=true;
+    if(pet->following){
+     pet->settled=!owner->walking&&distance<=3?pet->settled+1:0;
+     if(pet->settled>=4)pet->following=false;
+     else{
+      if(distance>1){float step=fminf(distance,6);int angle=(int)(atan2f(dy,dx)*57.29577951308232f-90);if(angle<0)angle+=360;unsigned direction=(unsigned)floorf(angle/45.0f+.5f)+1;pet->direction=direction>8?1:direction;pet->x+=dx/distance*step;pet->y+=dy/distance*step;}
+      frame=pet->direction+8;
+     }
+    }
+    if(!pet->following)frame=pet->direction;
+   }}else if(!pet->reaction){pet->following=false;pet->settled=0;}
    if(frame!=pet->frame){pet->frame=frame;pet->clock=0;}
   }
  }

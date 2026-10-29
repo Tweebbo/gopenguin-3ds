@@ -2,7 +2,7 @@
 // Interface between game_port.c and the per-game controllers (game_hydro.c, ...).
 #include "game_port.h"
 
-typedef enum {GAME_SOLO,GAME_TABLE,GAME_WADDLE} GameKind;
+typedef enum {GAME_SOLO,GAME_TABLE,GAME_WADDLE,GAME_CARD} GameKind;
 typedef struct {
  const char *key;
  GameKind kind;          // solo games join their room and pay with zo; tables and waddles are server-run
@@ -13,6 +13,10 @@ typedef struct {
  const char *banks[GAME_PORT_BANKS]; // bank names resolved through GameHost.resource; NULL if unused
  /** Banks (bit per index) loaded on demand with game_port_require_bank instead of at open. */
  unsigned lazy;
+#ifdef GP_NINJA_GAMES
+ /** Resource for a lazy debug bank whose content follows the selected card. */
+ const char *(*bank_resource)(void *game,unsigned bank);
+#endif
  /** Top-screen drawing order of the banks (indices into banks). */
  unsigned char order[GAME_PORT_BANKS];
  void *(*create)(GamePort *port);
@@ -49,6 +53,7 @@ GameResource game_port_require_bank(GamePort *port,unsigned index);
 /** Free a bank's scene and textures when its screens are over. */
 void game_port_release_bank(GamePort *port,unsigned index);
 GameSessionState game_port_session(const GamePort *port);
+bool game_port_connected(const GamePort *port);
 /** Whole seconds since the port opened, for timeouts. */
 float game_port_clock(const GamePort *port);
 /** Set while a request is outstanding or failed; shown with a retry button. */

@@ -1,4 +1,5 @@
 #pragma once
+#include "game_features.h"
 // Native minigame adapter. main.c owns one GamePort while a game is open.
 // The port, its controllers and models are independent of libctru so they run in
 // host tests; only game_gpu.c (bank textures and top-screen drawing) needs citro3d.
@@ -39,6 +40,9 @@ typedef struct {
  // Waddles (Sled Racing): the host handled jw and received jg; the port is already in the game.
  unsigned waddle;
  char name[40];         // own penguin name (Sled Racing finds its racer by it)
+#ifdef GP_NINJA_GAMES
+ bool fromSensei;
+#endif
 } GameDescriptor;
 
 typedef struct {

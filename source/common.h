@@ -1,4 +1,5 @@
 #pragma once
+#include "game_features.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -13,7 +14,11 @@ typedef int8_t s8;
 typedef int16_t s16;
 typedef int32_t s32;
 #endif
+#ifdef GP_DEBUG_GAMES
+#define DATA_DIR "sdmc:/3ds/gopenguin-debug"
+#else
 #define DATA_DIR "sdmc:/3ds/gopenguin"
+#endif
 #define COUNT(a) ((int)(sizeof(a)/sizeof((a)[0])))
 u64 now_ms(void);
 int rnd_range(int lo,int hi);

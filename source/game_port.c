@@ -9,13 +9,23 @@
 #define GAME_PAY_TIMEOUT 15.0f
 
 extern const GameController GAME_HYDRO_CONTROLLER,GAME_ROUNDUP_CONTROLLER,GAME_BEANS_CONTROLLER,GAME_CART_CONTROLLER,GAME_THINICE_CONTROLLER,GAME_FOUR_CONTROLLER,GAME_MANCALA_CONTROLLER,GAME_SLED_CONTROLLER,GAME_PIZZATRON_CONTROLLER,GAME_FISH_CONTROLLER;
+#ifdef GP_NINJA_GAMES
+extern const GameController GAME_CARD_CONTROLLER,GAME_FIRE_CONTROLLER;
+#endif
 static const GameController *const CONTROLLERS[]={&GAME_HYDRO_CONTROLLER,&GAME_ROUNDUP_CONTROLLER,&GAME_BEANS_CONTROLLER,&GAME_CART_CONTROLLER,&GAME_FOUR_CONTROLLER,&GAME_MANCALA_CONTROLLER,&GAME_SLED_CONTROLLER,&GAME_PIZZATRON_CONTROLLER,&GAME_FISH_CONTROLLER,
+#ifdef GP_NINJA_GAMES
+ &GAME_CARD_CONTROLLER,&GAME_FIRE_CONTROLLER,
+#endif
 // Thin Ice's 285-cell board needs the SWL override table proposed in build/games/swl-override-hash.patch.
 #ifdef GAME_THINICE_READY
  &GAME_THINICE_CONTROLLER,
 #endif
 };
-static const char *const KEYS[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron"};
+static const char *const KEYS[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron"
+#ifdef GP_NINJA_GAMES
+ ,"card","fire"
+#endif
+};
 
 typedef struct {unsigned id;float x,y,w,h;bool enabled;} Button;
 typedef enum {PAY_NONE,PAY_UNSENT,PAY_SENT,PAY_CONFIRMED,PAY_LOST} PayState;
@@ -49,6 +59,7 @@ const GameDescriptor *game_port_descriptor(const GamePort *p){return &p->descrip
 const GameHost *game_port_host(const GamePort *p){return &p->host;}
 GameBank *game_port_bank(GamePort *p,unsigned i){return i<GAME_PORT_BANKS?p->banks[i]:NULL;}
 GameSessionState game_port_session(const GamePort *p){return p->session;}
+bool game_port_connected(const GamePort *p){return p&&p->descriptor.online&&!p->disconnected&&!p->rejoining;}
 float game_port_clock(const GamePort *p){return p->clock;}
 const char *game_port_status(const GamePort *p){return p->status;}
 bool game_port_can_retry(const GamePort *p){return p->retry;}
@@ -76,6 +87,10 @@ static void join(GamePort *p){
 static GameResource load_bank(GamePort *p,unsigned i){
  if(p->banks[i])return GAME_RESOURCE_READY;
  const char *name=p->controller->banks[i];if(!name)return GAME_RESOURCE_FAILED;
+#ifdef GP_NINJA_GAMES
+ if(p->controller->bank_resource)name=p->controller->bank_resource(p->game,i);
+ if(!name)return GAME_RESOURCE_FAILED;
+#endif
  char path[256];GameResource state=p->host.resource?p->host.resource(p->host.user,name,path,sizeof path):GAME_RESOURCE_FAILED;
  if(state!=GAME_RESOURCE_READY){if(state==GAME_RESOURCE_FAILED)set_status(p,"The game resources are not available.",true);return state;}
  size_t used=game_port_texture_bytes(p);const char *error=NULL;
@@ -118,7 +133,7 @@ static void send_score(GamePort *p){
 }
 void game_port_finish(GamePort *p,unsigned score){
  if(!p||p->session==GAME_SESSION_LEFT)return;
- if(!p->descriptor.online||p->controller->kind==GAME_TABLE||(p->session!=GAME_SESSION_PLAYING&&p->session!=GAME_SESSION_PAYING)){game_port_leave(p);return;}
+ if(!p->descriptor.online||p->controller->kind==GAME_TABLE||p->controller->kind==GAME_CARD||(p->session!=GAME_SESSION_PLAYING&&p->session!=GAME_SESSION_PAYING)){game_port_leave(p);return;}
  if(p->pay==PAY_CONFIRMED){game_port_leave(p);return;}
  if(p->pay==PAY_SENT||p->pay==PAY_LOST)return; // never a second zo for one game
  p->session=GAME_SESSION_PAYING;p->score=score;
@@ -159,7 +174,7 @@ void game_port_leave(GamePort *p){
 
 bool game_port_packet(GamePort *p,const char *command,unsigned count,char *const *args){
  if(!p||!command||p->session==GAME_SESSION_LEFT)return false;
- if(p->controller->kind==GAME_TABLE)return p->controller->packet?p->controller->packet(p->game,command,count,args):false;
+ if(p->controller->kind==GAME_TABLE||p->controller->kind==GAME_CARD)return p->controller->packet?p->controller->packet(p->game,command,count,args):false;
  if(!strcmp(command,"jg")&&(p->session==GAME_SESSION_JOINING||p->rejoining)){
   if(count<1||strtoul(args[0],NULL,10)!=p->controller->room)return false;
   if(p->session==GAME_SESSION_JOINING)p->session=GAME_SESSION_PLAYING;

@@ -93,6 +93,11 @@ static void worker(void *unused){
 static void *host_worker(void *unused){worker(unused);return NULL;}
 #endif
 static bool start(bool install){
+#ifdef GP_DEBUG_GAMES
+ (void)install;
+ if(U.initialized)state(GP_UPD_CURRENT,"Updates are disabled in this debug build.");
+ return false;
+#endif
  if(!U.initialized||atomic_load(&U.quit)||!atomic_load(&U.finished))return false;
  if(U.started){
 #ifdef __3DS__
