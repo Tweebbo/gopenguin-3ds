@@ -37,11 +37,11 @@ bool gp_update_manifest(const char *data,size_t bytes,GPUpdateManifest *out){
 }
 static uint32_t le32(const unsigned char *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
 static uint64_t aligned(uint64_t n){return (n+63)&~63ull;}
-bool gp_update_file_cancel(const char *path,const GPUpdateArtifact *a,bool homebrew,bool (*cancel)(void *),void *user){
+bool gp_update_file_progress(const char *path,const GPUpdateArtifact *a,bool homebrew,bool (*cancel)(void *),void (*progress)(unsigned,void *),void *user){
  FILE *f=fopen(path,"rb");if(!f)return false;bool ok=false;unsigned char header[32],digest[32];
  if(fseek(f,0,SEEK_END)||ftell(f)!=(long)a->bytes||fseek(f,0,SEEK_SET)||fread(header,1,32,f)!=32)goto done;
  for(unsigned i=0;i<32;i++){char pair[3]={a->sha[i*2],a->sha[i*2+1],0};digest[i]=(unsigned char)strtoul(pair,NULL,16);}
- if(fseek(f,0,SEEK_SET)||!hash_file_cancel(f,digest,cancel,user))goto done;
+ if(fseek(f,0,SEEK_SET)||!hash_file_progress(f,digest,cancel,progress,user))goto done;
  if(homebrew){ok=!memcmp(header,"3DSX",4);goto done;}
  if(le32(header)<32||le32(header)>0x10000)goto done;
  uint64_t tmd=aligned(le32(header))+aligned(le32(header+8))+aligned(le32(header+12));
@@ -52,4 +52,5 @@ bool gp_update_file_cancel(const char *path,const GPUpdateArtifact *a,bool homeb
  if(ok&&a->checkTitleVersion){if(fseek(f,(long)(tmd+0x140+0x9c),SEEK_SET)||fread(header,1,2,f)!=2)ok=false;else ok=((unsigned)header[0]<<8|header[1])==a->titleVersion;}
 done:fclose(f);return ok;
 }
+bool gp_update_file_cancel(const char *path,const GPUpdateArtifact *a,bool homebrew,bool (*cancel)(void *),void *user){return gp_update_file_progress(path,a,homebrew,cancel,NULL,user);}
 bool gp_update_file(const char *path,const GPUpdateArtifact *a,bool homebrew){return gp_update_file_cancel(path,a,homebrew,NULL,NULL);}

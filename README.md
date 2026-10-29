@@ -76,7 +76,7 @@ Use devkitARM, libctru, citro2d, citro3d, Jansson, mbedTLS and zlib. The prepare
 Extract it in the repository, then run `make` in a configured devkitPro shell.
 `build.sh` provides the container equivalent. CIA packaging uses
 `node tools/package-native.mjs --release --tools /path/to/ctrtools`.
-The 1.1.4 CIA was packaged with makerom 0.18.4; makerom 0.19.0 has a known
+The 1.1.5 CIA was packaged with makerom 0.18.4; makerom 0.19.0 has a known
 minor-version encoding issue. The package checks verify the installed version.
 
 This is an unofficial fan project. Original game artwork belongs to its respective

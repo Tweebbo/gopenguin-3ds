@@ -16,13 +16,16 @@
 #ifndef GOPENGUIN_VERSION
 #define GOPENGUIN_VERSION GP_RELEASE_VERSION
 #endif
-static struct {JobMutex mutex;JobThread thread;bool initialized,started,install;atomic_bool quit,finished;char launch[256];GPUpdateView view;GPUpdateManifest manifest;} U;
+static struct {JobMutex mutex;JobThread thread;bool initialized,started,install;atomic_bool quit,finished;u64 phaseAt;char launch[256];GPUpdateView view;GPUpdateManifest manifest;} U;
 const char *gp_update_current(void){static const char marker[]="GOPENGUIN_RELEASE:" GOPENGUIN_VERSION;return marker+sizeof("GOPENGUIN_RELEASE:")-1;}
 static bool cancelled(void *unused){(void)unused;return atomic_load(&U.quit);}
-static void state(GPUpdateState s,const char *message){job_lock(&U.mutex);U.view.state=s;snprintf(U.view.message,sizeof U.view.message,"%s",message);job_unlock(&U.mutex);}
-GPUpdateView gp_update_view(void){GPUpdateView view={0};if(U.initialized){job_lock(&U.mutex);view=U.view;job_unlock(&U.mutex);}
+bool gp_update_busy(GPUpdateState s){return s==GP_UPD_CHECKING||s==GP_UPD_DOWNLOADING||s==GP_UPD_VERIFYING||s==GP_UPD_INSTALLING||s==GP_UPD_FINALIZING;}
+static void state(GPUpdateState s,const char *message){job_lock(&U.mutex);U.view.state=s;U.phaseAt=now_ms();snprintf(U.view.message,sizeof U.view.message,"%s",message);job_unlock(&U.mutex);if(U.install){FILE *log=fopen(DATA_DIR "/last-update.log","a");if(log){fprintf(log,"%llu phase=%d %s\n",(unsigned long long)now_ms(),s,message);fclose(log);}}}
+static void progress(unsigned done,void *unused){(void)unused;job_lock(&U.mutex);U.view.done=done;job_unlock(&U.mutex);}
+static void phase(GPUpdateState s,const char *message){progress(0,NULL);state(s,message);}
+GPUpdateView gp_update_view(void){GPUpdateView view={0};if(U.initialized){job_lock(&U.mutex);view=U.view;view.elapsed=(unsigned)((now_ms()-U.phaseAt)/1000);job_unlock(&U.mutex);}
 #ifdef __3DS__
- static bool sleepBlocked;bool downloading=view.state==GP_UPD_DOWNLOADING;if(downloading!=sleepBlocked){sleepBlocked=downloading;aptSetSleepAllowed(!downloading);}
+ static bool sleepBlocked,homeBlocked;bool working=gp_update_busy(view.state)&&view.state!=GP_UPD_CHECKING;if(working!=sleepBlocked){sleepBlocked=working;aptSetSleepAllowed(!working);}bool installing=view.state==GP_UPD_INSTALLING||view.state==GP_UPD_FINALIZING;if(installing!=homeBlocked){homeBlocked=installing;aptSetHomeAllowed(!installing);}
 #endif
  return view;}
 void gp_update_init(const char *launch){if(U.initialized)return;memset(&U,0,sizeof U);job_mutex_init(&U.mutex);U.initialized=true;atomic_init(&U.quit,false);atomic_init(&U.finished,true);if(launch&&strlen(launch)>5&&!strcmp(launch+strlen(launch)-5,".3dsx")&&strlen(launch)<sizeof U.launch&&!strstr(launch,".."))snprintf(U.launch,sizeof U.launch,"%s",launch);}
@@ -40,23 +43,33 @@ static bool check(void){
 }
 typedef struct {FILE *file;unsigned done,total;} Sink;
 static bool file_sink(const u8 *data,int bytes,void *user){Sink *s=user;if(bytes<0||(unsigned)bytes>s->total-s->done||cancelled(NULL)||fwrite(data,1,(size_t)bytes,s->file)!=(size_t)bytes)return false;s->done+=(unsigned)bytes;job_lock(&U.mutex);U.view.done=s->done;job_unlock(&U.mutex);return true;}
-static bool install_cia(const char *path){
+static bool install_cia(const char *path,const GPUpdateArtifact *artifact){
 #ifdef __3DS__
+ phase(GP_UPD_INSTALLING,"Installing on SD. Keep GoPenguin open and the console awake.");
  Result r=amInit();if(R_FAILED(r)){state(GP_UPD_ERROR,"Could not open the installer. The verified CIA is kept on your SD card.");return false;}
+ const char *operation="open update";
  FILE *file=fopen(path,"rb");Handle handle=0;unsigned char *buffer=malloc(128*1024);if(!file||!buffer)r=-1;
- if(R_SUCCEEDED(r))r=AM_StartCiaInstall(MEDIATYPE_SD,&handle);
+ if(R_SUCCEEDED(r)){operation="start install";r=AM_StartCiaInstall(MEDIATYPE_SD,&handle);}
  u64 offset=0;
  while(R_SUCCEEDED(r)&&!cancelled(NULL)){
   size_t bytes=fread(buffer,1,128*1024,file);if(!bytes){if(ferror(file))r=-1;break;}
-  u32 written=0;r=FSFILE_Write(handle,&written,offset,buffer,(u32)bytes,0);if(written!=bytes)r=-1;offset+=written;
+  operation="write update";u32 written=0;r=FSFILE_Write(handle,&written,offset,buffer,(u32)bytes,0);if(R_SUCCEEDED(r)&&written!=bytes)r=-1;offset+=written;progress((unsigned)offset,NULL);
  }
- if(cancelled(NULL))r=-1;
- if(handle){Result finish=R_SUCCEEDED(r)?AM_FinishCiaInstall(handle):AM_CancelCIAInstall(handle);if(R_SUCCEEDED(r))r=finish;}
+ if(R_SUCCEEDED(r)&&(cancelled(NULL)||offset!=artifact->bytes)){operation="incomplete install";r=-1;}
+ if(handle){
+  if(R_SUCCEEDED(r)){state(GP_UPD_FINALIZING,"Finishing installation. Keep GoPenguin open; this can take a while.");operation="finish install";r=AM_FinishCiaInstall(handle);}
+  else AM_CancelCIAInstall(handle);
+ }
+ if(R_SUCCEEDED(r)){
+  state(GP_UPD_FINALIZING,"Confirming the installed GoPenguin version...");
+  u64 title=strtoull(GP_RELEASE_TITLE_ID,NULL,16);AM_TitleInfo info={0};operation="confirm version";r=AM_GetTitleInfo(MEDIATYPE_SD,1,&title,&info);
+  if(R_SUCCEEDED(r)&&(info.titleID!=title||info.version!=artifact->titleVersion))r=-1;
+ }
  free(buffer);if(file)fclose(file);amExit();
- if(R_FAILED(r))state(GP_UPD_ERROR,"The install did not finish. The verified CIA is kept in SD:/3ds/gopenguin/update.cia.part; retry or install it with FBI.");
+ if(R_FAILED(r)){char error[200];snprintf(error,sizeof error,"Could not %s (0x%08lX). Verified CIA kept at SD:/3ds/gopenguin/update.cia.part. Retry or use FBI.",operation,(unsigned long)(u32)r);state(GP_UPD_ERROR,error);}
  return R_SUCCEEDED(r);
 #else
- (void)path;state(GP_UPD_ERROR,"CIA installation requires a Nintendo 3DS.");return false;
+ (void)path;(void)artifact;state(GP_UPD_ERROR,"CIA installation requires a Nintendo 3DS.");return false;
 #endif
 }
 static void install(void){
@@ -73,18 +86,20 @@ static void install(void){
  if(!received){int connections=a->bytes>=1048576?2:1;int status=http_download_optimized_from_cancel(a->url,(long)offset,connections,file_sink,&sink,&total,error,sizeof error,&(ConnCancel){cancelled,NULL});received=(status==200||status==206)&&sink.done==a->bytes&&total==(long)a->bytes;}
  if(fclose(sink.file))received=false;
  if(!received){state(GP_UPD_ERROR,"Download interrupted. Choose Install again to resume; your current app is kept.");return;}
- if(!gp_update_file_cancel(path,a,homebrew,cancelled,NULL)){if(!cancelled(NULL)){remove(path);remove(side);}state(GP_UPD_ERROR,"The update failed its checksum or package identity check. Your current app is kept.");return;}
+ phase(GP_UPD_VERIFYING,"Download complete. Verifying the update on SD...");
+ if(!gp_update_file_progress(path,a,homebrew,cancelled,progress,NULL)){if(!cancelled(NULL)){remove(path);remove(side);}state(GP_UPD_ERROR,cancelled(NULL)?"Verification stopped. Choose Install again to retry.":"The update failed its checksum or package identity check. Your current app is kept.");return;}
  bool ok;
  if(homebrew){
+  state(GP_UPD_FINALIZING,"Saving the verified app. Keep GoPenguin open...");
   char backup[288];snprintf(backup,sizeof backup,"%s.bak",U.launch);ok=rename(path,U.launch)==0;
   if(!ok){remove(backup);ok=rename(U.launch,backup)==0;if(ok&&rename(path,U.launch)){rename(backup,U.launch);ok=false;}}
   if(!ok)state(GP_UPD_ERROR,"Could not replace the app. Your previous .3dsx is kept.");
- }else ok=install_cia(path);
- if(ok){remove(path);remove(side);state(GP_UPD_INSTALLED,"Update installed. Close and reopen GoPenguin. Your penguin is kept.");}
+ }else ok=install_cia(path,a);
+ if(ok){remove(path);remove(side);state(GP_UPD_INSTALLED,"Update installed. Press START to close, then reopen GoPenguin. Your penguin is kept.");}
 }
 static void worker(void *unused){
  (void)unused;char error[160];if(conn_global_init(error,sizeof error)){
-  if(U.install){state(GP_UPD_DOWNLOADING,"Downloading GoPenguin. Keep the console awake.");install();}else check();
+  if(U.install){FILE *log=fopen(DATA_DIR "/last-update.log","w");if(log){fprintf(log,"running=%s target=%s\n",gp_update_current(),U.manifest.version);fclose(log);}state(GP_UPD_DOWNLOADING,"Downloading GoPenguin. Keep the console awake.");install();}else check();
   conn_global_exit();
  }else state(GP_UPD_ERROR,"Could not initialize the secure connection.");
  atomic_store(&U.finished,true);
@@ -114,7 +129,7 @@ static bool start(bool install){
 #endif
  U.started=ok;if(!ok){atomic_store(&U.finished,true);state(GP_UPD_ERROR,"Could not start the update worker.");}return ok;
 }
-bool gp_update_check(void){return start(false);}
+bool gp_update_check(void){return gp_update_view().state!=GP_UPD_INSTALLED&&start(false);}
 bool gp_update_start(void){GPUpdateView view=gp_update_view();return (view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&U.manifest.version[0]))&&start(true);}
 void gp_update_request_stop(void){if(U.initialized)atomic_store(&U.quit,true);}
 bool gp_update_stop_within(unsigned ms){

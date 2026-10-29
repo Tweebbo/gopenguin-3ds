@@ -730,18 +730,19 @@ static void transfer_touch(int x,int y){
 }
 static void update_draw(void){
  GPUpdateView view=gp_update_view();char line[96];
- text(12,34,13,0x003366,"GoPenguin updates");snprintf(line,sizeof line,"Installed: %s",GOPENGUIN_VERSION);text(12,58,11,0x003366,line);
- if(view.version[0]){snprintf(line,sizeof line,"Available: %s",view.version);text(12,78,11,0x003366,line);}
+ text(12,34,13,0x003366,"GoPenguin updates");snprintf(line,sizeof line,"Running: %s",GOPENGUIN_VERSION);text(12,58,11,0x003366,line);
+ if(view.version[0]){snprintf(line,sizeof line,"%s: %s",view.state==GP_UPD_INSTALLED?"Installed":"Update",view.version);text(12,78,11,0x003366,line);}
  wrapped(12,102,10,0x003366,view.message[0]?view.message:"Check for a new GoPenguin version.",294,4);
- if(view.state==GP_UPD_DOWNLOADING){snprintf(line,sizeof line,"%u / %u MB",view.done/1048576,view.total/1048576);text(12,153,11,0x003366,line);}
- bool busy=view.state==GP_UPD_CHECKING||view.state==GP_UPD_DOWNLOADING;
- button_state(8,174,148,26,busy?"Please wait...":view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0])?"Install / resume":"Check again",-1,!busy&&view.state!=GP_UPD_INSTALLED);
+ if(view.total&&(view.state==GP_UPD_DOWNLOADING||view.state==GP_UPD_VERIFYING||view.state==GP_UPD_INSTALLING)){snprintf(line,sizeof line,"%u%%  %u / %u MB",(unsigned)((u64)view.done*100/view.total),view.done/1048576,view.total/1048576);text(12,153,11,0x003366,line);}
+ if(view.state==GP_UPD_FINALIZING){snprintf(line,sizeof line,"%us elapsed. Keep the console awake.",view.elapsed);text(12,153,10,0x003366,line);}
+ bool busy=gp_update_busy(view.state);const char *label=view.state==GP_UPD_CHECKING?"Checking...":view.state==GP_UPD_DOWNLOADING?"Downloading...":view.state==GP_UPD_VERIFYING?"Verifying...":view.state==GP_UPD_INSTALLING?"Installing...":view.state==GP_UPD_FINALIZING?"Finishing...":view.state==GP_UPD_INSTALLED?"Installed":view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0])?"Install / resume":"Check again";
+ button_state(8,174,148,26,label,-1,!busy&&view.state!=GP_UPD_INSTALLED);
  button(164,174,148,26,"Account",-1);
 }
 static void update_touch(int x,int y){
  if(y<174||y>=200)return;
  if(x>=160){demo.tab=18;return;}
- GPUpdateView view=gp_update_view();if(view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0]))gp_update_start();else if(view.state!=GP_UPD_CHECKING&&view.state!=GP_UPD_DOWNLOADING&&view.state!=GP_UPD_INSTALLED)gp_update_check();
+ GPUpdateView view=gp_update_view();if(view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0]))gp_update_start();else if(!gp_update_busy(view.state)&&view.state!=GP_UPD_INSTALLED)gp_update_check();
 }
 /** B5/B9: the same one-time support story as the web M panel, paid by phone via QR. */
 static void membership_open(void){
@@ -1506,7 +1507,7 @@ int main(int argc,char **argv){
    if((held&KEY_TOUCH)||(hidKeysUp()&KEY_TOUCH)){static touchPosition point;if(held&KEY_TOUCH)hidTouchRead(&point);chat_keyboard_touch(&chatKeyboard,point.px,point.py,down&KEY_TOUCH,hidKeysUp()&KEY_TOUCH);}
    down=held=0;
   }
-  if(down&KEY_START){if(game)game_port_close(game);else if(lobby_locked())lobby_close();else if(igloo.dirty||igloo.awaitingSave)editor_save();else break;}
+  if(down&KEY_START){if(gp_update_busy(gp_update_view().state)){demo.tab=20;message("Wait for the update to finish before closing GoPenguin.");}else if(game)game_port_close(game);else if(lobby_locked())lobby_close();else if(igloo.dirty||igloo.awaitingSave)editor_save();else break;}
   if(!keyboardInput){
   if(game){
    if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);gameTouchX=p.px;gameTouchY=p.py;game_port_touch(game,down&KEY_TOUCH?GAME_TOUCH_DOWN:GAME_TOUCH_MOVE,gameTouchX,gameTouchY);}
@@ -1615,7 +1616,7 @@ int main(int argc,char **argv){
    features_packet(&packet,room);
    if(room&&room!=currentRoomId){serverRoom=true;if(room>2000)open_igloo(room-2000);else{wantedRoom=room;wantedX=demo.actors[0].x;wantedY=demo.actors[0].y;}}pnet_message_free(&packet);}
   GPUpdateView releaseUpdate=gp_update_view();
-  if(networkState==PNET_ONLINE&&now>=updateCheckAt&&releaseUpdate.state!=GP_UPD_DOWNLOADING&&releaseUpdate.state!=GP_UPD_INSTALLED){gp_update_check();updateCheckAt=now+300000;}
+  if(networkState==PNET_ONLINE&&now>=updateCheckAt&&!gp_update_busy(releaseUpdate.state)&&releaseUpdate.state!=GP_UPD_INSTALLED){gp_update_check();updateCheckAt=now+300000;}
   if(releaseUpdate.state==GP_UPD_AVAILABLE&&strcmp(offeredUpdate,releaseUpdate.version)&&!game&&!gameQueued&&!modal.open&&!book.open&&!chatKeyboard.active&&!chatHistory.open&&!igloo.editing){snprintf(offeredUpdate,sizeof offeredUpdate,"%s",releaseUpdate.version);modal_message("A new GoPenguin version is ready. Open Updates? Your penguin is kept.");modal.confirm=true;snprintf(modal.command,sizeof modal.command,"open-update");}
   // Removed by a moderator: stop reconnecting (a kick returns after one minute).
   if(kickStop){kickStop=false;pnet_stop();}

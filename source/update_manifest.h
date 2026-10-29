@@ -11,3 +11,4 @@ int gp_version_compare(const char *a,const char *b);
 bool gp_update_manifest(const char *json,size_t bytes,GPUpdateManifest *out);
 bool gp_update_file(const char *path,const GPUpdateArtifact *artifact,bool homebrew);
 bool gp_update_file_cancel(const char *path,const GPUpdateArtifact *artifact,bool homebrew,bool (*cancel)(void *),void *user);
+bool gp_update_file_progress(const char *path,const GPUpdateArtifact *artifact,bool homebrew,bool (*cancel)(void *),void (*progress)(unsigned,void *),void *user);
