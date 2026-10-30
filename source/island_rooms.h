@@ -3,8 +3,8 @@
 typedef struct {uint16_t id;uint8_t pages;const char *key,*title;} IslandRoom;
 #define ISLAND_ROOMS 46
 static const IslandRoom islandRooms[ISLAND_ROOMS]={
- {100,1,"town","Town"},
- {110,1,"coffee","Coffee Shop"},
+ {100,3,"town","Town"},
+ {110,3,"coffee","Coffee Shop"},
  {111,1,"book","Book Room"},
  {120,6,"dance","Dance Club"},
  {121,1,"lounge","Dance Lounge"},

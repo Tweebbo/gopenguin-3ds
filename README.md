@@ -18,6 +18,13 @@ The game reconnects with your saved penguin automatically.
 
 ## Play
 
+Version 1.2.3 brings Halloween to Town, Coffee Shop, Dance Club and Gift Shop,
+with the party map and original music. Touch the Town sign to open the poster:
+the illustration uses the upper screen and the controls use the touch screen.
+A or Go to Forest enters the Forest, which is open to everyone; B or Close
+returns to the room. These changes were checked in Azahar; physical-console
+installation has not been tested.
+
 - Circle Pad: walk. Touch the room map to choose a destination.
 - Press R or touch Chat to write. Press L to read the last 100 messages of this session.
 - In history, L/R turn pages, Up/Down scroll a line, A writes and B returns.
@@ -88,8 +95,11 @@ Title ID and your saved character.
 ## Build
 
 Use devkitARM, libctru, citro2d, citro3d, Jansson, mbedTLS and zlib. The prepared
-`romfs` input is distributed as `gopenguin-build-assets.tar.gz` with the release.
-Extract it in the repository, then run `make` in a configured devkitPro shell.
+`romfs` base is distributed as `gopenguin-build-assets.tar.gz` in release 1.2.1.
+For 1.2.3, extract that base in the repository, then extract
+`gopenguin-halloween-assets.tar.gz` from release 1.2.3 over it. The overlay
+changes only Halloween scenes, map, controls, poster and music.
+Run `make` in a configured devkitPro shell.
 `build.sh` provides the container equivalent. CIA packaging uses
 `node tools/package-native.mjs --release --tools /path/to/ctrtools`.
 The 1.2.1 CIA was packaged with makerom 0.18.4; makerom 0.19.0 has a known

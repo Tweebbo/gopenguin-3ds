@@ -143,7 +143,7 @@ static bool mapList;
 #ifdef GP_LAN_ONLY
 static bool loadTesting;
 #endif
-static struct {const BookInfo *info;MovieBank *bank;unsigned page,wanted,item,colour,symbol,secrets,resourceId,mailUid;char sender[49];bool open,close,roomReleased,sportPink,zoom,boundsReady;float bounds[4];float clock,x,y;} book;
+static struct {const BookInfo *info;MovieBank *bank;unsigned page,wanted,item,colour,symbol,secrets,resourceId,mailUid;char sender[49];bool open,close,roomReleased,sportPink,zoom,boundsReady,poster;float bounds[4];float clock,x,y;} book;
 static unsigned hoveredIndex=~0u,hoverFirst,hoverCount;
 static unsigned safeParent,safePage,bookListPage;
 static void content(const char *name);
@@ -403,6 +403,7 @@ static SWLMatrix book_view(unsigned width,unsigned height,float y,bool zoom){
 }
 static void top(void){
  if(game){game_port_draw_top(game,sceneTop);return;}
+ if(book.open&&book.poster){rect(0,0,400,240,0x000000);if(book.bank){movie_bank_draw(book.bank,sceneTop,400,240,(SWLMatrix){.a=1.48f,.d=1.48f,.x=200-380*1.48f,.y=-35*1.48f},0);C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);}return;}
  if(book.open){rect(0,0,400,240,0xffffff);if(book.bank){movie_bank_draw(book.bank,sceneTop,400,240,book_view(400,240,0,true),book.clock*swl_rate(movie_bank_scene(book.bank)));C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);}return;}
  if(demo.tab==1&&!mapList&&islandMap.loaded){image(&islandMap,26,0,347,240,0xffffffff);return;}
  Viewport view=viewport_cover(400,240,760,480,demo.zoom?demo.actors[0].x:380,demo.zoom?demo.actors[0].y-60:240,demo.zoom?1.2f:1);
@@ -490,15 +491,16 @@ static void book_update(void){
  if(book.close&&newspaper.open){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fputs("newspaper closed\n",trace);fclose(trace);}}
  if(book.close&&book.open&&!book.resourceId){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"catalogue closed id=%u\n",book.info->id);fclose(trace);}}
 #endif
- if(book.close){newspaper_close(&newspaper);movie_bank_free(book.bank);book.bank=NULL;book.open=book.close=false;book.wanted=0;if(book.roomReleased){if(!room_textures(currentRoom)){release_room_textures();sceneOK=false;message("Could not restore the room artwork.");}book.roomReleased=false;}return;}
+ if(book.close){book.poster=false;newspaper_close(&newspaper);movie_bank_free(book.bank);book.bank=NULL;book.open=book.close=false;book.wanted=0;if(book.roomReleased){if(!room_textures(currentRoom)){release_room_textures();sceneOK=false;message("Could not restore the room artwork.");}book.roomReleased=false;}return;}
  if(!book.open||!book.wanted)return;
  char path[256];unsigned key=book.resourceId?asset_key(ASSET_MOVIE,book.resourceId):asset_key(ASSET_BOOK,book.info->id*1024+book.wanted);
- bool embedded=false;if(!book.resourceId){snprintf(path,sizeof path,"romfs:/books/%u.gpk",book.info->id*1024+book.wanted);FILE *file=fopen(path,"rb");if(file){fclose(file);embedded=true;}}
+ bool embedded=false;if(book.poster){snprintf(path,sizeof path,"romfs:/books/halloween-poster.gpk");embedded=true;}else if(!book.resourceId){snprintf(path,sizeof path,"romfs:/books/%u.gpk",book.info->id*1024+book.wanted);FILE *file=fopen(path,"rb");if(file){fclose(file);embedded=true;}}
  if(!embedded&&!asset_cache_request(key,path,sizeof path)){if(asset_cache_status(key)==ASSET_UNAVAILABLE){modal_message("This resource is not available on the resources server.");book.wanted=0;if(!book.bank)book.close=true;}return;}
  movie_bank_free(book.bank);book.bank=NULL;
  if(!book.roomReleased){release_room_textures();book.roomReleased=true;}
  const char *error=NULL;book.bank=movie_bank_load(path,6u*1024u*1024u,&error);
  if(!book.bank){modal_message(error?error:"Could not load this catalogue.");book.close=true;return;}
+ if(book.poster)swl_visible(movie_bank_scene(book.bank),"root.goto_room",false);
  if(book.resourceId&&*book.sender)movie_bank_text(book.bank,".name_txt",book.sender);
  if(newspaper.open)swl_target(movie_bank_scene(book.bank),"news#1",newspaper.frame,NULL,false);
 #ifdef GP_LAN_ONLY
@@ -620,6 +622,7 @@ static void books_draw(void){
 }
 static void content(const char *name){
  if(!name||!*name)return;
+ if(!strcmp(name,"halloween_poster")||!strcmp(name,"unavailable:halloween_poster")){resource_open(800001,"",0);resourceInfo.title="HALLOWEEN";book.poster=true;return;}
  if(!strncmp(name,"room:",5)){char key[40];float x,y;if(sscanf(name+5,"%39[^:]:%f:%f",key,&x,&y)==3&&isfinite(x)&&isfinite(y)){const IslandRoom *room=island_key(key);if(room){wantedRoom=room->id;wantedX=x;wantedY=y;}}return;}
  if(!strncmp(name,"igloo:",6)){open_igloo((unsigned)strtoul(name+6,NULL,10));return;}
  if(!strncmp(name,"buy:",4)){buy((unsigned)strtoul(name+4,NULL,10));return;}
@@ -1324,6 +1327,12 @@ static void bottom(void){
  if(chatHistory.open&&!book.open){header("Chat history");const ChatLogWidgets widgets={box,text,history_width,history_button};chat_log_view_draw(&chatHistory,&chatLog,&widgets);return;}
 
  if(book.open){
+  if(book.poster){
+   rect(0,28,320,212,0x000000);
+   if(book.bank){movie_bank_draw(book.bank,sceneBottom,320,240,(SWLMatrix){.a=1.1f,.d=1.1f,.x=160-380*1.1f,.y=30-205*1.1f},0);C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);}
+   else center(160,110,12,0xffffff,"Loading poster...");
+   header("HALLOWEEN");rect(0,204,320,36,0x003366);button(8,207,145,28,"Go to Forest (A)",-1);button(167,207,145,28,"Close (B)",-1);return;
+  }
   rect(0,28,320,177,0xffffff);
   if(book.bank){movie_bank_draw(book.bank,sceneBottom,320,240,book_view(320,177,28,false),book.clock*swl_rate(movie_bank_scene(book.bank)));C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);}
   if(book.info->id==1||book.info->archive){box(3,29,88,18,0x0085c7);center(47,31,10,0xffffff,"Past issues");}
@@ -1429,6 +1438,7 @@ static void touch(int x,int y){
  if(!book.open&&y>=207){demo.tab=x/64;return;}
  if(demo.tab==6&&!book.open){if(y>=185){if(x<100&&bookListPage)bookListPage--;if(x>=221&&(bookListPage+1)*6<BOOK_COUNT)bookListPage++;}else if(y>=34&&y<184){unsigned col=x>=164,row=(unsigned)(y-34)/50,i=bookListPage*6+row*2+col;if(row<3&&i<BOOK_COUNT)book_open(bookInfo[i].key);}return;}
  if(book.open){
+  if(book.poster){if(y>=204){if(x<160)book_room(NULL,"forest");else book.close=true;}return;}
   if(!book.resourceId&&y>=207&&y<228){if(x<85){if(book.page>1&&!book.wanted)book_page(NULL,book.page-1);}else if(x>=235){if(book.page<book.info->frames&&!book.wanted)book_page(NULL,book.page+1);}else book_toggle_zoom(false);return;}
   if((book.info->id==1||book.info->archive)&&x<92&&y>=29&&y<=48){book.close=true;demo.tab=6;bookListPage=2;return;}
   if(book.bank&&book.resourceId&&!newspaper.open&&y>=207&&y<230){
@@ -1555,7 +1565,8 @@ int main(int argc,char **argv){
    if(lobby_locked()&&!modal.open){if(down&KEY_B)lobby_close();}
    else if(igloo.editing&&!modal.open){editor_drag(held,hidKeysUp());if(down&KEY_X)editor_remove();if(down&KEY_Y)editor_turn(0,1);if(down&KEY_L)editor_turn(-1,0);if(down&KEY_R)editor_turn(1,0);if(down&KEY_A){editor_cancel_drag();editor.inventory=!editor.inventory;}if(down&KEY_B){if(editor.inventory)editor.inventory=false;else editor_save();}}
    else if(!modal.open&&!book.open){if(down&KEY_X)action(25);if(down&KEY_Y)action(26);if(down&KEY_B){if(demo.tab)demo.tab=0;else action(17);}if(down&KEY_A){if(rockhopper_near())rockhopper_open();else if(!room_npc_action())chat();}if(down&KEY_L)history_open();else if(down&KEY_R)chat();}else if(down&KEY_B){if(modal.open)modal.open=false;else if(book.open)book.close=true;}
-   if(book.open&&!modal.open&&(down&(KEY_L|KEY_R)))book_toggle_zoom(true);
+   if(book.open&&book.poster&&!modal.open&&(down&KEY_A))book_room(NULL,"forest");
+   if(book.open&&!book.poster&&!modal.open&&(down&(KEY_L|KEY_R)))book_toggle_zoom(true);
    if(down&KEY_SELECT){if(demo.tab==1&&pnet_state()==PNET_OFFLINE)mapList=!mapList;else demo.stats=!demo.stats;}
   }
   }
