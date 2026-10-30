@@ -26,8 +26,7 @@ static bool record(const char *source,Puffle *out){
  strcpy(out->name,fields[1]);return true;
 }
 static const Actor *actor(const Demo *world,unsigned owner){
- if(world)for(unsigned i=0;i<world->count&&i<CAST_COUNT;i++)if(world->actors[i].id==owner)return &world->actors[i];
- return NULL;
+ return world?demo_actor(world,owner):NULL;
 }
 Puffle *puffles_find(Puffles *p,unsigned owner,unsigned id){
  for(unsigned i=0;i<p->count;i++)if(p->pets[i].owner==owner&&p->pets[i].id==id)return &p->pets[i];

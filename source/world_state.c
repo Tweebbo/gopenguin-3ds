@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 static unsigned number(const char *s,unsigned max){if(!s||!*s)return 0;char *end;unsigned long n=strtoul(s,&end,10);return *end||n>max?0:(unsigned)n;}
-Actor *world_actor(Demo *w,unsigned id){for(unsigned i=0;i<w->count;i++)if(w->actors[i].id==id)return &w->actors[i];return NULL;}
+Actor *world_actor(Demo *w,unsigned id){return (Actor *)demo_actor(w,id);}
 bool world_penguin(const char *text,Actor *a){
  if(strlen(text)>1023)return false;
  char buffer[1024];strcpy(buffer,text);char *fields[20];unsigned count=1;fields[0]=buffer;

@@ -9,6 +9,8 @@
 #include <float.h>
 #include <sys/stat.h>
 #include "demo.h"
+#include "render_order.h"
+#include "name_tag.h"
 #include "animations.h"
 #include "penguin_atlas.h"
 #include "font.h"
@@ -64,6 +66,10 @@ typedef struct {C3D_Tex tex;Tex3DS_SubTexture sub;bool loaded;} Texture;
 #define MAP_LOW_TOP 28
 #define MAP_LOW_VISIBLE 177
 static Texture icons,emotes,islandMap,islandMapLow,fontTexture,paperBody,paperDetail,minimap,bookCovers,body[PENGUIN_PAGES],detail[PENGUIN_PAGES],sceneAtlas[SWL_MAX_PAGES];
+static Texture nameTagTexture;
+static struct {char name[49];NameTag tag;bool ready;} nameTags[CAST_COUNT];
+static bool nameTagsAttempted;
+_Static_assert(CAST_COUNT<=NAME_TAG_COUNT,"Name atlas must fit the room roster");
 static SWLScene *scene;
 static bool sceneOK=true;
 static bool isNew3DS;
@@ -208,7 +214,7 @@ static u32 rgb(unsigned hex){return C2D_Color32(hex>>16,(hex>>8)&255,hex&255,255
 static bool load(Texture *t,const char *name){char path[120];snprintf(path,sizeof path,"romfs:/gfx/%s.t3x",name);FILE *f=fopen(path,"rb");if(!f)return false;Tex3DS_Texture packed=Tex3DS_TextureImportStdio(f,&t->tex,NULL,false);fclose(f);if(!packed)return false;if(Tex3DS_GetNumSubTextures(packed)!=1){Tex3DS_TextureFree(packed);C3D_TexDelete(&t->tex);return false;}t->sub=*Tex3DS_GetSubTexture(packed,0);Tex3DS_TextureFree(packed);C3D_TexSetFilter(&t->tex,GPU_LINEAR,GPU_LINEAR);C3D_TexSetWrap(&t->tex,GPU_CLAMP_TO_EDGE,GPU_CLAMP_TO_EDGE);t->loaded=true;return true;}
 static void image(Texture *t,float x,float y,float w,float h,u32 colour){if(!t->loaded)return;C2D_Image im={&t->tex,&t->sub};C2D_ImageTint tint;C2D_PlainImageTint(&tint,colour,1);C2D_DrawImageAt(im,x,y,.5f,&tint,w/t->sub.width,h/t->sub.height);}
 static void crop(Texture *t,int sx,int sy,int sw,int sh,float x,float y,float scale,u32 colour){if(!t->loaded)return;Tex3DS_SubTexture sub={.width=sw,.height=sh,.left=t->sub.left+(float)sx/t->tex.width,.top=t->sub.top-(float)sy/t->tex.height,.right=t->sub.left+(float)(sx+sw)/t->tex.width,.bottom=t->sub.top-(float)(sy+sh)/t->tex.height};C2D_Image im={&t->tex,&sub};C2D_ImageTint tint;C2D_PlainImageTint(&tint,colour,1);C2D_DrawImageAt(im,x,y,.5f,&tint,scale,scale);}
-typedef struct {struct {unsigned tag;float depth;} items[CAST_COUNT+IGLOO_ITEMS+PUFFLES_LIMIT];unsigned count,next;float scale,ox,oy;} ActorOrder;
+typedef struct {RenderOrderItem items[CAST_COUNT+IGLOO_ITEMS+PUFFLES_LIMIT];unsigned count,next;float scale,ox,oy;} ActorOrder;
 static void make_order(ActorOrder *order,bool players,float scale,float ox,float oy);
 static bool actors_before(void *user,float depth);
 static bool actors_needed(void *user,float depth);
@@ -235,6 +241,29 @@ static void text(float x,float y,unsigned size,unsigned colour,const char *s){
  }
 }
 static void center(float x,float y,unsigned size,unsigned colour,const char *s){text(x-textWidth(size,s)/2.0f,y,size,colour,s);}
+static void name_tags_refresh(void){
+ if(isNew3DS)return;
+ if(!nameTagsAttempted){
+  nameTagsAttempted=true;
+  if(!fontTexture.loaded||fontTexture.tex.fmt!=GPU_LA8||fontTexture.sub.left!=0||fontTexture.sub.top!=1)return;
+  if(!C3D_TexInit(&nameTagTexture.tex,NAME_TAG_W,NAME_TAG_H,GPU_LA8))return;
+  nameTagTexture.sub=(Tex3DS_SubTexture){.width=NAME_TAG_W,.height=NAME_TAG_H,.left=0,.top=1,.right=1,.bottom=0};
+  C3D_TexSetFilter(&nameTagTexture.tex,GPU_NEAREST,GPU_NEAREST);C3D_TexSetWrap(&nameTagTexture.tex,GPU_CLAMP_TO_EDGE,GPU_CLAMP_TO_EDGE);
+  memset(nameTagTexture.tex.data,0,nameTagTexture.tex.size);nameTagTexture.loaded=true;
+ }
+ if(!nameTagTexture.loaded)return;
+ bool dirty=false;
+ for(unsigned i=0;i<demo.count&&i<CAST_COUNT;i++)if(strcmp(nameTags[i].name,demo.actors[i].name)){
+  snprintf(nameTags[i].name,sizeof nameTags[i].name,"%s",demo.actors[i].name);nameTags[i].ready=name_tag_layout(&nameTags[i].tag,nameTags[i].name);
+  if(nameTags[i].ready){name_tag_write(nameTagTexture.tex.data,i,&nameTags[i].tag,nameTags[i].name,fontTexture.tex.data,fontTexture.tex.width,fontTexture.tex.height);dirty=true;}
+ }
+ if(dirty)C3D_TexFlush(&nameTagTexture.tex);
+}
+static void name_tag_draw(unsigned index,float x,float y){
+ if(!nameTagTexture.loaded||!nameTags[index].ready){center(x,y,10,0x003366,demo.actors[index].name);return;}
+ const NameTag *tag=&nameTags[index].tag;
+ crop(&nameTagTexture,index%NAME_TAG_COLUMNS*NAME_TAG_SLOT_W,index/NAME_TAG_COLUMNS*NAME_TAG_SLOT_H,tag->width,tag->height,lroundf(x-tag->advance/2.0f)+tag->left,lroundf(y)+tag->top,1,rgb(0x003366));
+}
 static bool chat_font_ready(void){
  if(!chatGlyphs)chatGlyphs=C2D_TextBufNew(4096);
  if(!chatMeasure)chatMeasure=C2D_TextBufNew(512);
@@ -253,11 +282,11 @@ static void icon(int i,float x,float y,float scale){crop(&icons,i*32,0,32,32,x,y
 static void actor(Actor *a,float x,float y,float scale){int action=a->action>=1&&a->action<=30?a->action:1;Sequence seq=sequences[action];unsigned n=seq.start+((unsigned)a->clock%seq.count);const PenguinFrame *f=&penguinFrames[n];C2D_SetTintMode(C2D_TintSolid);crop(&body[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));C2D_SetTintMode(C2D_TintMult);crop(&detail[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,0xffffffff);const unsigned slots[]={5,3,2,4,1,0};for(unsigned i=0;i<6;i++)wear_draw(a->look[slots[i]],(unsigned)action,(unsigned)a->clock,x,y,scale);}
 static float actor_depth(unsigned index){return 901+index+1000*floorf(demo.actors[index].y);}
 static void make_order(ActorOrder *order,bool players,float scale,float ox,float oy){
- memset(order,0,sizeof *order);order->scale=scale;order->ox=ox;order->oy=oy;
+ order->count=order->next=0;order->scale=scale;order->ox=ox;order->oy=oy;
  if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];Product product;unsigned type=client_product(clientData,1,f->id,&product)?product.type:1;order->items[order->count].tag=CAST_COUNT+i;order->items[order->count++].depth=type==2?6+f->y/1000.0f:type==3?7+f->y/1000.0f:900+1000*floorf(f->y);}
  if(players&&!igloo.editing)for(unsigned i=0;i<demo.count;i++){order->items[order->count].tag=i;order->items[order->count++].depth=actor_depth(i);}
  if(players&&!igloo.editing)for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo)){order->items[order->count].tag=CAST_COUNT+IGLOO_ITEMS+i;order->items[order->count++].depth=900+1000*floorf(puffles.pets[i].y);}
- for(unsigned i=1;i<order->count;i++){unsigned j=i;while(j&&order->items[j-1].depth>order->items[j].depth){typeof(order->items[0]) swap=order->items[j-1];order->items[j-1]=order->items[j];order->items[j]=swap;j--;}}
+ static RenderOrderItem scratch[CAST_COUNT+IGLOO_ITEMS+PUFFLES_LIMIT];render_order_sort(order->items,order->count,scratch);
 }
 static bool actors_needed(void *user,float depth){ActorOrder *order=user;return order->next<order->count&&order->items[order->next].depth<=depth;}
 static bool actors_before(void *user,float depth){
@@ -379,7 +408,8 @@ static void top(void){
  Viewport view=viewport_cover(400,240,760,480,demo.zoom?demo.actors[0].x:380,demo.zoom?demo.actors[0].y-60:240,demo.zoom?1.2f:1);
  float scale=view.scale,ox=view.x,oy=view.y;
  ActorOrder order;make_order(&order,true,scale,ox,oy);scene_draw_to(sceneTop,400,240,scale,scale,ox,oy,&order);
- for(unsigned i=0;!igloo.editing&&i<demo.count;i++){Actor *a=&demo.actors[i];center(ox+a->x*scale,oy+a->y*scale+2,10,0x003366,a->name);}
+ if(!igloo.editing)name_tags_refresh();
+ for(unsigned i=0;!igloo.editing&&i<demo.count;i++){Actor *a=&demo.actors[i];name_tag_draw(i,ox+a->x*scale,oy+a->y*scale+2);}
 
  for(unsigned i=0;!igloo.editing&&i<64;i++){float x,y;if(overlay_ball(&overlay.balls[i],&x,&y)){C2D_DrawCircleSolid(ox+x*scale,oy+y*scale,.5f,3.3f,rgb(0x7d8b99));C2D_DrawCircleSolid(ox+x*scale,oy+y*scale,.5f,2.5f,rgb(0xffffff));}}
  for(unsigned i=0;!igloo.editing&&i<demo.count;i++){Actor *a=&demo.actors[i];if(a->bubbleTime<=0)continue;if(a->emote>=1&&a->emote<=30){const EmoteArt *f=&emoteArt[a->emote-1];crop(&emotes,f->x,f->y,f->w,f->h,ox+(a->x+f->left)*scale,oy+(a->y+f->top)*scale,scale*2,0xffffffff);continue;}float x=fmaxf(80,fminf(320,ox+a->x*scale)),y=fmaxf(30,oy+a->y*scale-43);char label[145];snprintf(label,sizeof label,"%.144s",a->chat+a->chatOffset);char *separator=strchr(label,'|');if(separator)*separator=0;if(strlen(label)>45)strcpy(label+42,"...");float w=fminf(376,textWidth(11,label)+12);box(x-w/2,y,w,23,0xffffff);center(x,y+5,11,0x003366,label);}
@@ -1636,7 +1666,7 @@ int main(int argc,char **argv){
   if(networkState==PNET_ONLINE&&puffles.mine!=pnet_id()){puffles_init(&puffles,pets_send,NULL);petRoom=0;pets_enter(roomBank?igloo.layout.owner:0);}
   else if((networkState==PNET_OFFLINE||networkState==PNET_RETRYING||networkState==PNET_SIGN_IN)&&puffles.mine){puffles_init(&puffles,pets_send,NULL);petRoom=wantedPetOwner=0;}
   if(wantedPetOwner&&networkState==PNET_ONLINE&&!puffles.snapshotPending&&puffles_request(&puffles,wantedPetOwner))wantedPetOwner=0;
-  puffles.poseReady=pets_pose_ready;puffles_step(&puffles,&demo,dt);if(*puffles.error){modal_message(puffles.error);puffles.error[0]=0;}
+  demo_index(&demo);puffles.poseReady=pets_pose_ready;puffles_step(&puffles,&demo,dt);if(*puffles.error){modal_message(puffles.error);puffles.error[0]=0;}
   if(igloo.awaitingStyle&&now-styles.started>15000){igloo.awaitingStyle=false;igloo.slotsReady=igloo.activeKnown=false;modal_message("The igloo change timed out. Refresh to check the server state before retrying.");}
   if(igloo.awaitingMusic&&now-musicStarted>15000){igloo.awaitingMusic=false;modal_message("The music change timed out. Reopen your igloo to check its saved music.");}
   if(*profile.error){if(game)message(profile.error);else modal_message(profile.error);profile.error[0]=0;}
@@ -1708,7 +1738,7 @@ int main(int argc,char **argv){
  // No C3D_FrameSync here: after HOME > Close the app no longer owns the GPU and VBlank events
  // stop arriving, so a frame sync can wait forever. The last frame's commands finish well within this.
  svcSleepThread(50*1000000LL);EXIT_PHASE("gpu-idle");
- game_port_free(game);movie_bank_free(book.bank);wear_free();if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);Texture *all[]={&icons,&emotes,&islandMap,&islandMapLow,&fontTexture,&paperBody,&paperDetail,&minimap,&bookCovers};for(unsigned i=0;i<sizeof all/sizeof all[0];i++)if(all[i]->loaded)C3D_TexDelete(&all[i]->tex);for(int i=0;i<PENGUIN_PAGES;i++){if(body[i].loaded)C3D_TexDelete(&body[i].tex);if(detail[i].loaded)C3D_TexDelete(&detail[i].tex);}for(unsigned i=0;i<SWL_MAX_PAGES;i++)if(sceneAtlas[i].loaded)C3D_TexDelete(&sceneAtlas[i].tex);
+ game_port_free(game);movie_bank_free(book.bank);wear_free();if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);Texture *all[]={&icons,&emotes,&islandMap,&islandMapLow,&fontTexture,&nameTagTexture,&paperBody,&paperDetail,&minimap,&bookCovers};for(unsigned i=0;i<sizeof all/sizeof all[0];i++)if(all[i]->loaded)C3D_TexDelete(&all[i]->tex);for(int i=0;i<PENGUIN_PAGES;i++){if(body[i].loaded)C3D_TexDelete(&body[i].tex);if(detail[i].loaded)C3D_TexDelete(&detail[i].tex);}for(unsigned i=0;i<SWL_MAX_PAGES;i++)if(sceneAtlas[i].loaded)C3D_TexDelete(&sceneAtlas[i].tex);
  client_data_free(clientData);if(shellText)json_decref(shellText);EXIT_PHASE("assets");
  chat_keyboard_cancel(&chatKeyboard);if(chatGlyphs)C2D_TextBufDelete(chatGlyphs);if(chatMeasure)C2D_TextBufDelete(chatMeasure);
  swl_gpu_free();C2D_Fini();C3D_Fini();EXIT_PHASE("gpu");

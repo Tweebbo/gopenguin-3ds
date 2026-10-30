@@ -3,6 +3,17 @@
 #include <string.h>
 #include <stdio.h>
 static int direction(float x,float y){int d=(int)lroundf((atan2f(y,x)*180.0f/3.14159265f-90.0f)/45.0f);return (d%8+8)%8+1;}
+_Static_assert(CAST_COUNT==ACTOR_INDEX_CAPACITY,"Actor index must cover the complete room roster");
+void demo_index(Demo *d){
+ unsigned i=0,count=d->count<CAST_COUNT?d->count:CAST_COUNT;if(d->actorIndex.count==count){while(i<count&&d->actorIndex.ids[i]==d->actors[i].id)i++;if(i==count)return;}
+ unsigned ids[CAST_COUNT];for(i=0;i<count;i++)ids[i]=d->actors[i].id;actor_index_build(&d->actorIndex,ids,count);
+}
+const Actor *demo_actor(const Demo *d,unsigned id){
+ int index=actor_index_find(&d->actorIndex,id);if(index>=0&&(unsigned)index<d->count&&d->actors[index].id==id)return &d->actors[index];
+ // A packet can replace or compact the roster before the next frame rebuilds its index.
+ for(unsigned i=0;i<d->count&&i<CAST_COUNT;i++)if(d->actors[i].id==id)return &d->actors[i];
+ return NULL;
+}
 void demo_init(Demo *d,uint8_t *mask){
  memset(d,0,sizeof *d);d->mask=mask;
  d->count=1;d->actors[0]=(Actor){.x=380,.y=340,.tx=380,.ty=340,.direction=1,.action=1,.colour=12};

@@ -1,11 +1,14 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include "actor_index.h"
 #define ROOM_W 760
 #define ROOM_H 480
 #define CAST_COUNT 80
 typedef struct {float x,y,tx,ty,clock,bubbleTime;int direction,action,colour;unsigned id,look[9],emote,chatOffset,pendingFrame;char name[49],chat[512];bool walking,member;} Actor;
-typedef struct {Actor actors[CAST_COUNT];unsigned count;uint8_t *mask;bool (*blocked)(const void *,int,int);const void *room;float time,bubbleTime,ballTime,ballX,ballY,ballTX,ballTY;int tab,phrase;bool zoom,stats;} Demo;
+typedef struct {Actor actors[CAST_COUNT];unsigned count;uint8_t *mask;bool (*blocked)(const void *,int,int);const void *room;float time,bubbleTime,ballTime,ballX,ballY,ballTX,ballTY;int tab,phrase;bool zoom,stats;ActorIndex actorIndex;} Demo;
+void demo_index(Demo *d);
+const Actor *demo_actor(const Demo *d,unsigned id);
 void demo_init(Demo *d,uint8_t *mask);
 bool demo_valid(const Demo *d,float x,float y);
 void demo_target(Demo *d,float x,float y);
