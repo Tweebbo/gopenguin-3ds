@@ -6,7 +6,7 @@ import http from 'node:http';
 import path from 'node:path';
 const root=path.resolve(import.meta.dirname,'..'),folder=root+'/build/update-checks';await mkdir(folder,{recursive:true});
 const common=['-O2','-std=c11','-D_POSIX_C_SOURCE=200809L','-DNO_TLS','-Wall','-Wextra','-Werror','-Isource','-Ibuild/host-include'];
-execFileSync('cc',[...common,'tests/update-manifest.c','source/update_manifest.c','source/hash.c','-lcrypto','-l:libjansson.so.4','-o',folder+'/manifest'],{cwd:root});
+execFileSync('cc',[...common,'tests/update-manifest.c','source/update_manifest.c','source/incremental.c','source/hash.c','-lz','-lcrypto','-l:libjansson.so.4','-o',folder+'/manifest'],{cwd:root});
 const base={schema:1,titleId:'0004000007E90200',version:'1.0.1',cia:{url:'https://github.com/Tweebbo/gopenguin-3ds/releases/download/v1.0.1/gopenguin.cia',sha256:'a'.repeat(64),bytes:224000000},'3dsx':{url:'https://gopenguin.lol/3ds/gopenguin.3dsx',sha256:'b'.repeat(64),bytes:222000000}};
 const parse=async value=>{await writeFile(folder+'/manifest.json',typeof value==='string'?value:JSON.stringify(value));return execFileSync(folder+'/manifest',['manifest',folder+'/manifest.json'],{encoding:'utf8'}).trim();};
 assert.equal(await parse(base),'VALID');let checks=1;
@@ -37,7 +37,7 @@ const server=http.createServer((req,res)=>{
 });
 await new Promise(resolve=>server.listen(18891,'127.0.0.1',resolve));
 try{
- execFileSync('cc',[...common,'-DGP_LAN_ONLY','-DGOPENGUIN_VERSION="1.0.0"','-DGP_UPDATE_URL="http://127.0.0.1:18891/latest.json"','tests/update-worker.c','source/gp_update.c','source/update_manifest.c','source/hash.c','source/common.c','source/transport/conn.c','source/transport/ws.c','source/transport/download.c','-lcrypto','-l:libjansson.so.4','-pthread','-o',folder+'/worker'],{cwd:root});
+ execFileSync('cc',[...common,'-DGP_LAN_ONLY','-DGOPENGUIN_VERSION="1.0.0"','-DGP_UPDATE_URL="http://127.0.0.1:18891/latest.json"','tests/update-worker.c','source/gp_update.c','source/update_manifest.c','source/incremental.c','source/hash.c','source/common.c','source/transport/conn.c','source/transport/ws.c','source/transport/download.c','-lz','-lcrypto','-l:libjansson.so.4','-pthread','-o',folder+'/worker'],{cwd:root});
  const child=spawn(folder+'/worker',[launch],{stdio:['ignore','pipe','pipe']});let output='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);const code=await new Promise(resolve=>child.once('exit',resolve));assert.equal(code,0,output);
  assert.equal(requests,2);assert.ok(resumed);assert.deepEqual(await readFile(launch),payload);checks+=4;
 }finally{await new Promise(resolve=>server.close(resolve));}

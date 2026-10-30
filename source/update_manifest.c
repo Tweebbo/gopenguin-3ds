@@ -27,14 +27,17 @@ static bool artifact(json_t *j,GPUpdateArtifact *out){
  for(unsigned i=0;i<64;i++)if(!strchr("0123456789abcdef",sha[i]))return false;
  strcpy(out->url,url);strcpy(out->sha,sha);out->bytes=(unsigned)bytes;return true;
 }
-bool gp_update_manifest(const char *data,size_t bytes,GPUpdateManifest *out){
+bool gp_update_manifest_for_version(const char *data,size_t bytes,const char *current,GPUpdateManifest *out){
  memset(out,0,sizeof *out);if(!data||!bytes||bytes>16384)return false;
  json_error_t error;json_t *j=json_loadb(data,bytes,JSON_REJECT_DUPLICATES,&error);if(!j)return false;
  const char *title=json_string_value(json_object_get(j,"titleId")),*v=json_string_value(json_object_get(j,"version")),*notes=json_string_value(json_object_get(j,"notes"));
  bool ok=json_integer_value(json_object_get(j,"schema"))==1&&title&&!strcmp(title,GP_RELEASE_TITLE_ID)&&gp_version_valid(v)&&strlen(v)<sizeof out->version&&artifact(json_object_get(j,"cia"),&out->cia)&&artifact(json_object_get(j,"3dsx"),&out->homebrew);
  unsigned parts[3];if(ok&&(!version(v,parts)||parts[0]>63||parts[1]>63||parts[2]>15))ok=false;
- if(ok){strcpy(out->version,v);snprintf(out->notes,sizeof out->notes,"%s",notes?notes:"");out->cia.titleVersion=(parts[0]<<10)|(parts[1]<<4)|parts[2];out->cia.checkTitleVersion=true;}json_decref(j);if(!ok)memset(out,0,sizeof *out);return ok;
+ if(ok){strcpy(out->version,v);snprintf(out->notes,sizeof out->notes,"%s",notes?notes:"");out->cia.titleVersion=(parts[0]<<10)|(parts[1]<<4)|parts[2];out->cia.checkTitleVersion=true;
+  if(current){incremental_offer(j,current,false,url_valid,&out->smallCia);incremental_offer(j,current,true,url_valid,&out->smallHomebrew);}
+ }json_decref(j);if(!ok)memset(out,0,sizeof *out);return ok;
 }
+bool gp_update_manifest(const char *data,size_t bytes,GPUpdateManifest *out){return gp_update_manifest_for_version(data,bytes,NULL,out);}
 static uint32_t le32(const unsigned char *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
 static uint64_t aligned(uint64_t n){return (n+63)&~63ull;}
 bool gp_update_file_progress(const char *path,const GPUpdateArtifact *a,bool homebrew,bool (*cancel)(void *),void (*progress)(unsigned,void *),void *user){

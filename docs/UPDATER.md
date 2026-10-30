@@ -1,5 +1,9 @@
 # Updating GoPenguin on Nintendo 3DS
 
+Starting with 1.2.2, the updater supports optional smaller downloads. See
+[Incremental updates](INCREMENTAL-UPDATES.md) for the bridge-update requirement,
+SD space, validation and full-download fallback.
+
 Open **Help > Account > Updates** and choose **Install / resume**.
 Keep GoPenguin open until it confirms that installation finished, then press
 START to close and reopen it. Your penguin stays in `3ds/gopenguin` on the SD card.
