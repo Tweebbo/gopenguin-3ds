@@ -60,12 +60,13 @@
 #include "lobby.h"
 #include "lobby_geometry.h"
 #include "ui_theme.h"
+#include "card_style.h"
 #include <jansson.h>
 
 typedef struct {C3D_Tex tex;Tex3DS_SubTexture sub;bool loaded;} Texture;
 #define MAP_LOW_TOP 28
 #define MAP_LOW_VISIBLE 177
-static Texture icons,emotes,islandMap,islandMapLow,fontTexture,paperBody,paperDetail,minimap,bookCovers,body[PENGUIN_PAGES],detail[PENGUIN_PAGES],sceneAtlas[SWL_MAX_PAGES];
+static Texture icons,emotes,staffBadges,islandMap,islandMapLow,fontTexture,paperBody,paperDetail,minimap,bookCovers,body[PENGUIN_PAGES],detail[PENGUIN_PAGES],sceneAtlas[SWL_MAX_PAGES];
 static Texture nameTagTexture;
 static struct {char name[49];NameTag tag;bool ready;} nameTags[CAST_COUNT];
 static bool nameTagsAttempted;
@@ -519,8 +520,8 @@ static Actor *selected_actor(void){Actor *a=world_actor(&demo,selectedPlayer);re
 static void rockhopper_open(void);
 static void open_player(unsigned id){if(id==pnet_id()){demo.tab=2;return;}if(id==ROCKHOPPER_ID){rockhopper_open();return;}selectedPlayer=id;demo.tab=7;char value[20];snprintf(value,sizeof value,"%u",id);pnet_send("u#gp",1,(const char *[]){value});}
 static char staff_role(unsigned id){for(unsigned i=0;i<staffCount;i++)if(staffIds[i]==id)return staffRole[i];return 0;}
-/** A = administrator (gold), M = moderator (blue), next to the name on the card. */
-static void staff_badge(float x,float y,unsigned id){char role=staff_role(id);if(role!='a'&&role!='m')return;box(x,y,18,18,role=='a'?0xffd23f:0x1a78c9);center(x+9,y+3,11,role=='a'?0x6b3b00:0xffffff,role=='a'?"A":"M");}
+/** Original Waddle shield. Its cosmetic palette never grants staff permissions. */
+static void staff_badge(float x,float y,unsigned id){char role=staff_role(id);if(role!='a'&&role!='m')return;GPCardStyle style=gp_card_style(id);crop(&staffBadges,(int)style.badge*64,0,64,64,x-1,y-1,20.0f/64,0xffffffff);}
 /* Captain Rockhopper stands in Town (local actor, never sent to the server). */
 static void rockhopper_sync(void){
  Actor *npc=world_actor(&demo,ROCKHOPPER_ID);
@@ -570,7 +571,7 @@ static void people_touch(int x,int y){
 }
 static void player_draw(void){
  Actor *a=selected_actor();if(!a){center(160,100,12,0x003366,"Loading penguin...");return;}
- box(8,33,304,22,0x0085c7);center(160,37,12,0xffffff,a->name);staff_badge(12,35,a->id);portrait(a);
+ box(8,33,304,22,gp_card_fill(a->id));center(160,37,12,gp_card_ink(a->id),a->name);box(8,59,132,142,gp_card_fill(a->id));staff_badge(12,35,a->id);portrait(a);
  const Buddy *buddy=social_friend(&social,a->id);button(146,62,163,27,buddy?"Remove buddy":"Add buddy",-1);button(146,95,163,27,social_ignored(&social,a->id)?"Stop ignoring":"Ignore penguin",-1);button(146,128,163,27,"Send postcard",-1);button(146,161,79,27,"Find",-1);button(230,161,79,27,"Igloo",-1);
 }
 static void player_touch(int x,int y){
@@ -1362,6 +1363,7 @@ static void bottom(void){
   else{if(islandMapLow.loaded)crop(&islandMapLow,0,0,320,MAP_LOW_VISIBLE,0,MAP_LOW_TOP,1,0xffffffff);if(pnet_state()==PNET_OFFLINE)text(318-textWidth(10,"Select: all 46 rooms"),9,10,0xffffff,"Select: all 46 rooms");}
  }else if(demo.tab==2){
   inventory_draw(&inventoryUI,clientData,&profile,&demo.actors[0],&inventoryWidgets);
+  staff_badge(119,63,demo.actors[0].id);
  }else if(demo.tab==3){people_draw();
  }else if(demo.tab==6){books_draw();
  }else if(demo.tab==8){mail_draw();
@@ -1525,8 +1527,8 @@ int main(int argc,char **argv){
  
  gp_audio_init("romfs:/audio",settings.audio);aptHook(&audioHook,audio_focus,NULL);puffles_init(&puffles,pets_send,NULL);
  const char *sceneError=NULL;demo_init(&demo,NULL);lobby_init(&lobby,game_send,NULL);
- inventoryWidgets=(InventoryWidgets){box,text,center,portrait,portrait_hit,keyboard,message,item_colour,penguin_rename};
- bool ok=clientData&&gpuOK&&load(&icons,"icons")&&load(&emotes,"emotes")&&load(&fontTexture,"font")&&load(&paperBody,"paper-body")&&load(&paperDetail,"paper-detail")&&load(&bookCovers,"book-covers");
+ inventoryWidgets=(InventoryWidgets){box,text,center,portrait,portrait_hit,keyboard,message,item_colour,penguin_rename,gp_card_fill,gp_card_ink};
+ bool ok=clientData&&gpuOK&&load(&icons,"icons")&&load(&emotes,"emotes")&&load(&staffBadges,"staff-badges")&&load(&fontTexture,"font")&&load(&paperBody,"paper-body")&&load(&paperDetail,"paper-detail")&&load(&bookCovers,"book-covers");
  if(fontTexture.loaded)C3D_TexSetFilter(&fontTexture.tex,GPU_NEAREST,GPU_NEAREST);
  for(int i=0;i<PENGUIN_PAGES;i++){char name[30];snprintf(name,sizeof name,"penguin-body-%d",i);ok=load(&body[i],name)&&ok;snprintf(name,sizeof name,"penguin-detail-%d",i);ok=load(&detail[i],name)&&ok;}
  ok=enter_room(100,-1,-1)&&ok;
@@ -1666,6 +1668,7 @@ int main(int argc,char **argv){
   GPUpdateView releaseUpdate=gp_update_view();
   if(networkState==PNET_ONLINE&&now>=updateCheckAt&&!gp_update_busy(releaseUpdate.state)&&releaseUpdate.state!=GP_UPD_INSTALLED){gp_update_check();updateCheckAt=now+300000;}
   if(releaseUpdate.state==GP_UPD_AVAILABLE&&strcmp(offeredUpdate,releaseUpdate.version)&&!game&&!gameQueued&&!modal.open&&!book.open&&!chatKeyboard.active&&!chatHistory.open&&!igloo.editing){snprintf(offeredUpdate,sizeof offeredUpdate,"%s",releaseUpdate.version);modal_message("A new GoPenguin version is ready. Open Updates? Your penguin is kept.");modal.confirm=true;snprintf(modal.command,sizeof modal.command,"open-update");}
+  gp_card_styles_poll(settings.network.api,networkState==PNET_ONLINE&&!game&&!book.open&&(demo.tab==2||demo.tab==7));
   // Removed by a moderator: stop reconnecting (a kick returns after one minute).
   if(kickStop){kickStop=false;pnet_stop();}
   if(kickResume&&osGetTime()>=kickResume){kickResume=0;if(settings.network.api[0]&&settings.network.world[0]&&settings.session[0])pnet_start(&settings.network,settings.session,"","",false);}
@@ -1746,11 +1749,12 @@ int main(int argc,char **argv){
  // Bounded: a worker stuck in a system call must not keep the console on "Closing software".
  bool stranded=!pnet_stop_within(1500);EXIT_PHASE(stranded?"network-stranded":"network");
  if(!gp_update_stop_within(1500)){stranded=true;EXIT_PHASE("updater-stranded");}else EXIT_PHASE("updater");
+ if(!gp_card_styles_stop_within(1500)){stranded=true;EXIT_PHASE("card-styles-stranded");}else EXIT_PHASE("card-styles");
  if(!asset_cache_stop_within(1500)){stranded=true;EXIT_PHASE("downloads-stranded");}else EXIT_PHASE("downloads");
  // No C3D_FrameSync here: after HOME > Close the app no longer owns the GPU and VBlank events
  // stop arriving, so a frame sync can wait forever. The last frame's commands finish well within this.
  svcSleepThread(50*1000000LL);EXIT_PHASE("gpu-idle");
- game_port_free(game);movie_bank_free(book.bank);wear_free();if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);Texture *all[]={&icons,&emotes,&islandMap,&islandMapLow,&fontTexture,&nameTagTexture,&paperBody,&paperDetail,&minimap,&bookCovers};for(unsigned i=0;i<sizeof all/sizeof all[0];i++)if(all[i]->loaded)C3D_TexDelete(&all[i]->tex);for(int i=0;i<PENGUIN_PAGES;i++){if(body[i].loaded)C3D_TexDelete(&body[i].tex);if(detail[i].loaded)C3D_TexDelete(&detail[i].tex);}for(unsigned i=0;i<SWL_MAX_PAGES;i++)if(sceneAtlas[i].loaded)C3D_TexDelete(&sceneAtlas[i].tex);
+ game_port_free(game);movie_bank_free(book.bank);wear_free();if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);Texture *all[]={&icons,&emotes,&staffBadges,&islandMap,&islandMapLow,&fontTexture,&nameTagTexture,&paperBody,&paperDetail,&minimap,&bookCovers};for(unsigned i=0;i<sizeof all/sizeof all[0];i++)if(all[i]->loaded)C3D_TexDelete(&all[i]->tex);for(int i=0;i<PENGUIN_PAGES;i++){if(body[i].loaded)C3D_TexDelete(&body[i].tex);if(detail[i].loaded)C3D_TexDelete(&detail[i].tex);}for(unsigned i=0;i<SWL_MAX_PAGES;i++)if(sceneAtlas[i].loaded)C3D_TexDelete(&sceneAtlas[i].tex);
  client_data_free(clientData);if(shellText)json_decref(shellText);EXIT_PHASE("assets");
  chat_keyboard_cancel(&chatKeyboard);if(chatGlyphs)C2D_TextBufDelete(chatGlyphs);if(chatMeasure)C2D_TextBufDelete(chatMeasure);
  swl_gpu_free();C2D_Fini();C3D_Fini();EXIT_PHASE("gpu");

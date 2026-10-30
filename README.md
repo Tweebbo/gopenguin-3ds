@@ -18,6 +18,18 @@ The game reconnects with your saved penguin automatically.
 
 ## Play
 
+Version 1.2.4 is an optional manual profile appearance update. It uses the
+original Waddle moderator shield and supports separate blue, gold and red
+palettes for selected player cards and shields. Cosmetic colours do not change
+staff roles or permissions. Updated clients load palette changes from the
+server without another application update. Native rendering and live colour
+changes were tested in Azahar; physical-console installation is untested.
+
+This optional release is not advertised through the automatic update manifest.
+Download its CIA or 3DSX from the version 1.2.4 release page and keep saved SD
+data. The automatic updater remains on 1.2.3 so existing clients receive no new
+update popup for this optional change.
+
 Version 1.2.3 brings Halloween to Town, Coffee Shop, Dance Club and Gift Shop,
 with the party map and original music. Touch the Town sign to open the poster:
 the illustration uses the upper screen and the controls use the touch screen.
@@ -99,6 +111,7 @@ Use devkitARM, libctru, citro2d, citro3d, Jansson, mbedTLS and zlib. The prepare
 For 1.2.3, extract that base in the repository, then extract
 `gopenguin-halloween-assets.tar.gz` from release 1.2.3 over it. The overlay
 changes only Halloween scenes, map, controls, poster and music.
+For 1.2.4, also extract `gopenguin-profile-assets.tar.gz` from that release.
 Run `make` in a configured devkitPro shell.
 `build.sh` provides the container equivalent. CIA packaging uses
 `node tools/package-native.mjs --release --tools /path/to/ctrtools`.

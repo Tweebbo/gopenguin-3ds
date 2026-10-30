@@ -73,6 +73,7 @@ export OFILES += chat_keyboard.o chat_log.o chat_log_view.o
 export OFILES += wear_index.o
 export OFILES += actor_index.o render_order.o name_tag.o
 export OFILES += incremental.o
+export OFILES += card_style.o
 ifeq ($(GPU_TEST),1)
 export OFILES := gpu_test.o swl.o swl_gpu.o swl_shader.shbin.o
 endif

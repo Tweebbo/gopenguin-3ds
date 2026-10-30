@@ -12,6 +12,8 @@ typedef struct {
  void (*notice)(const char *);
  unsigned (*colour)(unsigned);
  void (*rename)(void);
+ unsigned (*cardFill)(unsigned);
+ unsigned (*cardInk)(unsigned);
 } InventoryWidgets;
 typedef struct {unsigned filtered[INVENTORY_LIMIT],count,page,filter,stamp;bool filters;char query[41],selected[64];} InventoryUI;
 void inventory_prepare(InventoryUI *ui,const ClientData *data,const GPProfile *profile,const Actor *actor);

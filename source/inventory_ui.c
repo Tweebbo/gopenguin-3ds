@@ -16,9 +16,10 @@ void inventory_prepare(InventoryUI *ui,const ClientData *data,const GPProfile *p
 }
 void inventory_draw(InventoryUI *ui,const ClientData *data,const GPProfile *profile,Actor *actor,const InventoryWidgets *w){
  bool rename=w->rename&&pnet_state()==PNET_ONLINE;
- w->box(7,33,133,168,0x0085c7);w->center(rename?62:73,40,13,0xffffff,actor->name);
+ unsigned fill=w->cardFill?w->cardFill(actor->id):0x0085c7,ink=w->cardInk?w->cardInk(actor->id):0xffffff;
+ w->box(7,33,133,168,fill);w->center(rename?62:73,40,13,ink,actor->name);
  /* Visible rename button (the whole name row opens the rename flow, see inventory_touch). */
- if(rename){w->box(108,34,30,24,0xffd23f);w->center(123,40,10,0x6b3b00,"Edit");}w->portrait(actor);char label[80];snprintf(label,sizeof label,"%u coins",profile->coins);w->center(73,184,10,0xffffff,pnet_state()==PNET_OFFLINE?"Offline penguin":label);
+ if(rename){w->box(108,34,30,24,0xffd23f);w->center(123,40,10,0x6b3b00,"Edit");}w->portrait(actor);char label[80];snprintf(label,sizeof label,"%u coins",profile->coins);w->center(73,184,10,ink,pnet_state()==PNET_OFFLINE?"Offline penguin":label);
  w->box(149,34,86,24,0xffffff);w->center(192,40,11,0x003366,filters[ui->filter]);w->box(239,34,73,24,0xffffff);w->center(275,40,11,0x003366,*ui->query?"Clear":"Search");
  for(unsigned i=0;i<6;i++){unsigned index=ui->page*6+i;if(index>=ui->count)break;Product item;if(!client_product(data,0,ui->filtered[index],&item))continue;float x=149+i%2*83,y=62+i/2*36;w->box(x,y,80,33,worn(actor,&item)?0x2fb344:0xffffff);if(item.type==1)w->box(x+3,y+3,24,23,w->colour(item.id));else wear_fit(asset_key(ASSET_ICON,item.id),x+3,y+2,25,28);shorten(label,sizeof label,item.name,9);w->text(x+30,y+10,10,0x003366,label);}
  if(!profile->ready)w->text(152,91,11,0x003366,"Loading inventory...");else if(!ui->count)w->text(152,91,11,0x003366,*ui->query?"No matching items.":"No items here yet.");
