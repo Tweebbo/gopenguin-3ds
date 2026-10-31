@@ -66,7 +66,7 @@
 typedef struct {C3D_Tex tex;Tex3DS_SubTexture sub;bool loaded;} Texture;
 #define MAP_LOW_TOP 28
 #define MAP_LOW_VISIBLE 177
-static Texture icons,emotes,staffBadges,islandMap,islandMapLow,fontTexture,paperBody,paperDetail,minimap,bookCovers,body[PENGUIN_PAGES],detail[PENGUIN_PAGES],sceneAtlas[SWL_MAX_PAGES];
+static Texture icons,emotes,staffBadges,islandMap,islandMapLow,fontTexture,paperBody,paperDetail,minimap,bookCovers,snowballTex,body[PENGUIN_PAGES],detail[PENGUIN_PAGES],sceneAtlas[SWL_MAX_PAGES];
 static Texture nameTagTexture;
 static struct {char name[49];NameTag tag;bool ready;} nameTags[CAST_COUNT];
 static bool nameTagsAttempted;
@@ -413,7 +413,12 @@ static void top(void){
  if(!igloo.editing)name_tags_refresh();
  for(unsigned i=0;!igloo.editing&&i<demo.count;i++){Actor *a=&demo.actors[i];name_tag_draw(i,ox+a->x*scale,oy+a->y*scale+2);}
 
- for(unsigned i=0;!igloo.editing&&i<64;i++){float x,y;if(overlay_ball(&overlay.balls[i],&x,&y)){C2D_DrawCircleSolid(ox+x*scale,oy+y*scale,.5f,3.3f,rgb(0x7d8b99));C2D_DrawCircleSolid(ox+x*scale,oy+y*scale,.5f,2.5f,rgb(0xffffff));}}
+ for(unsigned i=0;!igloo.editing&&i<SNOWBALL_LIMIT;i++){
+  float x,y;
+  if(overlay_shadow(&overlay.balls[i],&x,&y))crop(&snowballTex,0,0,10,5,ox+(x-4.8f)*scale,oy+(y-2.4f)*scale,scale,0xffffffff);
+  if(overlay_ball(&overlay.balls[i],&x,&y))crop(&snowballTex,12,0,11,11,ox+(x-5.3f)*scale,oy+(y-5.3f)*scale,scale,0xffffffff);
+  if(overlay_impact(&overlay.balls[i],&x,&y))crop(&snowballTex,24,0,11,9,ox+(x-5.3f)*scale,oy+(y-2.85f)*scale,scale,0xffffffff);
+ }
  for(unsigned i=0;!igloo.editing&&i<demo.count;i++){Actor *a=&demo.actors[i];if(a->bubbleTime<=0)continue;if(a->emote>=1&&a->emote<=30){const EmoteArt *f=&emoteArt[a->emote-1];crop(&emotes,f->x,f->y,f->w,f->h,ox+(a->x+f->left)*scale,oy+(a->y+f->top)*scale,scale*2,0xffffffff);continue;}float x=fmaxf(80,fminf(320,ox+a->x*scale)),y=fmaxf(30,oy+a->y*scale-43);char label[145];snprintf(label,sizeof label,"%.144s",a->chat+a->chatOffset);char *separator=strchr(label,'|');if(separator)*separator=0;if(strlen(label)>45)strcpy(label+42,"...");float w=fminf(376,textWidth(11,label)+12);box(x-w/2,y,w,23,0xffffff);center(x,y+5,11,0x003366,label);}
  if(currentRoom){const char *title=currentRoom->title;ui_label(5,5,textWidth(11,title)+34,21);text(29,9,11,0xffffff,title);}
  if(demo.stats){char s[80];snprintf(s,sizeof s,"%.0f FPS  |  %.1f ms  |  %lu KB free",fps,frameMS,(unsigned long)(linearSpaceFree()/1024));box(4,219,392,18,0x003366);text(9,221,11,0xffffff,s);}
@@ -1528,7 +1533,7 @@ int main(int argc,char **argv){
  gp_audio_init("romfs:/audio",settings.audio);aptHook(&audioHook,audio_focus,NULL);puffles_init(&puffles,pets_send,NULL);
  const char *sceneError=NULL;demo_init(&demo,NULL);lobby_init(&lobby,game_send,NULL);
  inventoryWidgets=(InventoryWidgets){box,text,center,portrait,portrait_hit,keyboard,message,item_colour,penguin_rename,gp_card_fill,gp_card_ink};
- bool ok=clientData&&gpuOK&&load(&icons,"icons")&&load(&emotes,"emotes")&&load(&staffBadges,"staff-badges")&&load(&fontTexture,"font")&&load(&paperBody,"paper-body")&&load(&paperDetail,"paper-detail")&&load(&bookCovers,"book-covers");
+ bool ok=clientData&&gpuOK&&load(&icons,"icons")&&load(&emotes,"emotes")&&load(&staffBadges,"staff-badges")&&load(&fontTexture,"font")&&load(&paperBody,"paper-body")&&load(&paperDetail,"paper-detail")&&load(&bookCovers,"book-covers")&&load(&snowballTex,"snowball");
  if(fontTexture.loaded)C3D_TexSetFilter(&fontTexture.tex,GPU_NEAREST,GPU_NEAREST);
  for(int i=0;i<PENGUIN_PAGES;i++){char name[30];snprintf(name,sizeof name,"penguin-body-%d",i);ok=load(&body[i],name)&&ok;snprintf(name,sizeof name,"penguin-detail-%d",i);ok=load(&detail[i],name)&&ok;}
  ok=enter_room(100,-1,-1)&&ok;
@@ -1754,7 +1759,7 @@ int main(int argc,char **argv){
  // No C3D_FrameSync here: after HOME > Close the app no longer owns the GPU and VBlank events
  // stop arriving, so a frame sync can wait forever. The last frame's commands finish well within this.
  svcSleepThread(50*1000000LL);EXIT_PHASE("gpu-idle");
- game_port_free(game);movie_bank_free(book.bank);wear_free();if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);Texture *all[]={&icons,&emotes,&staffBadges,&islandMap,&islandMapLow,&fontTexture,&nameTagTexture,&paperBody,&paperDetail,&minimap,&bookCovers};for(unsigned i=0;i<sizeof all/sizeof all[0];i++)if(all[i]->loaded)C3D_TexDelete(&all[i]->tex);for(int i=0;i<PENGUIN_PAGES;i++){if(body[i].loaded)C3D_TexDelete(&body[i].tex);if(detail[i].loaded)C3D_TexDelete(&detail[i].tex);}for(unsigned i=0;i<SWL_MAX_PAGES;i++)if(sceneAtlas[i].loaded)C3D_TexDelete(&sceneAtlas[i].tex);
+ game_port_free(game);movie_bank_free(book.bank);wear_free();if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);Texture *all[]={&icons,&emotes,&staffBadges,&islandMap,&islandMapLow,&fontTexture,&nameTagTexture,&paperBody,&paperDetail,&minimap,&bookCovers,&snowballTex};for(unsigned i=0;i<sizeof all/sizeof all[0];i++)if(all[i]->loaded)C3D_TexDelete(&all[i]->tex);for(int i=0;i<PENGUIN_PAGES;i++){if(body[i].loaded)C3D_TexDelete(&body[i].tex);if(detail[i].loaded)C3D_TexDelete(&detail[i].tex);}for(unsigned i=0;i<SWL_MAX_PAGES;i++)if(sceneAtlas[i].loaded)C3D_TexDelete(&sceneAtlas[i].tex);
  client_data_free(clientData);if(shellText)json_decref(shellText);EXIT_PHASE("assets");
  chat_keyboard_cancel(&chatKeyboard);if(chatGlyphs)C2D_TextBufDelete(chatGlyphs);if(chatMeasure)C2D_TextBufDelete(chatMeasure);
  swl_gpu_free();C2D_Fini();C3D_Fini();EXIT_PHASE("gpu");
