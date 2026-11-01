@@ -18,19 +18,19 @@ typedef struct {
 static struct {
  DVLB_s *dvlb;shaderProgram_s shader;int projection;
  Vertex *vertices;unsigned used,pending,count,width,height,masks,groups,reserved,parentVertices;
- C3D_RenderTarget *target;C3D_Tex *texture;SWLColor color;bool colorSet,painting[8],ready,premultiplied;
+ C3D_RenderTarget *target;C3D_Tex *texture;SWLColor color;bool colorSet,colorLayout,painting[8],ready,premultiplied;
  float left,top,right,bottom;Surface surfaces[GROUPS];C3D_Tex white;
  const SWLGPUAtlas *atlases;bool (*depth)(void *,float),(*needed)(void *,float);void *depthUser;
 } G;
 static const SWLColor identity={{1,1,1,1},{0,0,0,0}};
-static void flush(void){if(G.count){GSPGPU_FlushDataCache(G.vertices+G.pending,G.count*sizeof(Vertex));C3D_DrawArrays(GPU_TRIANGLES,G.pending,G.count);G.count=0;}}
+static void flush(void){if(G.count){C3D_DrawArrays(GPU_TRIANGLES,G.pending,G.count);G.count=0;}}
 static void shader_state(void){
  C3D_BindProgram(&G.shader);C3D_AttrInfo *a=C3D_GetAttrInfo();AttrInfo_Init(a);AttrInfo_AddLoader(a,0,GPU_FLOAT,3);AttrInfo_AddLoader(a,1,GPU_FLOAT,2);
  C3D_BufInfo *b=C3D_GetBufInfo();BufInfo_Init(b);BufInfo_Add(b,G.vertices,sizeof(Vertex),2,0x10);
  C3D_CullFace(GPU_CULL_NONE);C3D_DepthTest(false,GPU_ALWAYS,GPU_WRITE_ALL);C3D_AlphaTest(true,GPU_GREATER,0);
  C3D_AlphaBlend(GPU_BLEND_ADD,GPU_BLEND_ADD,GPU_SRC_ALPHA,GPU_ONE_MINUS_SRC_ALPHA,GPU_ONE,GPU_ONE_MINUS_SRC_ALPHA);
  for(unsigned i=0;i<6;i++){C3D_TexEnv *e=C3D_GetTexEnv(i);C3D_TexEnvInit(e);C3D_TexEnvSrc(e,C3D_Both,GPU_PREVIOUS,0,0);C3D_TexEnvFunc(e,C3D_Both,GPU_REPLACE);}
- G.texture=NULL;G.colorSet=false;
+ G.texture=NULL;G.colorSet=false;G.colorLayout=false;
 }
 static void projection(void){
  C3D_Mtx m;
@@ -47,6 +47,7 @@ static void stencil_state(void){
 }
 static bool set_color(SWLColor c){
  if(G.colorSet&&!memcmp(&c,&G.color,sizeof c))return true;
+ if(G.premultiplied&&c.add[3]!=0)return false;
  float max=1,m[4],select[4],offset[4],constant[4]={0};
  for(unsigned i=0;i<4;i++){
   if(fabsf(c.mult[i])>4||c.add[i]<-255||c.add[i]>255||(c.mult[i]>1&&c.add[i]<0))return false;
@@ -56,13 +57,21 @@ static bool set_color(SWLColor c){
  }
  float scale=max>2?4:max>1?2:1,mul[4],positive[4],negative[4];
  for(unsigned i=0;i<4;i++){mul[i]=m[i]/scale;positive[i]=fmaxf(0,offset[i]);negative[i]=fmaxf(0,-offset[i]);}
- flush();for(unsigned i=0;i<6;i++){C3D_TexEnv *e=C3D_GetTexEnv(i);C3D_TexEnvInit(e);C3D_TexEnvSrc(e,C3D_Both,GPU_PREVIOUS,0,0);C3D_TexEnvFunc(e,C3D_Both,GPU_REPLACE);}
+ flush();
+ if(G.colorLayout&&!G.premultiplied){
+  C3D_TexEnvColor(C3D_GetTexEnv(0),C2D_Color32f(select[0],select[1],select[2],select[3]));
+  C3D_TexEnv *e=C3D_GetTexEnv(1);C3D_TexEnvColor(e,C2D_Color32f(mul[0],mul[1],mul[2],mul[3]));C3D_TexEnvScale(e,C3D_Both,scale==4?GPU_TEVSCALE_4:scale==2?GPU_TEVSCALE_2:GPU_TEVSCALE_1);
+  C3D_TexEnvColor(C3D_GetTexEnv(2),C2D_Color32f(positive[0],positive[1],positive[2],positive[3]));
+  C3D_TexEnvColor(C3D_GetTexEnv(3),C2D_Color32f(negative[0],negative[1],negative[2],negative[3]));
+  G.color=c;G.colorSet=true;return true;
+ }
+ G.colorLayout=!G.premultiplied;
+ for(unsigned i=0;i<6;i++){C3D_TexEnv *e=C3D_GetTexEnv(i);C3D_TexEnvInit(e);C3D_TexEnvSrc(e,C3D_Both,GPU_PREVIOUS,0,0);C3D_TexEnvFunc(e,C3D_Both,GPU_REPLACE);}
  C3D_TexEnv *e=C3D_GetTexEnv(0);C3D_TexEnvSrc(e,C3D_Both,GPU_TEXTURE0,GPU_TEXTURE0,GPU_CONSTANT);C3D_TexEnvOpRgb(e,GPU_TEVOP_RGB_SRC_COLOR,GPU_TEVOP_RGB_ONE_MINUS_SRC_COLOR,GPU_TEVOP_RGB_SRC_COLOR);C3D_TexEnvOpAlpha(e,GPU_TEVOP_A_SRC_ALPHA,GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA,GPU_TEVOP_A_SRC_ALPHA);C3D_TexEnvFunc(e,C3D_Both,GPU_INTERPOLATE);C3D_TexEnvColor(e,C2D_Color32f(select[0],select[1],select[2],select[3]));
  e=C3D_GetTexEnv(1);C3D_TexEnvSrc(e,C3D_Both,GPU_PREVIOUS,GPU_CONSTANT,0);C3D_TexEnvFunc(e,C3D_Both,GPU_MODULATE);C3D_TexEnvColor(e,C2D_Color32f(mul[0],mul[1],mul[2],mul[3]));C3D_TexEnvScale(e,C3D_Both,scale==4?GPU_TEVSCALE_4:scale==2?GPU_TEVSCALE_2:GPU_TEVSCALE_1);
  e=C3D_GetTexEnv(2);C3D_TexEnvSrc(e,C3D_Both,GPU_PREVIOUS,GPU_CONSTANT,0);C3D_TexEnvFunc(e,C3D_Both,GPU_ADD);C3D_TexEnvColor(e,C2D_Color32f(positive[0],positive[1],positive[2],positive[3]));
  e=C3D_GetTexEnv(3);C3D_TexEnvSrc(e,C3D_Both,GPU_PREVIOUS,GPU_CONSTANT,0);C3D_TexEnvFunc(e,C3D_Both,GPU_SUBTRACT);C3D_TexEnvColor(e,C2D_Color32f(negative[0],negative[1],negative[2],negative[3]));
  if(G.premultiplied){
-  if(c.add[3]!=0)return false;
   e=C3D_GetTexEnv(2);C3D_TexEnvSrc(e,C3D_RGB,GPU_TEXTURE0,GPU_CONSTANT,GPU_PREVIOUS);C3D_TexEnvOpRgb(e,GPU_TEVOP_RGB_SRC_ALPHA,GPU_TEVOP_RGB_SRC_COLOR,GPU_TEVOP_RGB_SRC_COLOR);C3D_TexEnvFunc(e,C3D_RGB,GPU_MULTIPLY_ADD);C3D_TexEnvSrc(e,C3D_Alpha,GPU_PREVIOUS,0,0);C3D_TexEnvFunc(e,C3D_Alpha,GPU_REPLACE);
   e=C3D_GetTexEnv(3);C3D_TexEnvSrc(e,C3D_RGB,GPU_TEXTURE0,GPU_CONSTANT,GPU_PREVIOUS);C3D_TexEnvOpRgb(e,GPU_TEVOP_RGB_ONE_MINUS_SRC_ALPHA,GPU_TEVOP_RGB_SRC_COLOR,GPU_TEVOP_RGB_SRC_COLOR);C3D_TexEnvFunc(e,C3D_RGB,GPU_MULTIPLY_ADD);C3D_TexEnvSrc(e,C3D_Alpha,GPU_PREVIOUS,0,0);C3D_TexEnvFunc(e,C3D_Alpha,GPU_REPLACE);
   e=C3D_GetTexEnv(4);C3D_TexEnvSrc(e,C3D_RGB,GPU_PREVIOUS,GPU_CONSTANT,0);C3D_TexEnvFunc(e,C3D_RGB,GPU_SUBTRACT);C3D_TexEnvColor(e,C2D_Color32f(negative[0]+constant[0],negative[1]+constant[1],negative[2]+constant[2],0));
@@ -127,11 +136,15 @@ bool swl_gpu_reserve(unsigned groups){
  return true;
 }
 void swl_gpu_free(void){for(unsigned i=0;i<G.reserved;i++){C3D_RenderTargetDelete(G.surfaces[i].target);C3D_TexDelete(&G.surfaces[i].texture);}if(G.ready)C3D_TexDelete(&G.white);if(G.dvlb){shaderProgramFree(&G.shader);DVLB_Free(G.dvlb);}linearFree(G.vertices);memset(&G,0,sizeof G);}
+void swl_gpu_screen(C3D_RenderTarget *target,unsigned width,unsigned height){G.target=target;G.width=width;G.height=height;G.left=G.top=0;G.right=width;G.bottom=height;G.parentVertices=0;C3D_FrameDrawOn(target);C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,0,0);C3D_StencilTest(false,GPU_ALWAYS,0,0,0);C2D_Prepare();}
 void swl_gpu_frame(void){G.used=0;}
+void swl_gpu_commit(void){if(G.used)GSPGPU_FlushDataCache(G.vertices,G.used*sizeof(Vertex));}
 bool swl_gpu_embed(SWLScene *s,SWLMatrix view,const SWLGPUAtlas *atlases){
  if(!G.ready||!swl_prepare(s)||G.used+6*(swl_stats(s).draws+8)+G.parentVertices>VERTICES)return false;
- C2D_Flush();flush();const SWLGPUAtlas *previous=G.atlases;unsigned masks=G.masks,groups=G.groups;G.atlases=atlases;shader_state();projection();stencil_state();
- bool ok=swl_render(s,view,-1,1,&(SWLRenderer){.emit=emit,.mask=mask,.color=color},NULL);flush();G.atlases=previous;ok=ok&&G.masks==masks&&G.groups==groups;C3D_StencilTest(false,GPU_ALWAYS,0,0,0);C2D_Prepare();return ok;
+ C2D_Flush();flush();const SWLGPUAtlas *previous=G.atlases;unsigned masks=G.masks,groups=G.groups,width=G.width,height=G.height;C3D_RenderTarget *target=G.target;bool painting[8];memcpy(painting,G.painting,sizeof painting);G.atlases=atlases;shader_state();projection();stencil_state();
+ bool ok=swl_render(s,view,-1,1,&(SWLRenderer){.emit=emit,.mask=mask,.color=color},NULL);flush();ok=ok&&G.masks==masks&&G.groups==groups;
+ // Color groups can switch targets and viewport sizes inside an embedded garment.
+ G.atlases=previous;G.target=target;G.width=width;G.height=height;G.masks=masks;G.groups=groups;G.premultiplied=false;memcpy(G.painting,painting,sizeof painting);C3D_FrameDrawOn(target);C3D_StencilTest(false,GPU_ALWAYS,0,0,0);C2D_Prepare();return ok;
 }
 bool swl_gpu_draw(SWLScene *s,C3D_RenderTarget *target,unsigned width,unsigned height,SWLMatrix view,int layer,float interpolation,const SWLGPUAtlas *atlases,bool (*callback)(void *,float),bool (*needed)(void *,float),void *user,bool screenClip){
  if(!G.ready||!swl_prepare(s))return false;
@@ -142,5 +155,5 @@ bool swl_gpu_draw(SWLScene *s,C3D_RenderTarget *target,unsigned width,unsigned h
  // The depth/stencil attachment changes between the two drawing backends.
  // Invalidate the framebuffer cache without splitting the GX command list.
  GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_FLUSH,1);GPUCMD_AddWrite(GPUREG_FRAMEBUFFER_INVALIDATE,1);GPUCMD_AddWrite(GPUREG_EARLYDEPTH_CLEAR,1);
- bool ok=swl_render(s,view,layer,interpolation,&(SWLRenderer){.emit=emit,.mask=mask,.color=color,.depth=callback?depth:NULL},NULL);if(ok&&callback)ok=depth(NULL,FLT_MAX);flush();C3D_StencilTest(false,GPU_ALWAYS,0,0,0);C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,0,0);C2D_Prepare();return ok;
+ bool ok=swl_render(s,view,layer,interpolation,&(SWLRenderer){.emit=emit,.mask=mask,.color=color,.depth=callback?depth:NULL},NULL);if(ok&&callback)ok=depth(NULL,FLT_MAX);flush();C3D_StencilTest(false,GPU_ALWAYS,0,0,0);C3D_SetScissor(GPU_SCISSOR_DISABLE,0,0,0,0);C2D_Prepare();swl_gpu_screen(target,width,height);return ok;
 }

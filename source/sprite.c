@@ -7,11 +7,11 @@ static unsigned u16(const unsigned char *p){return p[0]|(unsigned)p[1]<<8;}
 static unsigned u32(const unsigned char *p){return u16(p)|u16(p+2)<<16;}
 Sprite *sprite_retain(Sprite *s){if(s)s->references++;return s;}
 void sprite_free(Sprite *s){if(!s||--s->references)return;free(s->sequences);free(s->frames);free(s->textures);free(s);}
-Sprite *sprite_load(const char *path){
+Sprite *sprite_load_cancel(const char *path,bool (*cancel)(void *),void *user){
  if(strlen(path)>=256)return NULL;
  FILE *file=fopen(path,"rb");if(!file)return NULL;Sprite *s=calloc(1,sizeof *s);if(!s){fclose(file);return NULL;}s->references=1;unsigned char h[64];long length;
  if(fseek(file,0,SEEK_END)||(length=ftell(file))<104||(unsigned long)length>SPRITE_MAX_BYTES||fseek(file,0,SEEK_SET)||fread(h,1,64,file)!=64)goto fail;
- if(memcmp(h,"GPA2",4)||u32(h+4)!=2||u32(h+8)!=(unsigned)length||!hash_file(file,h+32))goto fail;
+ if(memcmp(h,"GPA2",4)||u32(h+4)!=2||u32(h+8)!=(unsigned)length||!hash_file_cancel(file,h+32,cancel,user))goto fail;
  s->count=u32(h+12);s->pages=u32(h+16);s->actions=u32(h+20);s->fps=u16(h+28);unsigned scale=u32(h+24);if(!s->count||s->count>16384||!s->pages||s->pages>64||!s->actions||s->actions>512||!s->fps||s->fps>60||u16(h+30)>1||(scale!=0x3f000000u&&scale!=0x3f800000u))goto fail;s->nativeTimeline=u16(h+30)!=0;s->scale=scale==0x3f000000u?.5f:1;
  unsigned expected=64+s->actions*12+s->count*12+s->pages*16;if(expected>(unsigned)length)goto fail;
  s->sequences=calloc(s->actions,sizeof *s->sequences);s->frames=calloc(s->count,sizeof *s->frames);s->textures=calloc(s->pages,sizeof *s->textures);if(!s->sequences||!s->frames||!s->textures||fseek(file,64,SEEK_SET))goto fail;
@@ -23,6 +23,7 @@ Sprite *sprite_load(const char *path){
  strcpy(s->path,path);memcpy(s->digest,h+32,32);fclose(file);return s;
 fail:fclose(file);sprite_free(s);return NULL;
 }
+Sprite *sprite_load(const char *path){return sprite_load_cancel(path,NULL,NULL);}
 unsigned sprite_rotations(const Sprite *s){return s&&s->actions?s->sequences[s->actions-1].rotation:0;}
 unsigned sprite_variations(const Sprite *s,unsigned rotation){if(!s)return 0;unsigned lo=0,hi=s->actions;while(lo<hi){unsigned mid=lo+(hi-lo)/2;if(s->sequences[mid].rotation<=rotation)lo=mid+1;else hi=mid;}return lo&&s->sequences[lo-1].rotation==rotation?s->sequences[lo-1].variation:0;}
 const SpriteSequence *sprite_pose(const Sprite *s,unsigned rotation,unsigned variation){if(!s)return NULL;unsigned max=sprite_rotations(s);if(!rotation)rotation=1;if(rotation>max)rotation=max;max=sprite_variations(s,rotation);if(!variation)variation=1;if(variation>max)variation=max;unsigned key=rotation<<16|variation,lo=0,hi=s->actions;while(lo<hi){unsigned mid=lo+(hi-lo)/2;const SpriteSequence *q=&s->sequences[mid];unsigned value=q->rotation<<16|q->variation;if(value<key)lo=mid+1;else hi=mid;}return lo<s->actions?&s->sequences[lo]:NULL;}

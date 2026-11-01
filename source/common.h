@@ -16,6 +16,8 @@ typedef int32_t s32;
 #endif
 #ifdef GP_DEBUG_GAMES
 #define DATA_DIR "sdmc:/3ds/gopenguin-debug"
+#elif defined(GP_WEAR_AUX_CORE)
+#define DATA_DIR "sdmc:/3ds/gopenguin-core1-test"
 #else
 #define DATA_DIR "sdmc:/3ds/gopenguin"
 #endif

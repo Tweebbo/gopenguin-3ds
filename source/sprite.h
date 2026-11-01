@@ -9,6 +9,7 @@ typedef struct Sprite {
  SpriteSequence *sequences;GarmentFrame *frames;SpriteTexture *textures;
 } Sprite;
 Sprite *sprite_load(const char *path);
+Sprite *sprite_load_cancel(const char *path,bool (*cancel)(void *),void *user);
 Sprite *sprite_retain(Sprite *sprite);
 void sprite_free(Sprite *sprite);
 const SpriteSequence *sprite_pose(const Sprite *sprite,unsigned rotation,unsigned variation);

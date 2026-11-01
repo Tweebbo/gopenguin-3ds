@@ -6,5 +6,6 @@ typedef struct {uint16_t start,count,loop;} GarmentSequence;
 typedef struct {uint16_t x,y,w,h;int16_t left,top;} GarmentFrame;
 typedef struct {unsigned width,height,count,textureOffset,textureBytes;float scale;GarmentSequence sequences[30];GarmentFrame *frames;} Garment;
 bool garment_load(Garment *garment,const char *path);
+bool garment_load_cancel(Garment *garment,const char *path,bool (*cancel)(void *),void *user);
 void garment_free(Garment *garment);
 const GarmentFrame *garment_frame(const Garment *garment,unsigned action,unsigned clock);

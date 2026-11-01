@@ -8,10 +8,17 @@ BUILD := obj
 SOURCES := source source/transport vendor/qrcodegen
 INCLUDES := source
 ROMFS := romfs
+ifeq ($(CORE1_TEST),1)
+LAN_TEST := 1
+endif
 ifeq ($(LAN_TEST),1)
 TARGET := gopenguin-lan-test
 BUILD := obj-lan
 ROMFS := build/lan-romfs
+endif
+ifeq ($(CORE1_TEST),1)
+TARGET := gopenguin-core1-test
+BUILD := obj-core1-test
 endif
 ifeq ($(GPU_TEST),1)
 TARGET := gopenguin-gpu-test
@@ -44,6 +51,9 @@ ifeq ($(LAN_TEST),1)
 CFLAGS += -DGP_LAN_ONLY
 CFLAGS += -DGP_UPDATE_URL=\"http://10.0.2.2:18891/latest.json\"
 endif
+ifeq ($(CORE1_TEST),1)
+CFLAGS += -DGP_WEAR_AUX_CORE
+endif
 ifeq ($(GPU_TEST),1)
 CFLAGS += -DSWL_GPU_FRAME_QUADS=128
 endif
@@ -71,6 +81,7 @@ export OFILES += offline_shop.o
 export OFILES += gp_update.o update_manifest.o download.o
 export OFILES += chat_keyboard.o chat_log.o chat_log_view.o
 export OFILES += wear_index.o
+export OFILES += wear_loader.o wear_texture.o
 export OFILES += actor_index.o render_order.o name_tag.o
 export OFILES += incremental.o
 export OFILES += frame_hacks.o
@@ -92,9 +103,13 @@ endif
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/games/card-preview/*.gpk)
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/npcs/*.nav)
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/missions/1/*.gpk) $(wildcard $(CURDIR)/$(ROMFS)/clothing/*.gpa)
-.PHONY: all
-all: $(BUILD)
+.PHONY: all atlas-profile seasonal-profile
+all: $(BUILD) atlas-profile seasonal-profile
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+atlas-profile:
+	@python3 tools/compact-atlas.py --romfs "$(ROMFS)" --skip-missing
+seasonal-profile:
+	@python3 tools/restore-seasonal-assets.py --romfs "$(ROMFS)" --skip-missing
 $(BUILD):
 	@mkdir -p $(BUILD) out
 else

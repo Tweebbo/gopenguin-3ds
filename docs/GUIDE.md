@@ -6,6 +6,10 @@
 - In history, L/R turn pages, Up/Down scroll a line, A writes and B returns.
 - On the keyboard, START sends, SELECT closes, B deletes, X or L changes case, Y adds a space and R switches between letters and symbols.
 
+Letters appear when you touch a key. Send and Close act when you release on the same button.
+
+![The chat keyboard with a letter entered on touch-down](visual/chat-keyboard.png)
+
 ## Your penguin
 
 - Touch Me for clothes and inventory. Help → Account groups transfers, name and updates.
@@ -28,9 +32,13 @@ Left/Right inspects cards and A plays the selected card. Hold a card to inspect 
 
 Only the eight characters are needed. Codes work once and expire after ten minutes, so keep them private. Your penguin, coins and belongings stay the same.
 
-## Battery saver
+## Graphics
 
-Help → Battery saver keeps your preference on the SD card. On New 3DS it uses the normal CPU clock and 30 FPS. Turn it off for the faster CPU and up to 60 FPS. Original 3DS already uses the normal clock and 30 FPS.
+Help → Graphics → Hide other penguins reduces the work needed to draw a crowded room. It is off by default. Your penguin and room guides stay visible. Other players' chat, emotes, history and the People list stay available while their avatars are hidden. The setting is saved on the SD card.
+
+![Graphics settings with Hide other penguins and Battery saver off](visual/graphics.png)
+
+Help → Graphics → Battery saver keeps your preference on the SD card. On New 3DS it uses the normal CPU clock and 30 FPS. Turn it off for the faster CPU and up to 60 FPS. Original 3DS already uses the normal clock and 30 FPS.
 
 ## Updates
 

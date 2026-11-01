@@ -1,0 +1,19 @@
+{
+  "version": "1.3.4",
+  "emulator": "Azahar 2126.2",
+  "model": "Old 3DS",
+  "applicationMemoryKiB": 65536,
+  "physicalConsoleTested": false,
+  "sourceElfSha256": "a5aeda9c5ee28b9a18ffceaed75ef4dfec25e979086a11677956371df3d4b984",
+  "images": {
+    "town.png": "a9d05ad0e7970e86a68ab1c247eb36533df606b748466f476278cc46ab690317",
+    "graphics.png": "49abae96c8f520d6db16df97f5eba5d5a2e9ae4b7e87ab6619d9aeac69596d6f",
+    "chat-keyboard.png": "61c88ad039bcaed4e2eadae0835a9c5b73edc1cf347fb9ede1fdbf37827ab571"
+  },
+  "method": "Direct screen-region captures of the uninstrumented release inputs; no synthetic actors or generated art.",
+  "sourceCaptures": {
+    "town.png": "room-restored",
+    "graphics.png": "graphics",
+    "chat-keyboard.png": "keyboard"
+  }
+}

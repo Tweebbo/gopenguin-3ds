@@ -1,0 +1,1 @@
+Restores bottom-screen icons and Halloween rooms, map, poster and music. Improves clothing loading, rendering and chat keyboard response. Help > Graphics > Hide other penguins is optional and off by default; chat stays visible. Smaller incremental downloads are available. Update from Help > Account > Updates. Your saved penguin is retained.

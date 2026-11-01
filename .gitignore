@@ -2,6 +2,8 @@ build/
 obj*/
 out/
 romfs/
+!assets/halloween-2010/romfs/
+!assets/halloween-2010/romfs/**
 .env*
 *.pem
 *.key

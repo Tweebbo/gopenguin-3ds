@@ -8,3 +8,5 @@ cc -O2 -std=c11 -Wall -Wextra -Werror tests/name-tags.c source/name_tag.c -o bui
 build/old3ds-optimization/name-tags-test
 cc -O2 -std=c11 -Wall -Wextra -Werror tests/core.c source/demo.c source/actor_index.c -lm -o build/old3ds-optimization/core-test
 build/old3ds-optimization/core-test
+cc -O2 -std=c11 -Wall -Wextra -Werror -Isource tests/chat-keyboard.c source/chat_keyboard.c -o build/old3ds-optimization/keyboard-test
+build/old3ds-optimization/keyboard-test

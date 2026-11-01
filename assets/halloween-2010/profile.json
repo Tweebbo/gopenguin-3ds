@@ -1,0 +1,344 @@
+{
+  "name": "Halloween 2010 and original HUD icons",
+  "sourceRelease": "https://github.com/Tweebbo/gopenguin-3ds/releases/tag/v1.2.5",
+  "source3dsxSha256": "fd942374472f062bab149ad6a9a2d769a230a05a1462409110e0f5015f0a4547",
+  "files": [
+    {
+      "path": "audio/compression.json",
+      "bytes": 68943,
+      "sha256": "325e345b42a545d07506b1cc92709b96d1fb7975b7b3335f4b085de336a8e21a",
+      "replacesSha256": [
+        "8bb5d0284c3fd3b0652732640e9acb3af9964a56caf70a8beb3ce85ef536a0fa"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "audio/music/223/sound_1.wav.gpz",
+      "bytes": 3687658,
+      "sha256": "1ff5790b8b3fa57ecd3637b267a1f02f9e81cfec2f49cf34125698e0e4a06ed3",
+      "replacesSha256": [],
+      "allowMissing": true
+    },
+    {
+      "path": "audio/music/251/sound_1.wav.gpz",
+      "bytes": 2569993,
+      "sha256": "56a613dae1fbe9c9e730a527643878258fbe60c4e8d9d40e65084ab3afe78bad",
+      "replacesSha256": [],
+      "allowMissing": true
+    },
+    {
+      "path": "audio/music/252/sound_1.wav.gpz",
+      "bytes": 1682454,
+      "sha256": "8fcc6ab18389b9607656dfbc0fcf5a21266a07559315451b7adfe0e39bf622f9",
+      "replacesSha256": [],
+      "allowMissing": true
+    },
+    {
+      "path": "audio/music.json",
+      "bytes": 7076,
+      "sha256": "f98b8a5a392a13b91714cee36495ed52139a00616e49b37583b5de7c7abf7137",
+      "replacesSha256": [
+        "359ec22816f110b97ddccf520ac28fe796f3a4d8e4302f64e97f2215a828b772"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "audio/room-music.json",
+      "bytes": 1281,
+      "sha256": "7092827d821d7fd1530348854bf2ec0c4ea9ed63e969708b2e6c86a7ae7a8355",
+      "replacesSha256": [
+        "f5e6134799a27be50754b0d4a1fa3c687cd2f617af1dfdeb29d8232612ecaf26"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "books/halloween-poster.gpk",
+      "bytes": 238299,
+      "sha256": "083900a7bc6558e4c95eaa8054fed2cacf0ec261129a3b484d597f8cbec04333",
+      "replacesSha256": [
+        "a903a726ad6b7c0b47d2da5e6162c06546de02d4cdb674cf5a439211c97fefd5"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/icons.t3x",
+      "bytes": 9121,
+      "sha256": "d2c468b88db9be423738d88c4ce531e7fd4f91ed5a2f30602c33f39286979ed6",
+      "replacesSha256": [
+        "2f8c647d5b655e11e0681ec63c4d91b87eaa1f786d0e5f48f4159c999eb4a361"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/map-bottom.t3x",
+      "bytes": 101641,
+      "sha256": "32877e770b27fafb0a2fd05d38a7d15b0824cc0070a4415e97e1918b31a2170f",
+      "replacesSha256": [
+        "65b27a73892b7b426e7acb1182747b045184abadab0f86a1d1ba0028a0e014ff"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/map-top.t3x",
+      "bytes": 113669,
+      "sha256": "6fe43e9dd21b130141f18b2ef6c1d58474223c15b4b1ffec32cbc083befebb97",
+      "replacesSha256": [
+        "73cdb6194d7cbfb6c2f6f0e7990e2c84534a05a6d29f26ef119d33bac309fab4"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/map.t3x",
+      "bytes": 224621,
+      "sha256": "344610dbf2e207a6f4c505be999b1c1245059ab948092f74b291905c0ade551e",
+      "replacesSha256": [
+        "6fe8c7b9cc931eef20fe04a7638a59a44df280e06148069d2abe2edcf9b1fad2"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/mini-coffee.t3x",
+      "bytes": 85717,
+      "sha256": "611f19b9780b31ae3a9b3d9df9fe40d3065bcd6912e80aff7307bb1d3d935f5a",
+      "replacesSha256": [
+        "2f2a487295761a1a74272d4d8877f01daf5fc10796ee1fad48e502da9aaa47cd"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/mini-dance.t3x",
+      "bytes": 97773,
+      "sha256": "b94dd2e622e8d6b788324ed9bb381ba1800062725c7202b2ba0c4037e6c9bf42",
+      "replacesSha256": [
+        "6fcf7e4321e93d60e4b510b1d7c6d63082f9760fb0695be80d2aedfbba731685"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/mini-low-coffee.t3x",
+      "bytes": 25325,
+      "sha256": "4f2d0a84194cea00c1c50d57a5914f95841d51ec07336e5e40f6875aed82defa",
+      "replacesSha256": [
+        "1b0e901951899290502e8dccaa78dc7c95a8e3b9072820642a5e5f12aedb7035"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/mini-low-dance.t3x",
+      "bytes": 30093,
+      "sha256": "a4a5d129e084c3a1ecf89085a96fa991f23375eaeed78256787c9814966b0cc6",
+      "replacesSha256": [
+        "f0362c7326d1d94924434cd338856837063ecd621d31d1d5b4bb0b893b86efbb"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/mini-low-shop.t3x",
+      "bytes": 24693,
+      "sha256": "dd5423efd55f5344732ea6bc9759e731c4f94f13d629f72220f0b5ad09c3fb9c",
+      "replacesSha256": [
+        "027bcad5f1ac6034a875f0c2d387fc332773f550fdb647976a011d31a67769b6"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/mini-low-town.t3x",
+      "bytes": 27273,
+      "sha256": "49db6f332cad088914f6b53a7d057a508dc3126136d4ad7bbd99a3ee7756bde8",
+      "replacesSha256": [
+        "d54604d78d6de90eadd1eecc8354c08620bcbfc16f51e1e2ff73567dae042595"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/mini-shop.t3x",
+      "bytes": 83313,
+      "sha256": "040fd1f55452de149f5cd96e9712651007d2a10833a7a2a42b280bfae586f80e",
+      "replacesSha256": [
+        "956fdcc4462696df06f1ddf18ed6666014ee98555a1db1c0d296e0dc7d960c5b"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/mini-town.t3x",
+      "bytes": 95253,
+      "sha256": "8e2aacffb6f60d0687585ef335cf379f1ac69ae1ad5ff2cc402462d39f27320b",
+      "replacesSha256": [
+        "95377ab55ed57b5cf4cff3c6ee1d46eeab56ed4c72677d465f21fdc944b6e2de"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-coffee-0.t3x",
+      "bytes": 305137,
+      "sha256": "1c2b5a22f47b9197da98abf7031861a554224abd4231c3ba7dc0a9fc5862c2d1",
+      "replacesSha256": [
+        "f35b77907afa23875fad666afc1aa8a56d70a7babd4aa78590bcb9746bbdc7ba"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-coffee-1.t3x",
+      "bytes": 97765,
+      "sha256": "c46590350eedd952f9fbdbc45d59349479f53635010515d3b12a4e492fd1a048",
+      "replacesSha256": [],
+      "allowMissing": true
+    },
+    {
+      "path": "gfx/swl-coffee-2.t3x",
+      "bytes": 262477,
+      "sha256": "49ba6115786d444724e307d1ad1c323ff0501113796a6b80163bde341bef97eb",
+      "replacesSha256": [],
+      "allowMissing": true
+    },
+    {
+      "path": "gfx/swl-dance-0.t3x",
+      "bytes": 132013,
+      "sha256": "77bc0c64cc6d609c028e2d6f118cfc0efdc1616b4f0182c9859e532dd02112dc",
+      "replacesSha256": [
+        "314f0f92f8e9fa01236e74c7cfcfe6a7e22293ec7cf8911771807e22bf1ec4d8"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-dance-1.t3x",
+      "bytes": 89177,
+      "sha256": "64de095b418761090436f8e56208bd90709f8bbd075aa452007d96e9fd6309e6",
+      "replacesSha256": [
+        "95be51346cad36da1e9f58195b27ef99436090e64ded0974403dc32d5bddd2fe"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-dance-2.t3x",
+      "bytes": 131197,
+      "sha256": "17a8e01dae4912bbb3e6c38a26dea4b62b9cd9930168f40818d96e1fe777bb2c",
+      "replacesSha256": [
+        "01bfd2eb9a9a232e2e4ee58fbf7c405a074282469ad95ff744831f3d3a72aff1"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-dance-3.t3x",
+      "bytes": 275737,
+      "sha256": "5771fdd7439747dd0671e4480177eed9eab37b98fb1d16a8bfdcdd4bf0393770",
+      "replacesSha256": [
+        "1ad3c8b5cbd4e71c7d9ea556b25b46feb4ac3af0b0d3399a0e7720bc455f217d"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-dance-4.t3x",
+      "bytes": 184573,
+      "sha256": "fa72fc85fd578422553938ae1d78bc73c5591e8bfad84f6d8176f2381add73cd",
+      "replacesSha256": [
+        "dc5759b6bad98adb88eb67f88de1adf26bab2adef31ebdf66ae1224dc0b3f7ea"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-dance-5.t3x",
+      "bytes": 52081,
+      "sha256": "ae6ca8f7d13a13ff9730ae8bc91b3e75c30822cfb1ab385aaa1d9b87a4d6b67d",
+      "replacesSha256": [
+        "ce1bc2761daf7f6866ac9a7a3d18b5aee4af7a4849799f115f6758db8856a79d"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-shop-0.t3x",
+      "bytes": 235865,
+      "sha256": "aded0fb8e15b3214967c6128b9a0fd3aa3de9df3c7c420a5e724f2405eb7c075",
+      "replacesSha256": [
+        "fa13df2fa0b54ba63754b39bfacea7a1e84d505e6874d2e1daa2d64c32fc4c5b"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-town-0.t3x",
+      "bytes": 100593,
+      "sha256": "6b191f95a5e1e7feb189687ad8ee644348181fcbaaa29b736d474a991a7d2a35",
+      "replacesSha256": [
+        "37cb21094b94cf26444527bb90dec23ff8f8081559c249453925b979bba663fd"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "gfx/swl-town-1.t3x",
+      "bytes": 49237,
+      "sha256": "309e0cc9923e883f1fdfdaa551495f7a22bed8edafdd6b011a5e6369d2fb8183",
+      "replacesSha256": [],
+      "allowMissing": true
+    },
+    {
+      "path": "gfx/swl-town-2.t3x",
+      "bytes": 247829,
+      "sha256": "13d896b3989f64e81844f91508bf46e5a93853cd06aec15d1d40d0c55a4a160c",
+      "replacesSha256": [],
+      "allowMissing": true
+    },
+    {
+      "path": "scenes/coffee.nav",
+      "bytes": 319553,
+      "sha256": "f16c410ad308725dc4757bcc00478befe4512ea974fd93366a0420f501a6f827",
+      "replacesSha256": [
+        "32d8943378fc7846c89228660bdcad406f74c0a76a752ec9e7d4a38eacb3fe08"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "scenes/coffee.swl",
+      "bytes": 1218606,
+      "sha256": "d04ca8bbb03b5d63bb17b363bb4d100559f459a5e3609d2cc6ddfb99ae23e97a",
+      "replacesSha256": [
+        "e878aa3d3786a85237369a72f40355a581620420cab56240099acb55e6c8e566"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "scenes/dance.swl",
+      "bytes": 2671677,
+      "sha256": "a3ac0643c1781f1560479c874610caad334fca79e7e9afb305f38b57827dc649",
+      "replacesSha256": [
+        "87e0fd2a973b3eda86375ddd778e6cfcb7f0cfe6889d32a0b8dff85b7ca46613"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "scenes/shop.nav",
+      "bytes": 182597,
+      "sha256": "01da1616dc37a5b4a567781a28360b2c68734a6f21b19ffc2201fd10d26a9421",
+      "replacesSha256": [
+        "819c2c072c592b4607572459c3cd4a6df984f321f0132da79ee0dcc91b6c9724"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "scenes/shop.swl",
+      "bytes": 15833,
+      "sha256": "298acaa42693ed176b6249eed786bac6f75313cd03d62657a67c0c67914d2591",
+      "replacesSha256": [
+        "ffc27bffcf224a689ce450ed394718e77df44328192b9c97611219c5bcfdfb4a"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "scenes/town.nav",
+      "bytes": 456548,
+      "sha256": "f8af1180422218e2ee169f4766b72167827ba851b84ee44345b7d169368bb336",
+      "replacesSha256": [
+        "2dddd083f6a06ddac2a5e8337c7ee486f9ad76a6280b97004f6d3ff281066759"
+      ],
+      "allowMissing": false
+    },
+    {
+      "path": "scenes/town.swl",
+      "bytes": 40005,
+      "sha256": "ed2b5687ffffe9d363ccc1e88faa10082ec44fb75612e16257a36fd81268cbe4",
+      "replacesSha256": [
+        "67239edd219ee22347575c4a374f1b69242f3aa3e094ebee0594d3e1792bb03b"
+      ],
+      "allowMissing": false
+    }
+  ]
+}

@@ -15,4 +15,8 @@ bool wear_pose_contains(unsigned id,unsigned rotation,unsigned variation,unsigne
 void wear_fit(unsigned id,float x,float y,float width,float height);
 bool wear_contains(unsigned id,float x,float y,float scale,float px,float py);
 void wear_free(void);
+void wear_trim_unwanted(void);
 size_t wear_bytes(void);
+size_t wear_budget(void);
+void wear_request_stop(void);
+bool wear_stop_within(unsigned ms);

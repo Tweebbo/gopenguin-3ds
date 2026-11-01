@@ -1,0 +1,14 @@
+{
+  "atlas": "penguin-detail-0",
+  "source": "assets/performance/penguin-detail-0.png",
+  "sourceSha256": "bd49fea3ea72cb80fa2b0b4ffe60de343ea94976e90500784b0e4a0825c337f5",
+  "originalTextureSha256": "5354e17a0fe1ba9436d93cdceb9d3124f0c37ef1dde2b526d466087e1b819be3",
+  "sourceRelease": "GoPenguin 1.3.0/1.3.3",
+  "sourceTextureFormat": "RGBA8",
+  "targetTextureFormat": "RGBA4",
+  "width": 1024,
+  "height": 1024,
+  "beforeLinearBytes": 4194304,
+  "afterLinearBytes": 2097152,
+  "targetTextureSha256": "4e471ebbcee478d8007630fed67567a5bbb31e829e1ac99fe9d6724d6cf7fc26"
+}

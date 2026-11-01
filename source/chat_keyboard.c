@@ -21,9 +21,9 @@ static const char *letter(const ChatKeyboard *k,unsigned row,unsigned col,char o
 }
 static void append(ChatKeyboard *k,const char *text){
  size_t before=strlen(k->text),extra=strlen(text);if(characters(k->text)>=CHAT_KEYBOARD_CHARS||before+extra>=sizeof k->text)return;
- memcpy(k->text+before,text,extra+1);k->error[0]=0;if(k->shift&&!k->caps)k->shift=false;
+ memcpy(k->text+before,text,extra+1);k->layoutDirty=true;k->error[0]=0;if(k->shift&&!k->caps)k->shift=false;
 }
-static void backspace(ChatKeyboard *k){size_t n=strlen(k->text);if(!n)return;n--;while(n&&((unsigned char)k->text[n]&0xc0)==0x80)n--;k->text[n]=0;k->error[0]=0;}
+static void backspace(ChatKeyboard *k){size_t n=strlen(k->text);if(!n)return;n--;while(n&&((unsigned char)k->text[n]&0xc0)==0x80)n--;k->text[n]=0;k->layoutDirty=true;k->error[0]=0;}
 static void shift(ChatKeyboard *k){if(k->caps)k->caps=k->shift=false;else if(k->shift)k->caps=true;else k->shift=true;}
 static void send(ChatKeyboard *k){
  bool blank=true;for(const char *p=k->text;*p;p++)if(*p!=' ')blank=false;if(blank)return;
@@ -34,7 +34,7 @@ static void activate(ChatKeyboard *k,int key){
  if(key>=0&&key<40){char out[2];append(k,letter(k,(unsigned)key/10,(unsigned)key%10,out));}
  else if(key==40)shift(k);else if(key==41)k->symbols=!k->symbols;else if(key==42)append(k," ");else if(key==43)backspace(k);else if(key==44)send(k);else if(key==45)chat_keyboard_cancel(k);
 }
-void chat_keyboard_open(ChatKeyboard *k,bool (*callback)(const char *,void *),void *user){memset(k,0,sizeof *k);k->active=true;k->row=1;k->pressed=-1;k->send=callback;k->user=user;}
+void chat_keyboard_open(ChatKeyboard *k,bool (*callback)(const char *,void *),void *user){memset(k,0,sizeof *k);k->active=k->layoutDirty=true;k->row=1;k->pressed=-1;k->send=callback;k->user=user;}
 void chat_keyboard_cancel(ChatKeyboard *k){memset(k,0,sizeof *k);k->pressed=-1;}
 bool chat_keyboard_input(ChatKeyboard *k,unsigned down,unsigned held,u64 now){
  if(!k->active)return false;
@@ -64,25 +64,38 @@ static int hit(int x,int y){
 void chat_keyboard_touch(ChatKeyboard *k,int x,int y,bool pressed,bool released){
  if(!k->active)return;
  int key=hit(x,y);
- if(pressed)k->pressed=key;
- if(released){if(key>=0&&key==k->pressed){if(key<40){k->row=(unsigned)key/10;k->column=(unsigned)key%10;}else if(key<45){k->row=4;k->column=(unsigned)key-40;}activate(k,key);}k->pressed=-1;}
+ if(pressed){
+  k->pressed=key;
+  if(key>=0&&key<45){if(key<40){k->row=(unsigned)key/10;k->column=(unsigned)key%10;}else{k->row=4;k->column=(unsigned)key-40;}if(key<44)activate(k,key);}
+ }
+ if(released){if((key==44||key==45)&&key==k->pressed)activate(k,key);k->pressed=-1;}
 }
 static void draw_key(const ChatKeyboard *k,const ChatKeyboardWidgets *w,int key,float x,float y,float width,const char *label,bool selected){
  w->box(x+1,y+1,width-2,27,selected?0xffd23f:0xffffff);w->center(x+width/2,y+7,width<48?11:10,0x063a6e,label);
  if(k->pressed==key)w->box(x+3,y+26,width-6,2,0x063a6e);
 }
-void chat_keyboard_draw(const ChatKeyboard *k,u64 now,const ChatKeyboardWidgets *w){
+static void layout(ChatKeyboard *k,const ChatKeyboardWidgets *w){
+ if(!k->layoutDirty&&k->measure==w->width)return;
+ size_t offsets[CHAT_KEYBOARD_CHARS+1];unsigned count=0;offsets[0]=0;
+ for(size_t pos=0;k->text[pos]&&count<CHAT_KEYBOARD_CHARS;){pos++;while(k->text[pos]&&((unsigned char)k->text[pos]&0xc0)==0x80)pos++;offsets[++count]=pos;}
+ memset(k->lines,0,sizeof k->lines);k->lastLine=0;k->lastWidth=0;
+ for(unsigned first=0;first<count;){
+  unsigned low=first+1,high=count,best=first+1;char trial[CHAT_KEYBOARD_BYTES];
+  while(low<=high){unsigned end=(low+high)/2;size_t bytes=offsets[end]-offsets[first];memcpy(trial,k->text+offsets[first],bytes);trial[bytes]=0;
+   if(w->width(11,trial)<=290){best=end;low=end+1;}else high=end-1;
+  }
+  if(first){memcpy(k->lines[0],k->lines[k->lastLine],sizeof k->lines[0]);k->lastLine=1;}
+  size_t bytes=offsets[best]-offsets[first];memcpy(k->lines[k->lastLine],k->text+offsets[first],bytes);k->lines[k->lastLine][bytes]=0;first=best;
+ }
+ k->lastWidth=w->width(11,k->lines[k->lastLine]);k->measure=w->width;k->layoutDirty=false;
+}
+void chat_keyboard_draw(ChatKeyboard *k,u64 now,const ChatKeyboardWidgets *w){
  if(!k->active)return;
  w->box(0,0,320,240,0x07589a);w->text(8,5,12,0xffffff,"Say something");char count[24];snprintf(count,sizeof count,"%u/%u",characters(k->text),CHAT_KEYBOARD_CHARS);w->text(225,7,9,0xffffff,count);w->box(290,3,26,22,0xffd23f);w->center(303,7,11,0x063a6e,"X");
  w->box(5,29,310,32,0xffffff);
- char lines[8][CHAT_KEYBOARD_BYTES]={{0}};unsigned line=0;size_t used=0;
- for(const unsigned char *p=(const unsigned char *)k->text;*p;){size_t n=1;while(p[n]&&(p[n]&0xc0)==0x80)n++;char trial[CHAT_KEYBOARD_BYTES];memcpy(trial,lines[line],used);memcpy(trial+used,p,n);trial[used+n]=0;
-  if(used&&w->width(11,trial)>290&&line<7){line++;used=0;}
-  memcpy(lines[line]+used,p,n);used+=n;lines[line][used]=0;p+=n;
- }
- unsigned first=line?line-1:0;for(unsigned i=first;i<=line;i++)w->text(11,31+(i-first)*13,11,0x063a6e,lines[i]);
+ layout(k,w);unsigned line=k->lastLine;for(unsigned i=0;i<=line;i++)w->text(11,31+i*13,11,0x063a6e,k->lines[i]);
  if(!k->text[0])w->text(11,38,10,0x063a6e,"Touch keys or use the D-Pad and A");
- if(k->text[0]&&(now/500)%2)w->box(12+w->width(11,lines[line]),31+(line-first)*13,1,12,0x063a6e);
+ if(k->text[0]&&(now/500)%2)w->box(12+k->lastWidth,31+line*13,1,12,0x063a6e);
  for(unsigned row=0;row<4;row++)for(unsigned col=0;col<10;col++){char out[2];draw_key(k,w,(int)(row*10+col),col*32,66+row*30,32,letter(k,row,col,out),k->row==row&&k->column==col);}
  const char *actions[]={k->caps?"CAPS":"Shift",k->symbols?"abc":"áé#","Space","Del","Send"};
  for(unsigned i=0;i<5;i++)draw_key(k,w,40+(int)i,actionX[i],190,actionW[i],actions[i],(k->row==4&&k->column==i)||(i==0&&k->shift)||(i==1&&k->symbols));
