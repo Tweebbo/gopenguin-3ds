@@ -98,6 +98,18 @@ bool ui_button(float x,float y,float w,float h,bool pressed,bool enabled){
  return pressed;
 }
 
+bool ui_game_button(float x,float y,float w,float h,bool pressed,bool enabled){
+ float r=fminf(7,h/3),dy=pressed&&enabled?1:0;
+ ui_round(x,y+dy,w,h,r,0x182a38,255);
+ ui_round(x+1.5f,y+1.5f+dy,w-3,h-3,r-1.5f,enabled?(pressed?0xffe68a:0xffffff):0xd7e2e9,255);
+ return pressed&&enabled;
+}
+void ui_game_fill(float x,float y,float w,float h,uint32_t rgb){
+ if(rgb==0xffffff&&w>=80&&h>=30){
+  ui_round(x,y,w,h,7,0x182a38,255);ui_round(x+1.5f,y+1.5f,w-3,h-3,5.5f,rgb,255);
+ }else C2D_DrawRectSolid(x,y,.5f,w,h,colour(rgb,255));
+}
+
 void ui_box(float x,float y,float w,float h,uint32_t fill){
  bool down=ui_touching(x,y,w,h);
  if(fill==0x0085c7){ui_button(x,y,w,h,down,true);return;}

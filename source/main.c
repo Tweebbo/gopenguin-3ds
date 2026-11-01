@@ -30,6 +30,7 @@
 #include "transport/ws.h"
 #include "asset_cache.h"
 #include "wear.h"
+#include "frame_hacks.h"
 #include "room_dance.h"
 #include "client_data.h"
 #include "profile.h"
@@ -65,7 +66,7 @@
 typedef struct {C3D_Tex tex;Tex3DS_SubTexture sub;bool loaded;} Texture;
 #define MAP_LOW_TOP 28
 #define MAP_LOW_VISIBLE 177
-static Texture icons,emotes,islandMap,islandMapLow,fontTexture,paperBody,paperDetail,minimap,bookCovers,body[PENGUIN_PAGES],detail[PENGUIN_PAGES],sceneAtlas[SWL_MAX_PAGES];
+static Texture icons,emotes,islandMap,islandMapLow,fontTexture,paperBody,paperDetail,minimap,bookCovers,snowballTex,body[PENGUIN_PAGES],detail[PENGUIN_PAGES],sceneAtlas[SWL_MAX_PAGES];
 static Texture nameTagTexture;
 static struct {char name[49];NameTag tag;bool ready;} nameTags[CAST_COUNT];
 static bool nameTagsAttempted;
@@ -99,16 +100,17 @@ static int gameReturnX,gameReturnY,gameTouchX,gameTouchY;
 static unsigned gamePage;
 static const char *gameKeys[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron"
 #ifdef GP_NINJA_GAMES
- ,"card","fire"
+ ,"card","fire","mission1"
 #endif
 };
 static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters","Cart Surfer","Thin Ice","Ice Fishing","Find Four","Mancala","Sled Racing","Pizzatron 3000"
 #ifdef GP_NINJA_GAMES
- ,"Card-Jitsu","Card-Jitsu Fire"
+ ,"Card-Jitsu","Card-Jitsu Fire","PSA: Missing Puffles"
 #endif
 };
 static IglooGeometry *iglooGeometry;
 static MovieBank *roomBank;
+static float miningTime;
 static float furnitureTime[IGLOO_ITEMS];
 static SWLArt lastFloorArt;
 static bool floorPresent;
@@ -279,7 +281,8 @@ static void chat_font_text(float x,float y,unsigned size,unsigned colour,const c
 }
 static void chat_font_center(float x,float y,unsigned size,unsigned colour,const char *s){chat_font_text(x-chat_font_width(size,s)/2,y,size,colour,s);}
 static void icon(int i,float x,float y,float scale){crop(&icons,i*32,0,32,32,x,y,scale,0xffffffff);}
-static void actor(Actor *a,float x,float y,float scale){int action=a->action>=1&&a->action<=30?a->action:1;Sequence seq=sequences[action];unsigned n=seq.start+((unsigned)a->clock%seq.count);const PenguinFrame *f=&penguinFrames[n];C2D_SetTintMode(C2D_TintSolid);crop(&body[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));C2D_SetTintMode(C2D_TintMult);crop(&detail[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,0xffffffff);const unsigned slots[]={5,3,2,4,1,0};for(unsigned i=0;i<6;i++)wear_draw(a->look[slots[i]],(unsigned)action,(unsigned)a->clock,x,y,scale);}
+static unsigned actor_action(const Actor *a){unsigned base=a->action>=1&&a->action<=30?(unsigned)a->action:1,secret=penguin_secret_frame(a->look,base);return secret<COUNT(sequences)&&sequences[secret].count?secret:base;}
+static void actor(Actor *a,float x,float y,float scale){unsigned action=actor_action(a);Sequence seq=sequences[action];unsigned clock=(unsigned)a->clock,n=seq.start+(action==36&&clock>=seq.count?1+(clock-1)%(seq.count-1):clock%seq.count);const PenguinFrame *f=&penguinFrames[n];C2D_SetTintMode(C2D_TintSolid);crop(&body[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));C2D_SetTintMode(C2D_TintMult);crop(&detail[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,0xffffffff);const unsigned slots[]={5,3,2,4,1,0};for(unsigned i=0;i<6;i++)wear_draw(a->look[slots[i]],(unsigned)action,(unsigned)a->clock,x,y,scale);}
 static float actor_depth(unsigned index){return 901+index+1000*floorf(demo.actors[index].y);}
 static void make_order(ActorOrder *order,bool players,float scale,float ox,float oy){
  order->count=order->next=0;order->scale=scale;order->ox=ox;order->oy=oy;
@@ -409,10 +412,15 @@ static void top(void){
  Viewport view=viewport_cover(400,240,760,480,demo.zoom?demo.actors[0].x:380,demo.zoom?demo.actors[0].y-60:240,demo.zoom?1.2f:1);
  float scale=view.scale,ox=view.x,oy=view.y;
  ActorOrder order;make_order(&order,true,scale,ox,oy);scene_draw_to(sceneTop,400,240,scale,scale,ox,oy,&order);
+ for(unsigned i=0;!igloo.editing&&i<SNOWBALL_LIMIT;i++){
+  float x,y;
+  if(overlay_shadow(&overlay.balls[i],&x,&y))crop(&snowballTex,0,0,10,5,ox+(x-4.8f)*scale,oy+(y-2.4f)*scale,scale,0xffffffff);
+  if(overlay_ball(&overlay.balls[i],&x,&y))crop(&snowballTex,12,0,11,11,ox+(x-5.3f)*scale,oy+(y-5.3f)*scale,scale,0xffffffff);
+  if(overlay_impact(&overlay.balls[i],&x,&y))crop(&snowballTex,24,0,11,9,ox+(x-5.3f)*scale,oy+(y-2.85f)*scale,scale,0xffffffff);
+ }
  if(!igloo.editing)name_tags_refresh();
  for(unsigned i=0;!igloo.editing&&i<demo.count;i++){Actor *a=&demo.actors[i];name_tag_draw(i,ox+a->x*scale,oy+a->y*scale+2);}
 
- for(unsigned i=0;!igloo.editing&&i<OVERLAY_BALLS;i++){Snowball *ball=&overlay.balls[i];float x,y,groundY;if(!overlay_ball(ball,&x,&y,&groundY))continue;if(ball->landed){C2D_DrawEllipseSolid(ox+x*scale-5.3f*scale,oy+y*scale-4.3f*scale,.5f,10.6f*scale,8.6f*scale,rgb(0x7d8b99));C2D_DrawEllipseSolid(ox+x*scale-4.5f*scale,oy+y*scale-3.5f*scale,.5f,9.0f*scale,7.0f*scale,rgb(0xffffff));}else{C2D_DrawEllipseSolid(ox+x*scale-4.8f*scale,oy+groundY*scale-2.4f*scale,.4f,9.6f*scale,4.8f*scale,C2D_Color32(0x7d,0x8b,0x99,96));C2D_DrawCircleSolid(ox+x*scale,oy+y*scale,.5f,3.3f,rgb(0x7d8b99));C2D_DrawCircleSolid(ox+x*scale,oy+y*scale,.5f,2.5f,rgb(0xffffff));}}
  for(unsigned i=0;!igloo.editing&&i<demo.count;i++){Actor *a=&demo.actors[i];if(a->bubbleTime<=0)continue;if(a->emote>=1&&a->emote<=30){const EmoteArt *f=&emoteArt[a->emote-1];crop(&emotes,f->x,f->y,f->w,f->h,ox+(a->x+f->left)*scale,oy+(a->y+f->top)*scale,scale*2,0xffffffff);continue;}float x=fmaxf(80,fminf(320,ox+a->x*scale)),y=fmaxf(30,oy+a->y*scale-43);char label[145];snprintf(label,sizeof label,"%.144s",a->chat+a->chatOffset);char *separator=strchr(label,'|');if(separator)*separator=0;if(strlen(label)>45)strcpy(label+42,"...");float w=fminf(376,textWidth(11,label)+12);box(x-w/2,y,w,23,0xffffff);center(x,y+5,11,0x003366,label);}
  if(currentRoom){const char *title=currentRoom->title;ui_label(5,5,textWidth(11,title)+34,21);text(29,9,11,0xffffff,title);}
  if(demo.stats){char s[80];snprintf(s,sizeof s,"%.0f FPS  |  %.1f ms  |  %lu KB free",fps,frameMS,(unsigned long)(linearSpaceFree()/1024));box(4,219,392,18,0x003366);text(9,221,11,0xffffff,s);}
@@ -623,6 +631,7 @@ static void books_draw(void){
 static void content(const char *name){
  if(!name||!*name)return;
  if(!strcmp(name,"halloween_poster")||!strcmp(name,"unavailable:halloween_poster")){resource_open(800001,"",0);resourceInfo.title="HALLOWEEN";book.poster=true;return;}
+ if(!strcmp(name,"missions")||!strcmp(name,"unavailable:missions")){game_start("mission1");return;}
  if(!strncmp(name,"room:",5)){char key[40];float x,y;if(sscanf(name+5,"%39[^:]:%f:%f",key,&x,&y)==3&&isfinite(x)&&isfinite(y)){const IslandRoom *room=island_key(key);if(room){wantedRoom=room->id;wantedX=x;wantedY=y;}}return;}
  if(!strncmp(name,"igloo:",6)){open_igloo((unsigned)strtoul(name+6,NULL,10));return;}
  if(!strncmp(name,"buy:",4)){buy((unsigned)strtoul(name+4,NULL,10));return;}
@@ -1071,10 +1080,12 @@ static void game_leave(void *unused,unsigned room,int x,int y){(void)unused;if(g
 static void game_sound(void *unused,const char *bank,const char *name,unsigned volume,bool loop){(void)unused;gp_audio_named_sound(bank,name,(int)volume,loop);}
 static void game_stop_sounds(void *unused,const char *bank){(void)unused;(void)bank;gp_audio_scene("");}
 static void game_text(void *unused,float x,float y,float size,uint32_t colour,GameAlign align,const char *value){(void)unused;unsigned pixels=(unsigned)fmaxf(FONT_MIN,fminf(FONT_MAX,size));if(align==GAME_ALIGN_CENTER)x-=textWidth(pixels,value)/2.0f;else if(align==GAME_ALIGN_RIGHT)x-=textWidth(pixels,value);text(x,y,pixels,colour,value);}
-static void game_rect(void *unused,float x,float y,float w,float h,uint32_t colour){(void)unused;ui_fill(x,y,w,h,colour);}
-static void game_button(void *unused,float x,float y,float w,float h,const char *label,bool pressed,bool enabled){(void)unused;float dy=ui_button(x,y,w,h,pressed,enabled)?1:0;button_label(x+w/2,y+h/2+dy,11,enabled?0xffffff:0x003366,label);}
+static void game_rect(void *unused,float x,float y,float w,float h,uint32_t colour){(void)unused;ui_game_fill(x,y,w,h,colour);}
+static void game_button(void *unused,float x,float y,float w,float h,const char *label,bool pressed,bool enabled){(void)unused;float dy=ui_game_button(x,y,w,h,pressed,enabled)?1:0;button_label(x+w/2,y+h/2+dy,11,enabled?0x003366:0x526575,label);}
 static GameResource game_resource(void *unused,const char *name,char *path,size_t capacity){
  (void)unused;unsigned id=0;
+ static const char *missionRooms[]={"auntarctic","icerink","petshop","sportshop","iceberg","mountain","tallmountain","tallmountaintop","telescope","minigame","note","ui"};
+ for(unsigned i=0;i<COUNT(missionRooms);i++){char allowed[80];snprintf(allowed,sizeof allowed,"missions/1/%s.gpk",missionRooms[i]);if(!strcmp(name,allowed)){if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;FILE *f=fopen(path,"rb");if(!f)return GAME_RESOURCE_FAILED;fclose(f);return GAME_RESOURCE_READY;}}
 #ifdef GP_NINJA_GAMES
 #ifdef GP_DEBUG_GAMES
  if(!strcmp(name,"games/beans.gpk"))name="games/debug-beans.gpk";
@@ -1543,7 +1554,7 @@ int main(int argc,char **argv){
  gp_audio_init("romfs:/audio",settings.audio);aptHook(&audioHook,audio_focus,NULL);puffles_init(&puffles,pets_send,NULL);
  const char *sceneError=NULL;demo_init(&demo,NULL);lobby_init(&lobby,game_send,NULL);
  inventoryWidgets=(InventoryWidgets){box,text,center,portrait,portrait_hit,keyboard,message,item_colour,penguin_rename};
- bool ok=clientData&&gpuOK&&load(&icons,"icons")&&load(&emotes,"emotes")&&load(&fontTexture,"font")&&load(&paperBody,"paper-body")&&load(&paperDetail,"paper-detail")&&load(&bookCovers,"book-covers");
+ bool ok=clientData&&gpuOK&&load(&icons,"icons")&&load(&emotes,"emotes")&&load(&fontTexture,"font")&&load(&paperBody,"paper-body")&&load(&paperDetail,"paper-detail")&&load(&bookCovers,"book-covers")&&load(&snowballTex,"snowball");
  if(fontTexture.loaded)C3D_TexSetFilter(&fontTexture.tex,GPU_NEAREST,GPU_NEAREST);
  for(int i=0;i<PENGUIN_PAGES;i++){char name[30];snprintf(name,sizeof name,"penguin-body-%d",i);ok=load(&body[i],name)&&ok;snprintf(name,sizeof name,"penguin-detail-%d",i);ok=load(&detail[i],name)&&ok;}
  ok=enter_room(100,-1,-1)&&ok;
@@ -1695,6 +1706,8 @@ int main(int argc,char **argv){
   if(networkState==PNET_ONLINE&&puffles.mine!=pnet_id()){puffles_init(&puffles,pets_send,NULL);petRoom=0;pets_enter(roomBank?igloo.layout.owner:0);}
   else if((networkState==PNET_OFFLINE||networkState==PNET_RETRYING||networkState==PNET_SIGN_IN)&&puffles.mine){puffles_init(&puffles,pets_send,NULL);petRoom=wantedPetOwner=0;}
   if(wantedPetOwner&&networkState==PNET_ONLINE&&!puffles.snapshotPending&&puffles_request(&puffles,wantedPetOwner))wantedPetOwner=0;
+  Actor *miner=&demo.actors[0];bool digging=!game&&networkState==PNET_ONLINE&&currentRoomId==813&&!miner->walking&&miner->action==26&&penguin_secret_frame(miner->look,26)!=26&&(miner->look[4]==342||miner->look[0]==403||miner->look[0]==429||miner->look[0]==674||miner->look[0]==10403)&&miner->x>=126.55f&&miner->x<=636.4f&&miner->y>=274.4f&&miner->y<=482.4f;
+  if(digging){miningTime+=dt;if(miningTime>=2){miningTime=0;pnet_send("r#cdu",0,NULL);}}else miningTime=0;
   demo_index(&demo);puffles.poseReady=pets_pose_ready;puffles_step(&puffles,&demo,dt);if(*puffles.error){modal_message(puffles.error);puffles.error[0]=0;}
   if(igloo.awaitingStyle&&now-styles.started>15000){igloo.awaitingStyle=false;igloo.slotsReady=igloo.activeKnown=false;modal_message("The igloo change timed out. Refresh to check the server state before retrying.");}
   if(igloo.awaitingMusic&&now-musicStarted>15000){igloo.awaitingMusic=false;modal_message("The music change timed out. Reopen your igloo to check its saved music.");}
@@ -1729,7 +1742,7 @@ int main(int argc,char **argv){
   if(styles.preparing||igloo.awaitingStyle){demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;}
   if(!game){bool holdTube=tubeArmed;sceneClock+=dt;while(sceneClock>=1/swl_rate(scene)){epf_access_tick(&epfAccess,&epfHooks);if(holdTube)holdTube=false;else room_tube_tick(&roomTube,&tubeHooks);sceneOK=swl_tick(scene)&&sceneOK;sceneClock-=1/swl_rate(scene);}interpolation=sceneClock*swl_rate(scene);swl_begin(scene);}
   if(!game){
-  wear_begin();if(roomBank&&!book.open){if(igloo.layout.floor)wear_want_pose(asset_key(ASSET_FLOOR,igloo.layout.floor),iglooGeometry->floorFrame,1);for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];wear_want_pose(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame);}}if(igloo.editing&&editor.inventory){editor_inventory();for(unsigned n=editor.page*6;n<editor.count&&n<(editor.page+1)*6;n++)wear_want(asset_key(ASSET_FURNITURE_ICON,editor.items[n]));}if(!book.open&&demo.tab==7){Actor *a=selected_actor();if(a){if(a->look[7])wear_want(asset_key(ASSET_PHOTO,a->look[7]));for(unsigned i=0;i<6;i++)wear_want(asset_key(ASSET_PAPER,a->look[i]));if(a->look[6])wear_want(asset_key(ASSET_ICON,a->look[6]));}}if(!book.open&&demo.tab==2)inventory_prepare(&inventoryUI,clientData,&profile,&demo.actors[0]);for(unsigned i=0;!book.open&&i<demo.count;i++){const unsigned slots[]={5,3,2,4,1,0};for(unsigned slot=0;slot<6;slot++)wear_want(demo.actors[i].look[slots[slot]]);}
+  wear_begin();if(roomBank&&!book.open){if(igloo.layout.floor)wear_want_pose(asset_key(ASSET_FLOOR,igloo.layout.floor),iglooGeometry->floorFrame,1);for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];wear_want_pose(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame);}}if(igloo.editing&&editor.inventory){editor_inventory();for(unsigned n=editor.page*6;n<editor.count&&n<(editor.page+1)*6;n++)wear_want(asset_key(ASSET_FURNITURE_ICON,editor.items[n]));}if(!book.open&&demo.tab==7){Actor *a=selected_actor();if(a){if(a->look[7])wear_want(asset_key(ASSET_PHOTO,a->look[7]));for(unsigned i=0;i<6;i++)wear_want(asset_key(ASSET_PAPER,a->look[i]));if(a->look[6])wear_want(asset_key(ASSET_ICON,a->look[6]));}}if(!book.open&&demo.tab==2)inventory_prepare(&inventoryUI,clientData,&profile,&demo.actors[0]);for(unsigned i=0;!book.open&&i<demo.count;i++){const unsigned slots[]={5,3,2,4,1,0};for(unsigned slot=0;slot<6;slot++)wear_want_pose(demo.actors[i].look[slots[slot]],actor_action(&demo.actors[i]),1);}
   if(!book.open)for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo)||(demo.tab==13&&puffles.pets[i].owner==pnet_id()&&puffles.pets[i].id==petSelected))wear_want_pose(asset_key(ASSET_PUFFLE,puffles.pets[i].type+1),puffles.pets[i].frame,1);
   }
   C3D_FrameBegin(C3D_FRAME_SYNCDRAW);game_transition();
@@ -1767,7 +1780,7 @@ int main(int argc,char **argv){
  // No C3D_FrameSync here: after HOME > Close the app no longer owns the GPU and VBlank events
  // stop arriving, so a frame sync can wait forever. The last frame's commands finish well within this.
  svcSleepThread(50*1000000LL);EXIT_PHASE("gpu-idle");
- game_port_free(game);movie_bank_free(book.bank);wear_free();if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);Texture *all[]={&icons,&emotes,&islandMap,&islandMapLow,&fontTexture,&nameTagTexture,&paperBody,&paperDetail,&minimap,&bookCovers};for(unsigned i=0;i<sizeof all/sizeof all[0];i++)if(all[i]->loaded)C3D_TexDelete(&all[i]->tex);for(int i=0;i<PENGUIN_PAGES;i++){if(body[i].loaded)C3D_TexDelete(&body[i].tex);if(detail[i].loaded)C3D_TexDelete(&detail[i].tex);}for(unsigned i=0;i<SWL_MAX_PAGES;i++)if(sceneAtlas[i].loaded)C3D_TexDelete(&sceneAtlas[i].tex);
+ game_port_free(game);movie_bank_free(book.bank);wear_free();if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);Texture *all[]={&icons,&emotes,&islandMap,&islandMapLow,&fontTexture,&nameTagTexture,&paperBody,&paperDetail,&minimap,&bookCovers,&snowballTex};for(unsigned i=0;i<sizeof all/sizeof all[0];i++)if(all[i]->loaded)C3D_TexDelete(&all[i]->tex);for(int i=0;i<PENGUIN_PAGES;i++){if(body[i].loaded)C3D_TexDelete(&body[i].tex);if(detail[i].loaded)C3D_TexDelete(&detail[i].tex);}for(unsigned i=0;i<SWL_MAX_PAGES;i++)if(sceneAtlas[i].loaded)C3D_TexDelete(&sceneAtlas[i].tex);
  client_data_free(clientData);if(shellText)json_decref(shellText);EXIT_PHASE("assets");
  chat_keyboard_cancel(&chatKeyboard);if(chatGlyphs)C2D_TextBufDelete(chatGlyphs);if(chatMeasure)C2D_TextBufDelete(chatMeasure);
  swl_gpu_free();C2D_Fini();C3D_Fini();EXIT_PHASE("gpu");

@@ -26,6 +26,8 @@ void ui_header(void);
 void ui_box(float x,float y,float w,float h,uint32_t fill);
 /** Raised round button; returns whether it is drawn pressed. */
 bool ui_button(float x,float y,float w,float h,bool pressed,bool enabled);
+bool ui_game_button(float x,float y,float w,float h,bool pressed,bool enabled);
+void ui_game_fill(float x,float y,float w,float h,uint32_t rgb);
 /** A minigame's lower-screen fill: the whole screen becomes a gradient of its colour, smaller fills round. */
 void ui_fill(float x,float y,float w,float h,uint32_t rgb);
 /** Bottom tab bar background (y 207..240) and the raised pill of the active tab. */

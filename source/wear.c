@@ -53,7 +53,9 @@ void wear_update(void){
  for(unsigned n=0;n<count;n++){
   Slot *resident=find(wanted[n].id,wanted[n].rotation,wanted[n].variation);if(resident){resident->used=frame;continue;}
   if(needed[n]&&!fits(n,needed[n]))continue;
-  char path[256];if(!asset_cache_request(wanted[n].id,path,sizeof path))continue;
+  char path[256];bool local=false;
+  if(wanted[n].id<0x100000){snprintf(path,sizeof path,"romfs:/clothing/%u.gpa",wanted[n].id);FILE *file=fopen(path,"rb");if(file){local=true;fclose(file);}}
+  if(!local&&!asset_cache_request(wanted[n].id,path,sizeof path))continue;
   GPPackage package;
   if(package_open(&package,path)){
    const size_t limit=2u*1024u*1024u;
@@ -65,7 +67,8 @@ void wear_update(void){
    available->bank=bank;available->id=wanted[n].id;available->used=frame;available->loaded=true;indexDirty=true;bytes+=movie_bank_bytes(bank);return;
   }
   Sprite *sprite=NULL;Garment garment={0};unsigned page=0,width=0,height=0;
-  if((wanted[n].id>>20)>=ASSET_FURNITURE){for(unsigned i=0;i<SLOTS;i++)if(slots[i].loaded&&slots[i].id==wanted[n].id&&slots[i].sprite){sprite=sprite_retain(slots[i].sprite);break;}if(!sprite)sprite=sprite_load(path);if(!sprite)return;const SpriteSequence *pose=sprite_pose(sprite,wanted[n].rotation,wanted[n].variation);if(!pose){sprite_free(sprite);return;}page=pose->page;width=sprite->textures[page].width;height=sprite->textures[page].height;
+  char format[4]={0};FILE *probe=fopen(path,"rb");bool spriteFormat=probe&&fread(format,1,4,probe)==4&&!memcmp(format,"GPA2",4);if(probe)fclose(probe);
+  if(spriteFormat||(wanted[n].id>>20)>=ASSET_FURNITURE){for(unsigned i=0;i<SLOTS;i++)if(slots[i].loaded&&slots[i].id==wanted[n].id&&slots[i].sprite){sprite=sprite_retain(slots[i].sprite);break;}if(!sprite)sprite=sprite_load(path);if(!sprite)return;const SpriteSequence *pose=sprite_pose(sprite,wanted[n].rotation,wanted[n].variation);if(!pose){sprite_free(sprite);return;}page=pose->page;width=sprite->textures[page].width;height=sprite->textures[page].height;
   }else{if(!garment_load(&garment,path))return;width=garment.width;height=garment.height;}
   size_t need=(size_t)width*height*4;needed[n]=(unsigned)need;if(!fits(n,need)){garment_free(&garment);sprite_free(sprite);return;}
   Slot *freeSlot=NULL;

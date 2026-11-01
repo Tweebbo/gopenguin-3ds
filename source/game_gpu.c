@@ -39,10 +39,11 @@ static bool draw(GamePort *port,C3D_RenderTarget *target,unsigned width,unsigned
   GameBank *bank=game_port_bank(port,i);SWLMatrix local={1,0,0,1,0,0};
   unsigned frame=lower&&c->lower_frame?c->lower_frame(game_port_game(port),i):0;
   if(lower&&c->lower_frame&&!frame)continue;
-  if(!bank||(c->bank_view&&!c->bank_view(game_port_game(port),i,&local)))continue;
+  bool separate=lower&&c->lower_bank_view;
+  if(!bank||(separate?!c->lower_bank_view(game_port_game(port),i,&local):(c->bank_view&&!c->bank_view(game_port_game(port),i,&local))))continue;
   bool alternate=frame&&frame!=swl_frame(game_bank_scene(bank),"root");
   if(alternate)swl_view_frame(game_bank_scene(bank),"root",frame);
-  Layer layer={port,i,swl_matrix_multiply(view,local)};
+  Layer layer={port,i,separate?local:swl_matrix_multiply(view,local)};
   ok=movie_bank_draw_depth(bank->bank,target,width,height,layer.view,alternate?1:game_port_interpolation(port),c->overlay?depth:NULL,NULL,&layer,lower||c->top_view)&&ok;
   if(alternate)swl_view_frame(game_bank_scene(bank),"root",0);
  }

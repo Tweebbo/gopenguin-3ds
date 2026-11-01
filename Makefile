@@ -73,6 +73,7 @@ export OFILES += chat_keyboard.o chat_log.o chat_log_view.o
 export OFILES += wear_index.o
 export OFILES += actor_index.o render_order.o name_tag.o
 export OFILES += incremental.o
+export OFILES += frame_hacks.o
 ifeq ($(GPU_TEST),1)
 export OFILES := gpu_test.o swl.o swl_gpu.o swl_shader.shbin.o
 endif
@@ -90,6 +91,7 @@ export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/games/debug-card-preview/*.gpk
 endif
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/games/card-preview/*.gpk)
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/npcs/*.nav)
+export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/missions/1/*.gpk) $(wildcard $(CURDIR)/$(ROMFS)/clothing/*.gpa)
 .PHONY: all
 all: $(BUILD)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile

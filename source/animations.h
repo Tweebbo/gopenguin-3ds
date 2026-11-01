@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 typedef struct {uint16_t start,count;} Sequence;
-static const Sequence sequences[31] = {
+static const Sequence sequences[54] = {
  [1]={0,1},
  [2]={1,1},
  [3]={2,1},
@@ -32,5 +32,7 @@ static const Sequence sequences[31] = {
  [28]={333,28},
  [29]={361,28},
  [30]={389,28},
+ [36]={417,32},
+ [53]={449,25},
 };
 #define SPRITE_PAGES 2

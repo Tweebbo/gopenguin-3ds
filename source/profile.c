@@ -15,7 +15,7 @@ void profile_apply(GPProfile *p,const PNetMessage *m,unsigned mine){
  else if(!strcmp(m->command,"lp")&&m->count>=6){p->coins=value(m->args[1]);p->age=value(m->args[5]);p->revision++;}
  else if(!strcmp(m->command,"gi")){p->count=0;for(unsigned i=0;i<m->count&&p->count<INVENTORY_LIMIT;i++){unsigned id=value(m->args[i]);if(id)p->inventory[p->count++]=id;}qsort(p->inventory,p->count,sizeof *p->inventory,compare);p->ready=true;p->revision++;p->inventoryRevision++;}
  else if(!strcmp(m->command,"ai")&&m->count>=2){unsigned id=value(m->args[0]);if(id&&!profile_has(p,id)&&p->count<INVENTORY_LIMIT){p->inventory[p->count++]=id;qsort(p->inventory,p->count,sizeof *p->inventory,compare);}p->coins=value(m->args[1]);p->revision++;p->inventoryRevision++;}
- else if((!strcmp(m->command,"af")||!strcmp(m->command,"au")||!strcmp(m->command,"ag"))&&m->count>=2){p->coins=value(m->args[1]);p->revision++;}
+ else if((!strcmp(m->command,"af")||!strcmp(m->command,"au")||!strcmp(m->command,"ag")||!strcmp(m->command,"cdu"))&&m->count>=2){p->coins=value(m->args[1]);p->revision++;}
  else if((!strcmp(m->command,"gc")||!strcmp(m->command,"gtc")||!strcmp(m->command,"ac")||!strcmp(m->command,"ms"))&&m->count){p->coins=value(m->args[0]);p->revision++;}
  else if(!strcmp(m->command,"gps")&&m->count>=2&&value(m->args[0])==mine){p->stamps=0;for(const char *c=m->args[1];*c;c++)if(*c=='|')p->stamps++;if(*m->args[1])p->stamps++;p->revision++;}
  else if(!strcmp(m->command,"e")&&m->count){unsigned code=value(m->args[0]);snprintf(p->error,sizeof p->error,"%s",code==400?"You already have this item.":code==401?"You need more coins.":code==402?"This item is not available.":"The server refused this action.");}

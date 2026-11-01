@@ -11,10 +11,11 @@
 extern const GameController GAME_HYDRO_CONTROLLER,GAME_ROUNDUP_CONTROLLER,GAME_BEANS_CONTROLLER,GAME_CART_CONTROLLER,GAME_THINICE_CONTROLLER,GAME_FOUR_CONTROLLER,GAME_MANCALA_CONTROLLER,GAME_SLED_CONTROLLER,GAME_PIZZATRON_CONTROLLER,GAME_FISH_CONTROLLER;
 #ifdef GP_NINJA_GAMES
 extern const GameController GAME_CARD_CONTROLLER,GAME_FIRE_CONTROLLER;
+extern const GameController GAME_AGENT_CONTROLLER;
 #endif
 static const GameController *const CONTROLLERS[]={&GAME_HYDRO_CONTROLLER,&GAME_ROUNDUP_CONTROLLER,&GAME_BEANS_CONTROLLER,&GAME_CART_CONTROLLER,&GAME_FOUR_CONTROLLER,&GAME_MANCALA_CONTROLLER,&GAME_SLED_CONTROLLER,&GAME_PIZZATRON_CONTROLLER,&GAME_FISH_CONTROLLER,
 #ifdef GP_NINJA_GAMES
- &GAME_CARD_CONTROLLER,&GAME_FIRE_CONTROLLER,
+ &GAME_CARD_CONTROLLER,&GAME_FIRE_CONTROLLER,&GAME_AGENT_CONTROLLER,
 #endif
 // Thin Ice's 285-cell board needs the SWL override table proposed in build/games/swl-override-hash.patch.
 #ifdef GAME_THINICE_READY
@@ -23,7 +24,7 @@ static const GameController *const CONTROLLERS[]={&GAME_HYDRO_CONTROLLER,&GAME_R
 };
 static const char *const KEYS[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron"
 #ifdef GP_NINJA_GAMES
- ,"card","fire"
+ ,"card","fire","mission1"
 #endif
 };
 
@@ -237,8 +238,12 @@ void game_port_text(GamePort *p,float x,float y,float size,uint32_t rgb,GameAlig
 void game_port_rect(GamePort *p,float x,float y,float w,float h,uint32_t rgb){if(p->host.rect)p->host.rect(p->host.user,x,y,w,h,rgb);}
 void game_port_pad(GamePort *p,float x,float y,float w,float h,const char *label,bool pressed){if(p->host.button)p->host.button(p->host.user,x,y,w,h,label,pressed,true);}
 bool game_port_button(GamePort *p,unsigned id,float x,float y,float w,float h,const char *label,bool enabled){
- if(p->nextCount<GAME_BUTTONS)p->next[p->nextCount++]=(Button){id,x,y,w,h,enabled};
+ game_port_hotspot(p,id,x,y,w,h,enabled);
  if(p->host.button)p->host.button(p->host.user,x,y,w,h,label,p->pressed==id,enabled);
+ return enabled;
+}
+bool game_port_hotspot(GamePort *p,unsigned id,float x,float y,float w,float h,bool enabled){
+ if(p->nextCount<GAME_BUTTONS)p->next[p->nextCount++]=(Button){id,x,y,w,h,enabled};
  return enabled;
 }
 unsigned game_port_clicked(GamePort *p){return p->clicked;}

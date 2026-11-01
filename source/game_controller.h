@@ -39,6 +39,8 @@ typedef struct {
  /** Dual screen: stage-to-lower-screen matrix when the game also draws its scene on the
   *  touch screen (under draw_bottom's HUD); false keeps the lower screen to draw_bottom. */
  bool (*lower_view)(void *game,SWLMatrix *view);
+ /** Per-bank stage-to-touch-screen composition, replacing lower_view's common matrix. */
+ bool (*lower_bank_view)(void *game,unsigned bank,SWLMatrix *view);
  /** Optional composition frame for each lower-screen bank; 0 hides that bank. */
  unsigned (*lower_frame)(void *game,unsigned bank);
 } GameController;
@@ -83,6 +85,7 @@ void game_port_sound(GamePort *port,const char *name,unsigned volume,bool loop);
 void game_port_stop_sounds(GamePort *port);
 /** Lower-screen helpers: a button rectangle with hit testing kept in the port. */
 bool game_port_button(GamePort *port,unsigned id,float x,float y,float w,float h,const char *label,bool enabled);
+bool game_port_hotspot(GamePort *port,unsigned id,float x,float y,float w,float h,bool enabled);
 /** A held movement pad: controller touch/held events own its input. */
 void game_port_pad(GamePort *port,float x,float y,float w,float h,const char *label,bool pressed);
 /** The id of the button released this frame under the stylus, or 0. */
