@@ -1,0 +1,39 @@
+# Player guide
+
+## Chat
+
+- Press R or touch Chat to write. Press L to read the last 100 messages of this session.
+- In history, L/R turn pages, Up/Down scroll a line, A writes and B returns.
+- On the keyboard, START sends, SELECT closes, B deletes, X or L changes case, Y adds a space and R switches between letters and symbols.
+
+## Your penguin
+
+- Touch Me for clothes and inventory. Help → Account groups transfers, name and updates.
+- Your saved penguin connects automatically. The first connection creates one for you.
+- Change your name in Help → Account → Change name. Your connection and penguin ID stay the same.
+- Talk to Captain Rockhopper in Town to receive his free background. You do not need to send a suggestion.
+- While seated, turn with the C-Stick, or hold B and use the Circle Pad, D-Pad or map.
+
+## Games
+
+Card-Jitsu and Card-Jitsu Fire are available from the Sensei in the Dojo and Fire Dojo, or from Help → Games. Get a starter deck from the game menu when needed.
+
+Left/Right inspects cards and A plays the selected card. Hold a card to inspect its full illustration, release to play, or drag outside to cancel. Matches and belt progress are saved by the server.
+
+## Continue on another device
+
+**From 3DS to PC or phone:** in Help → Account → Transfer penguin, choose To PC. Scan the QR with your phone, or open gopenguin.lol and enter the short code in Account → Enter device code.
+
+**From PC or phone to 3DS:** choose Account → Use on another device on the website, then enter the code in Help → Account → Transfer penguin → From PC.
+
+Only the eight characters are needed. Codes work once and expire after ten minutes, so keep them private. Your penguin, coins and belongings stay the same.
+
+## Battery saver
+
+Help → Battery saver keeps your preference on the SD card. On New 3DS it uses the normal CPU clock and 30 FPS. Turn it off for the faster CPU and up to 60 FPS. Original 3DS already uses the normal clock and 30 FPS.
+
+## Updates
+
+GoPenguin checks for releases in the background and offers updates inside the game. You can also open Help → Account → Updates. Downloads resume after a connection drop and are verified before installation. The CIA keeps its Title ID and your saved penguin.
+
+If the game stops at "Could not load demo assets", install the latest CIA or 3DSX again. Your penguin is kept.

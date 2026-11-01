@@ -8,3 +8,4 @@ romfs/
 *.log
 *.md
 !README.md
+!docs/*.md
