@@ -638,6 +638,23 @@ static void content(const char *name){
 static bool keyboard(char *value,size_t capacity,const char *hint,bool password){SwkbdState keyboard;swkbdInit(&keyboard,SWKBD_TYPE_NORMAL,2,(int)capacity-1);swkbdSetHintText(&keyboard,hint);swkbdSetInitialText(&keyboard,value);swkbdSetValidation(&keyboard,SWKBD_NOTEMPTY_NOTBLANK,0,0);swkbdSetPasswordMode(&keyboard,password?SWKBD_PASSWORD_HIDE:SWKBD_PASSWORD_NONE);gp_audio_pause(true);bool accepted=swkbdInputText(&keyboard,value,capacity)==SWKBD_BUTTON_CONFIRM;gp_audio_pause(false);return accepted;}
 static void stop_position(void){Actor *a=&demo.actors[0];if(pnet_state()==PNET_ONLINE){char x[20],y[20];snprintf(x,sizeof x,"%d",(int)lroundf(a->x));snprintf(y,sizeof y,"%d",(int)lroundf(a->y));pnet_send("u#sp",2,(const char *[]){x,y});}actionPosition=true;}
 static void action(int frame){stop_position();demo_action(&demo,frame);char arg[16];snprintf(arg,sizeof arg,"%d",demo.actors[0].action);if(pnet_state()==PNET_ONLINE)pnet_send(frame==17?"u#sf":"u#sa",1,(const char *[]){arg});}
+static bool sitting(void){int action=demo.actors[0].action;return action>=17&&action<=24;}
+/** Turn the seated penguin in place instead of walking to change the sit pose. */
+static void sit_turn(float dx,float dy){
+ if(!sitting()||(fabsf(dx)<0.3f&&fabsf(dy)<0.3f))return;
+ int d=(int)lroundf((atan2f(dy,dx)*180.0f/3.14159265f-90)/45);
+ int direction=(d%8+8)%8+1;
+ if(direction==demo.actors[0].direction)return;
+ demo.actors[0].direction=direction;
+ action(17);
+}
+/** B + stylus on the minimap: the tap direction around the penguin is the new seat pose. */
+static void sit_touch(int px,int py){
+ Actor *a=&demo.actors[0];
+ float sx=9+a->x*175.0f/760.0f,sy=36+a->y*110.0f/480.0f;
+ float dx=px-sx,dy=py-sy;
+ if(fabsf(dx)>4||fabsf(dy)>4)sit_turn(dx,dy);
+}
 static void snowball(void){aiming=!aiming;if(aiming){stop_position();demo_action(&demo,demo.actors[0].direction);message("Touch the minimap to aim your snowball.");}}
 static void throw_to(Actor *a,float x,float y){int d=(int)lroundf((atan2f(y-a->y,x-a->x)*180.0f/3.14159265f-90)/45);d=(d%8+8)%8+1;a->walking=false;a->clock=0;a->action=26+(int)lroundf(d/2.0f);overlay_throw(&overlay,a->x,a->y,x,y);}
 static bool chat_send(const char *value,void *unused){
@@ -1560,7 +1577,7 @@ int main(int argc,char **argv){
    if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);gameTouchX=p.px;gameTouchY=p.py;game_port_touch(game,down&KEY_TOUCH?GAME_TOUCH_DOWN:GAME_TOUCH_MOVE,gameTouchX,gameTouchY);}
    if(hidKeysUp()&KEY_TOUCH)game_port_touch(game,GAME_TOUCH_UP,gameTouchX,gameTouchY);
   }else{
-   if(down&KEY_TOUCH){touchPosition p;hidTouchRead(&p);touch(p.px,p.py);}
+   if(down&KEY_TOUCH){touchPosition p;hidTouchRead(&p);if((held&KEY_B)&&sitting()&&!modal.open&&!book.open&&!igloo.editing&&p.px>=9&&p.px<=184&&p.py>=36&&p.py<=146)sit_touch(p.px,p.py);else touch(p.px,p.py);}
    if(book.open&&book.bank&&book.zoom&&!modal.open&&(held&KEY_TOUCH)){touchPosition p;hidTouchRead(&p);if(p.py>=28&&p.py<205){SWLMatrix v=book_view(320,177,28,false);book.x=(p.px-v.x)/v.a;book.y=(p.py-v.y)/v.d;}}
    if(lobby_locked()&&!modal.open){if(down&KEY_B)lobby_close();}
    else if(igloo.editing&&!modal.open){editor_drag(held,hidKeysUp());if(down&KEY_X)editor_remove();if(down&KEY_Y)editor_turn(0,1);if(down&KEY_L)editor_turn(-1,0);if(down&KEY_R)editor_turn(1,0);if(down&KEY_A){editor_cancel_drag();editor.inventory=!editor.inventory;}if(down&KEY_B){if(editor.inventory)editor.inventory=false;else editor_save();}}
@@ -1684,7 +1701,7 @@ int main(int argc,char **argv){
   if(*profile.error){if(game)message(profile.error);else modal_message(profile.error);profile.error[0]=0;}
   if(!game){if(profile.inventoryRevision!=roomInventoryStamp)room_inventory();room_hover(held);}gp_audio_update();lobby_update(dt);
   if(room_tube_locked(&roomTube)&&(lobby_locked()||game||gameQueued||book.open||modal.open||demo.tab!=0||wantedRoom||waitingIgloo||wantedIgloo||(pnet_id()&&networkState!=PNET_ONLINE)))room_tube_cancel(&roomTube,&tubeHooks);
-  circlePosition pad;hidCircleRead(&pad);if(chatKeyboard.active||keyboardInput||chatHistory.open||historyInput){memset(&pad,0,sizeof pad);down=held=0;}float dx=pad.dx/150.0f,dy=-pad.dy/150.0f;if(held&KEY_DLEFT)dx=-1;if(held&KEY_DRIGHT)dx=1;if(held&KEY_DUP)dy=-1;if(held&KEY_DDOWN)dy=1;if(book.open&&book.zoom&&!modal.open){SWLMatrix view=book_view(400,240,0,true);const float stage[]={0,0,760,480},*b=book.resourceId&&book.boundsReady?book.bounds:stage;float halfX=fminf(200/view.a,(b[2]-b[0])/2),halfY=fminf(120/view.d,(b[3]-b[1])/2);book.x=fmaxf(b[0]+halfX,fminf(b[2]-halfX,book.x+dx*240*dt));book.y=fmaxf(b[1]+halfY,fminf(b[3]-halfY,book.y+dy*240*dt));}if(lobby_locked()||room_tube_locked(&roomTube)||game||gameQueued||modal.open||book.open||igloo.editing||waitingIgloo||wantedIgloo)dx=dy=0;demo_step(&demo,dt,dx,dy);if(!game)lobby_progress(dt);if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++)furnitureTime[i]+=dt;overlay_step(&overlay,dt);if(noticeTime>0)noticeTime-=dt;
+  circlePosition pad;hidCircleRead(&pad);circlePosition cstick;hidCStickRead(&cstick);if(chatKeyboard.active||keyboardInput||chatHistory.open||historyInput){memset(&pad,0,sizeof pad);down=held=0;}float dx=pad.dx/150.0f,dy=-pad.dy/150.0f;if(held&KEY_DLEFT)dx=-1;if(held&KEY_DRIGHT)dx=1;if(held&KEY_DUP)dy=-1;if(held&KEY_DDOWN)dy=1;if(book.open&&book.zoom&&!modal.open){SWLMatrix view=book_view(400,240,0,true);const float stage[]={0,0,760,480},*b=book.resourceId&&book.boundsReady?book.bounds:stage;float halfX=fminf(200/view.a,(b[2]-b[0])/2),halfY=fminf(120/view.d,(b[3]-b[1])/2);book.x=fmaxf(b[0]+halfX,fminf(b[2]-halfX,book.x+dx*240*dt));book.y=fmaxf(b[1]+halfY,fminf(b[3]-halfY,book.y+dy*240*dt));}float rawDx=dx,rawDy=dy;if(!game&&!gameQueued&&!modal.open&&!book.open&&!igloo.editing&&demo.tab==0&&sitting()){float csx=cstick.dx/150.0f,csy=-cstick.dy/150.0f;if(fabsf(csx)>0.35f||fabsf(csy)>0.35f){sit_turn(csx,csy);dx=dy=0;}else if((held&KEY_B)&&(fabsf(rawDx)>0.35f||fabsf(rawDy)>0.35f)){sit_turn(rawDx,rawDy);dx=dy=0;}}if(lobby_locked()||room_tube_locked(&roomTube)||game||gameQueued||modal.open||book.open||igloo.editing||waitingIgloo||wantedIgloo)dx=dy=0;demo_step(&demo,dt,dx,dy);if(!game)lobby_progress(dt);if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++)furnitureTime[i]+=dt;overlay_step(&overlay,dt);if(noticeTime>0)noticeTime-=dt;
   if(game||gameQueued){dx=dy=0;demo.actors[0].walking=false;}
   Actor *me=&demo.actors[0];bool moving=me->walking||hypotf(dx,dy)>.15f;
   if(actionPosition){actionPosition=false;lastX=me->x;lastY=me->y;wasMoving=false;lastMove=now;}
