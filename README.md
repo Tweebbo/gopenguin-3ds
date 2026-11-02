@@ -4,9 +4,9 @@ Explore the island, chat, dress your penguin and play games in the same world as
 
 **[Download for Nintendo 3DS](https://github.com/Tweebbo/gopenguin-3ds/releases/latest)** · [Release notes](docs/RELEASE.md)
 
-![Halloween Town and the restored lower-screen icons](docs/visual/town.png)
+![Town and the lower-screen icons](docs/visual/town.png)
 
-GoPenguin 1.3.4, captured in an emulator configured as an Old 3DS.
+GoPenguin 1.3.6, captured in an emulator configured as an Old 3DS.
 
 ## Install
 

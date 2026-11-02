@@ -56,6 +56,7 @@
 #include "igloo_geometry.h"
 #include "gp_audio.h"
 #include "puffles.h"
+#include "cave_mine.h"
 #include "newspaper.h"
 #include "game_port.h"
 #include "room_tube.h"
@@ -246,6 +247,7 @@ static void text(float x,float y,unsigned size,unsigned colour,const char *s){
 }
 static void center(float x,float y,unsigned size,unsigned colour,const char *s){text(x-textWidth(size,s)/2.0f,y,size,colour,s);}
 static bool room_actor_visible(unsigned index){return !settings.hideOtherPenguins||!index||demo.actors[index].id==ROCKHOPPER_ID;}
+static bool pet_shown(const Puffle *pet){return puffles_visible(&puffles,pet,&demo)&&(!settings.hideOtherPenguins||!pet->walking||pet->owner==pnet_id());}
 static void name_tags_refresh(void){
  if(isNew3DS)return;
  if(!nameTagsAttempted){
@@ -318,7 +320,7 @@ static void make_order(ActorOrder *order,bool players,float scale,float ox,float
  order->count=order->next=0;order->scale=scale;order->ox=ox;order->oy=oy;
  if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];Product product;unsigned type=client_product(clientData,1,f->id,&product)?product.type:1;order->items[order->count].tag=CAST_COUNT+i;order->items[order->count++].depth=type==2?6+f->y/1000.0f:type==3?7+f->y/1000.0f:900+1000*floorf(f->y);}
  if(players&&!igloo.editing)for(unsigned i=0;i<demo.count;i++)if(room_actor_visible(i)){order->items[order->count].tag=i;order->items[order->count++].depth=actor_depth(i);}
- if(players&&!igloo.editing)for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo)){order->items[order->count].tag=CAST_COUNT+IGLOO_ITEMS+i;order->items[order->count++].depth=900+1000*floorf(puffles.pets[i].y);}
+ if(players&&!igloo.editing)for(unsigned i=0;i<puffles.count;i++)if(pet_shown(&puffles.pets[i])){order->items[order->count].tag=CAST_COUNT+IGLOO_ITEMS+i;order->items[order->count++].depth=900+1000*floorf(puffles.pets[i].y);}
  static RenderOrderItem scratch[CAST_COUNT+IGLOO_ITEMS+PUFFLES_LIMIT];render_order_sort(order->items,order->count,scratch);
 }
 static bool actors_needed(void *user,float depth){ActorOrder *order=user;return order->next<order->count&&order->items[order->next].depth<=depth;}
@@ -326,7 +328,7 @@ static bool actors_before(void *user,float depth){
  ActorOrder *order=user;
  while(actors_needed(user,depth)){
   unsigned n=order->items[order->next++].tag;
-  if(n>=CAST_COUNT+IGLOO_ITEMS){Puffle *p=&puffles.pets[n-CAST_COUNT-IGLOO_ITEMS];float x=p->oldX+(p->x-p->oldX)*interpolation,y=p->oldY+(p->y-p->oldY)*interpolation;wear_draw_pose(asset_key(ASSET_PUFFLE,p->type+1),p->frame,1,p->clock,order->ox+x*order->scale,order->oy+y*order->scale,order->scale);continue;}
+  if(n>=CAST_COUNT+IGLOO_ITEMS){Puffle *p=&puffles.pets[n-CAST_COUNT-IGLOO_ITEMS];float petAlpha=puffles_interpolation(&puffles),x=p->oldX+(p->x-p->oldX)*petAlpha,y=p->oldY+(p->y-p->oldY)*petAlpha;wear_draw_pose(asset_key(ASSET_PUFFLE,p->type+1),p->frame,1,p->clock,order->ox+x*order->scale,order->oy+y*order->scale,order->scale);continue;}
   if(n>=CAST_COUNT){unsigned index=n-CAST_COUNT;IglooFurniture *f=&igloo.layout.items[index];wear_draw_pose(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame,(unsigned)(furnitureTime[index]*24),order->ox+f->x*order->scale,order->oy+f->y*order->scale,order->scale);continue;}
   Actor *a=&demo.actors[n];float x=order->ox+a->x*order->scale,y=order->oy+a->y*order->scale;
   if(!n)C2D_DrawEllipseSolid(x-10*order->scale,y-3*order->scale,.4f,20*order->scale,6*order->scale,rgb(0x00ccff));
@@ -346,6 +348,12 @@ static bool room_textures(const IslandRoom *room){
  snprintf(name,sizeof name,"mini-low-%s",room->key);
 #endif
  return load(&minimap,name)&&ok;
+}
+static unsigned cave_frame(void *unused,const char *path){(void)unused;return swl_frame(scene,path);}
+static void cave_target(void *unused,const char *path,unsigned frame,bool playing){(void)unused;swl_target(scene,path,frame,NULL,playing);}
+static void room_snowballs(void){
+ static const CaveMineHooks hooks={NULL,cave_frame,cave_target};
+ for(Snowball *ball;(ball=overlay_landed(&overlay));)if(!game&&scene&&!roomBank&&currentRoomId==813&&cave_mine_throw(&hooks,ball->toX,ball->toY))ball->active=false;
 }
 static unsigned tube_frame(void *unused,const char *path){(void)unused;return scene?swl_frame(scene,path):0;}
 static void tube_target(void *unused,const char *path,unsigned frame,const char *label,bool playing){(void)unused;if(scene)swl_target(scene,path,frame,label,playing);}
@@ -552,7 +560,6 @@ static void book_update(void){
 #endif
 }
 static void resource_open(unsigned id,const char *sender,unsigned uid){if(!newspaper.open){resourceInfo.frames=1;resourceInfo.title="POSTCARD";}book.info=&resourceInfo;book.resourceId=id;book.mailUid=uid;snprintf(book.sender,sizeof book.sender,"%.48s",sender);book.open=true;book.close=false;book.wanted=1;book.page=0;book.clock=0;book.zoom=false;book_camera_reset(&book.camera,380,240);demo.actors[0].walking=false;}
-static void newspaper_show(void){postcardId=0;newspaper_open(&newspaper);resource_open(newspaper_resource(&newspaper),"",0);resourceInfo.frames=NEWSPAPER_FRAMES;resourceInfo.title="CLUB PENGUIN TIMES";}
 static void confirm_command(const char *text,const char *command,unsigned id){modal_message(text);modal.confirm=true;snprintf(modal.command,sizeof modal.command,"%s",command);snprintf(modal.argument,sizeof modal.argument,"%u",id);}
 static Actor *selected_actor(void){Actor *a=world_actor(&demo,selectedPlayer);return a?a:social_player(&social,selectedPlayer);}
 static void rockhopper_open(void);
@@ -669,7 +676,7 @@ static void content(const char *name){
  if(!strncmp(name,"prompt:",7)){const char *text=shellText?json_string_value(json_object_get(shellText,name+7)):NULL;modal_message(text?text:"This activity is not available yet.");return;}
  size_t length=strlen(name);if(length>10&&!strcmp(name+length-10,"_catalogue")){char key[48];if(length-10<sizeof key){memcpy(key,name,length-10);key[length-10]=0;book_open(key);}return;}
  if(!strcmp(name,"map")){demo.tab=1;return;}
- if(!strcmp(name,"news")){newspaper_show();return;}
+ if(!strcmp(name,"news"))return; // The newspaper is withdrawn.
  if(!strncmp(name,"game:",5)){game_start(name+5);return;}
  if(!strncmp(name,"table:",6)||!strncmp(name,"waddle:",7)){bool table=name[0]=='t';const char *value=name+(table?6:7);char *end;unsigned long id=strtoul(value,&end,10);if(*value&&!*end&&id<=1000)lobby_prompt(table?LOBBY_TABLE:LOBBY_WADDLE,(unsigned)id);return;}
  if(!strncmp(name,"unavailable:",12)){modal_message("This activity is not available yet.");return;}
@@ -1016,7 +1023,7 @@ static void styles_update(void){
  styles.started=osGetTime();
 }
 static bool pets_send(void *unused,const char *command,unsigned count,const char *const *args){(void)unused;return pnet_state()==PNET_ONLINE&&pnet_send(command,count,args);}
-static bool pets_pose_ready(const Puffle *pet){return wear_pose_ready(asset_key(ASSET_PUFFLE,pet->type+1),pet->frame,1);}
+static bool pets_pose_ready(const Puffle *pet,unsigned frame){return wear_pose_ready(asset_key(ASSET_PUFFLE,pet->type+1),frame,1);}
 static void pets_enter(unsigned owner){if(petRoom==currentRoomId&&puffles.mine==pnet_id())return;puffles_room(&puffles,pnet_id(),owner);petRoom=currentRoomId;wantedPetOwner=owner?owner:pnet_id();}
 static void pets_adopt(unsigned type){
  if(type>=PUFFLES_COLOURS){modal_message("This puffle colour is unavailable.");return;}
@@ -1469,7 +1476,7 @@ static void bottom(void){
   button(8,177,304,26,"Back to Help",-1);
  }else if(demo.tab==7){player_draw();
  }else if(demo.tab==4){
-  button(8,32,96,24,"News",-1);button(112,32,96,24,"Puffles",-1);button(216,32,96,24,"Games",-1);
+  button(8,32,148,24,"Puffles",-1);button(164,32,148,24,"Games",-1);
   float dy=ui_button(8,62,304,56,ui_touching(8,62,304,56),true)?1:0;
   icon(2,19,74+dy,1);text(61,73+dy,13,0xffffff,"Account");
   text(61,95+dy,9,0xffffff,"Transfer your penguin or change its name.");
@@ -1584,8 +1591,7 @@ static void touch(int x,int y){
  }
  else if(demo.tab==4){
   if(y>=32&&y<56){
-   if(x<108)newspaper_show();
-   else if(x<212){if(pnet_state()!=PNET_ONLINE){modal_message("Connect to GoPenguin to manage puffles.");return;}demo.tab=12;petPage=0;puffles_request(&puffles,pnet_id());}
+   if(x<160){if(pnet_state()!=PNET_ONLINE){modal_message("Connect to GoPenguin to manage puffles.");return;}demo.tab=12;petPage=0;puffles_request(&puffles,pnet_id());}
    else{demo.tab=16;gamePage=0;}
   }
   else if(y>=62&&y<118)penguin_open();
@@ -1798,7 +1804,7 @@ int main(int argc,char **argv){
   if(*profile.error){if(game)message(profile.error);else modal_message(profile.error);profile.error[0]=0;}
   if(!game){if(profile.inventoryRevision!=roomInventoryStamp)room_inventory();room_hover(held);}gp_audio_update();lobby_update(dt);
   if(room_tube_locked(&roomTube)&&(lobby_locked()||game||gameQueued||book.open||modal.open||demo.tab!=0||wantedRoom||waitingIgloo||wantedIgloo||(pnet_id()&&networkState!=PNET_ONLINE)))room_tube_cancel(&roomTube,&tubeHooks);
-  circlePosition pad;hidCircleRead(&pad);circlePosition cstick;hidCstickRead(&cstick);if(chatKeyboard.active||keyboardInput||chatHistory.open||historyInput){memset(&pad,0,sizeof pad);down=held=0;}float dx=pad.dx/150.0f,dy=-pad.dy/150.0f;if(held&KEY_DLEFT)dx=-1;if(held&KEY_DRIGHT)dx=1;if(held&KEY_DUP)dy=-1;if(held&KEY_DDOWN)dy=1;if(book.open&&book.zoom&&!modal.open){SWLMatrix view=book_view(400,240,0,true);const float stage[]={0,0,760,480},*b=book.resourceId&&book.boundsReady?book.bounds:stage;float panX=dx,panY=dy;if(held&(KEY_DLEFT|KEY_DRIGHT|KEY_DUP|KEY_DDOWN)){panX=((held&KEY_DRIGHT)?1:0)-((held&KEY_DLEFT)?1:0);panY=((held&KEY_DDOWN)?1:0)-((held&KEY_DUP)?1:0);}book_camera_pan(&book.camera,panX,panY,dt);book_camera_clamp(&book.camera,b[0],b[1],b[2],b[3],200/view.a,120/view.d);}float rawDx=dx,rawDy=dy;if(!game&&!gameQueued&&!modal.open&&!book.open&&!igloo.editing&&demo.tab==0&&sitting()){float csx=cstick.dx/150.0f,csy=-cstick.dy/150.0f;if(fabsf(csx)>0.35f||fabsf(csy)>0.35f){sit_turn(csx,csy);dx=dy=0;}else if((held&KEY_B)&&(fabsf(rawDx)>0.35f||fabsf(rawDy)>0.35f)){sit_turn(rawDx,rawDy);dx=dy=0;}}if(lobby_locked()||room_tube_locked(&roomTube)||game||gameQueued||modal.open||book.open||igloo.editing||waitingIgloo||wantedIgloo)dx=dy=0;demo_step(&demo,dt,dx,dy);if(!game)lobby_progress(dt);if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++)furnitureTime[i]+=dt;overlay_step(&overlay,dt);if(noticeTime>0)noticeTime-=dt;
+  circlePosition pad;hidCircleRead(&pad);circlePosition cstick;hidCstickRead(&cstick);if(chatKeyboard.active||keyboardInput||chatHistory.open||historyInput){memset(&pad,0,sizeof pad);down=held=0;}float dx=pad.dx/150.0f,dy=-pad.dy/150.0f;if(held&KEY_DLEFT)dx=-1;if(held&KEY_DRIGHT)dx=1;if(held&KEY_DUP)dy=-1;if(held&KEY_DDOWN)dy=1;if(book.open&&book.zoom&&!modal.open){SWLMatrix view=book_view(400,240,0,true);const float stage[]={0,0,760,480},*b=book.resourceId&&book.boundsReady?book.bounds:stage;float panX=dx,panY=dy;if(held&(KEY_DLEFT|KEY_DRIGHT|KEY_DUP|KEY_DDOWN)){panX=((held&KEY_DRIGHT)?1:0)-((held&KEY_DLEFT)?1:0);panY=((held&KEY_DDOWN)?1:0)-((held&KEY_DUP)?1:0);}book_camera_pan(&book.camera,panX,panY,dt);book_camera_clamp(&book.camera,b[0],b[1],b[2],b[3],200/view.a,120/view.d);}float rawDx=dx,rawDy=dy;if(!game&&!gameQueued&&!modal.open&&!book.open&&!igloo.editing&&demo.tab==0&&sitting()){float csx=cstick.dx/150.0f,csy=-cstick.dy/150.0f;if(fabsf(csx)>0.35f||fabsf(csy)>0.35f){sit_turn(csx,csy);dx=dy=0;}else if((held&KEY_B)&&(fabsf(rawDx)>0.35f||fabsf(rawDy)>0.35f)){sit_turn(rawDx,rawDy);dx=dy=0;}}if(lobby_locked()||room_tube_locked(&roomTube)||game||gameQueued||modal.open||book.open||igloo.editing||waitingIgloo||wantedIgloo)dx=dy=0;demo_step(&demo,dt,dx,dy);if(!game)lobby_progress(dt);if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++)furnitureTime[i]+=dt;overlay_step(&overlay,dt);room_snowballs();if(noticeTime>0)noticeTime-=dt;
   if(game||gameQueued){dx=dy=0;demo.actors[0].walking=false;}
   Actor *me=&demo.actors[0];bool moving=me->walking||hypotf(dx,dy)>.15f;
   if(actionPosition){actionPosition=false;lastX=me->x;lastY=me->y;wasMoving=false;lastMove=now;}
@@ -1827,7 +1833,7 @@ int main(int argc,char **argv){
   if(!game){bool holdTube=tubeArmed;sceneClock+=dt;while(sceneClock>=1/swl_rate(scene)){epf_access_tick(&epfAccess,&epfHooks);if(holdTube)holdTube=false;else room_tube_tick(&roomTube,&tubeHooks);sceneOK=swl_tick(scene)&&sceneOK;sceneClock-=1/swl_rate(scene);}interpolation=sceneClock*swl_rate(scene);swl_begin(scene);}
   if(!game){
   wear_begin();if(roomBank&&!book.open){if(igloo.layout.floor)wear_want_pose(asset_key(ASSET_FLOOR,igloo.layout.floor),iglooGeometry->floorFrame,1);for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];wear_want_pose(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame);}}if(igloo.editing&&editor.inventory){editor_inventory();for(unsigned n=editor.page*6;n<editor.count&&n<(editor.page+1)*6;n++)wear_want(asset_key(ASSET_FURNITURE_ICON,editor.items[n]));}if(!book.open&&demo.tab==7){Actor *a=selected_actor();if(a){if(a->look[7])wear_want(asset_key(ASSET_PHOTO,a->look[7]));for(unsigned i=0;i<6;i++)wear_want(asset_key(ASSET_PAPER,a->look[i]));if(a->look[6])wear_want(asset_key(ASSET_ICON,a->look[6]));}}if(!book.open&&demo.tab==2)inventory_prepare(&inventoryUI,clientData,&profile,&demo.actors[0]);for(unsigned i=0;!book.open&&i<demo.count;i++)if(room_actor_visible(i))actor_want(&demo.actors[i]);
-  if(!book.open)for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo)||(demo.tab==13&&puffles.pets[i].owner==pnet_id()&&puffles.pets[i].id==petSelected))wear_want_pose(asset_key(ASSET_PUFFLE,puffles.pets[i].type+1),puffles.pets[i].frame,1);
+  if(!book.open)for(unsigned i=0;i<puffles.count;i++)if(pet_shown(&puffles.pets[i])||(demo.tab==13&&puffles.pets[i].owner==pnet_id()&&puffles.pets[i].id==petSelected)){unsigned art=asset_key(ASSET_PUFFLE,puffles.pets[i].type+1);wear_want_pose(art,puffles.pets[i].frame,1);wear_want_pose(art,puffles.pets[i].wanted,1);}
   }
   C3D_FrameBegin(C3D_FRAME_SYNCDRAW);game_transition();
   if(chatGlyphs)C2D_TextBufClear(chatGlyphs);

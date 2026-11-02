@@ -19,7 +19,7 @@ fixtures are private tests and do not change the memory requested by public pack
 
 The prepared `romfs` folder is distributed as `gopenguin-build-assets.tar.gz` in release 1.3.0. Extract it in the repository, then run `make` in a configured devkitPro shell. `build.sh` provides the container equivalent.
 
-Before checking the extracted base, run `python3 tools/restore-seasonal-assets.py`. The base predates the reviewed Halloween resources and contains an incomplete HUD atlas. The build also runs this step. `assets/halloween-2010/profile.json` binds the 39 restored resources to their exact published 1.2.5 bytes and records the accepted replacement hashes. Town and Coffee Shop require three texture pages each. `python3 tests/check-romfs.py .` checks both room completeness and the seasonal hashes; checking only file existence cannot detect blank icons or an older room export. Retire or replace this profile explicitly when changing the event.
+Before checking the extracted base, run `python3 tools/restore-seasonal-assets.py`. The base contains an incomplete HUD atlas, and `assets/hud-icons/profile.json` binds the restored icons to their exact published bytes. The build also runs this step. `python3 tests/check-romfs.py .` checks room completeness and that hash; checking only file existence cannot detect blank icons. Town and Coffee Shop use one texture page each.
 
 CIA packaging uses `node tools/package-native.mjs --release --tools /path/to/ctrtools` with makerom 0.18.4. makerom 0.19.0 has a known minor-version encoding issue.
 

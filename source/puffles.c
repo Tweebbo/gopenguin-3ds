@@ -42,12 +42,22 @@ static void reconcile(Puffles *p,unsigned owner){
  if(walk)for(unsigned i=0;i<p->count;i++)if(p->pets[i].owner==owner)p->pets[i].walking=walk->id==p->pets[i].id;
  if(owner!=p->mine&&owner!=p->roomOwner)for(unsigned i=0;i<p->count;){if(p->pets[i].owner==owner&&!p->pets[i].walking)p->pets[i]=p->pets[--p->count];else i++;}
 }
+// Every pose is its own texture page: hold the current one on screen until the next is resident.
+static void pose(const Puffles *p,Puffle *pet,unsigned frame){
+ pet->wanted=frame;
+ if(frame!=pet->frame&&(!p->poseReady||p->poseReady(pet,frame))){pet->frame=frame;pet->clock=0;}
+}
+static void place(Puffle *pet,float x,float y){pet->x=pet->oldX=x;pet->y=pet->oldY=y;}
+static void home(const Puffles *p,Puffle *pet){
+ unsigned index=0;for(unsigned i=0;i<p->count&&&p->pets[i]!=pet;i++)index+=p->pets[i].owner==pet->owner;
+ place(pet,280+(index%5)*46,300+(index/5%4)*38);
+}
 static unsigned owned(const Puffles *p){unsigned n=0;for(unsigned i=0;i<p->count;i++)n+=p->pets[i].owner==p->mine;return n;}
 static Puffle *put(Puffles *p,const Puffle *info,unsigned index){
  Puffle *pet=puffles_find(p,info->owner,info->id);
  if(!pet){
   if(p->count==PUFFLES_LIMIT||(info->owner==p->mine&&owned(p)>=PUFFLES_OWNED))return NULL;
-  pet=&p->pets[p->count++];*pet=(Puffle){.x=280+(index%5)*46,.y=300+(index/5)*38,.frame=1,.direction=1};pet->oldX=pet->x;pet->oldY=pet->y;
+  pet=&p->pets[p->count++];*pet=(Puffle){.x=280+(index%5)*46,.y=300+(index/5)*38,.frame=1,.wanted=1,.direction=1};pet->oldX=pet->x;pet->oldY=pet->y;
  }
  pet->owner=info->owner;pet->id=info->id;pet->type=info->type;pet->health=info->health;pet->food=info->food;pet->rest=info->rest;pet->walking=info->walking;strcpy(pet->name,info->name);pet->revision=++p->revision;
  return pet;
@@ -61,6 +71,7 @@ void puffles_init(Puffles *p,PuffleSend callback,void *user){memset(p,0,sizeof *
 void puffles_room(Puffles *p,unsigned mine,unsigned owner){
  if(p->mine&&mine!=p->mine){PuffleSend callback=p->send;void *user=p->user;puffles_init(p,callback,user);}
  p->mine=mine;p->roomOwner=owner;p->epoch++;p->nWalks=0;
+ for(unsigned i=0;i<p->count;i++)p->pets[i].present=false;
  for(unsigned i=0;i<p->count;)if(p->pets[i].owner!=mine){p->pets[i]=p->pets[--p->count];}else i++;
  for(unsigned i=0;i<p->count;i++)if(p->pets[i].walking){PuffleWalk *walk=walking(p,mine,true);if(walk){walk->id=p->pets[i].id;walk->revision=++p->revision;}}
 }
@@ -78,7 +89,7 @@ static bool snapshot(Puffles *p,const PNetMessage *m){
  Puffle rows[PUFFLES_OWNED];unsigned count=0;bool valid=true;
  for(unsigned i=0;i<m->count;i++){
   if(!*m->args[i])continue;
-  if(count==PUFFLES_OWNED){valid=false;break;}
+  if(count==PUFFLES_OWNED)break; // The web client can adopt more; show the first ones like it does.
   Puffle next={.owner=owner};if(!record(m->args[i],&next)){valid=false;break;}
   for(unsigned j=0;j<count;j++)if(rows[j].id==next.id)valid=false;
   if(!valid)break;
@@ -94,7 +105,7 @@ static bool snapshot(Puffles *p,const PNetMessage *m){
  for(unsigned i=0;i<count;i++){Puffle *old=puffles_find(p,owner,rows[i].id);if(!old||old->revision<=p->snapshotRevision)put(p,&rows[i],i);}
  reconcile(p,owner);return true;
 }
-static void reaction(Puffle *pet,unsigned item){if(!pet)return;pet->reaction=item==27?1:item==37?2:item==4?4:item==5?5:item==8?6:3;pet->reactionTicks=0;pet->clock=0;pet->frame=puffle_action_frames[pet->reaction-1];}
+static void reaction(const Puffles *p,Puffle *pet,unsigned item){if(!pet)return;pet->reaction=item==27?1:item==37?2:item==4?4:item==5?5:item==8?6:3;pet->reactionTicks=0;unsigned frame=puffle_action_frames[pet->reaction-1];if(frame==pet->frame)pet->clock=0;pose(p,pet,frame);}
 static bool observed(const Puffles *p,const Demo *world,unsigned owner){return owner==p->mine||owner==p->roomOwner||actor(world,owner)!=NULL;}
 bool puffles_apply(Puffles *p,const PNetMessage *m,const Demo *world){
  if(!strcmp(m->command,"pg"))return snapshot(p,m);
@@ -106,7 +117,7 @@ bool puffles_apply(Puffles *p,const PNetMessage *m,const Demo *world){
    walk->revision=++p->revision;
   }
   Puffle *pet=put(p,&next,0);
-  if(!isWalk&&m->count>=3){unsigned item;if(number(m->args[2],1000000,&item))reaction(pet,item);}
+  if(!isWalk&&m->count>=3){unsigned item;if(number(m->args[2],1000000,&item))reaction(p,pet,item);}
   reconcile(p,owner);
   if(isWalk&&owner==p->mine&&p->action==PUFFLE_WALK&&p->actionId==next.id){p->action=PUFFLE_IDLE;p->actionAge=0;}
   return true;
@@ -117,7 +128,7 @@ bool puffles_apply(Puffles *p,const PNetMessage *m,const Demo *world){
   if(m->count>=4&&*m->args[3]){unsigned id;if(!number(m->args[1],0x7fffffff,&id)||id!=p->actionId)return false;fail(p,!strcmp(m->args[3],"coins")?"You need more coins to care for your puffle.":"This puffle care action is unavailable.");p->action=PUFFLE_IDLE;p->coins=coins;p->coinsChanged=true;return true;}
   char text[256];if(strlen(m->args[1])>=sizeof text)return false;strcpy(text,m->args[1]);char *fields[6];unsigned count=1;fields[0]=text;for(char *c=text;*c;c++)if(*c=='|'){if(count==6)return false;*c=0;fields[count++]=c+1;}
   unsigned id,food,rest,health;if(count!=6||!number(fields[0],0x7fffffff,&id)||id!=p->actionId||!number(fields[1],100,&food)||!number(fields[3],100,&rest)||!number(fields[4],100,&health))return false;
-  Puffle *pet=puffles_find(p,p->mine,id);if(pet){pet->food=food;pet->rest=rest;pet->health=health;pet->revision=++p->revision;reaction(pet,p->actionItem);}
+  Puffle *pet=puffles_find(p,p->mine,id);if(pet){pet->food=food;pet->rest=rest;pet->health=health;pet->revision=++p->revision;reaction(p,pet,p->actionItem);}
   p->action=PUFFLE_IDLE;p->actionAge=0;p->coins=coins;p->coinsChanged=true;return true;
  }
  if(!strcmp(m->command,"pcn")&&m->count>=2&&p->action==PUFFLE_CHECK_NAME&&!strcmp(m->args[0],p->adoptName)){
@@ -161,24 +172,35 @@ bool puffles_care(Puffles *p,unsigned id,unsigned item){
  char text[16],care[16];snprintf(text,sizeof text,"%u",id);snprintf(care,sizeof care,"%u",item);return start(p,PUFFLE_CARE,id,item,"p#pcid",2,(const char *[]){text,care});
 }
 bool puffles_take_coins(Puffles *p,unsigned *coins){if(!p->coinsChanged)return false;if(coins)*coins=p->coins;p->coinsChanged=false;return true;}
+float puffles_interpolation(const Puffles *p){float alpha=p->accumulator*24;return alpha<1?alpha:1;}
 void puffles_step(Puffles *p,const Demo *world,float elapsed){
  if(!isfinite(elapsed)||elapsed<=0)return;
- float dt=fminf(elapsed,.25f);if(p->snapshotPending){float before=p->snapshotAge;p->snapshotAge+=dt;if(before<15&&p->snapshotAge>=15)fail(p,"The puffle list timed out. Reconnect if it does not arrive.");}
- if(p->action!=PUFFLE_IDLE){float before=p->actionAge;p->actionAge+=dt;if(before<15&&p->actionAge>=15)fail(p,"The puffle action timed out. Reconnect before trying again.");}
+ float dt=fminf(elapsed,.25f);if(p->snapshotPending){float before=p->snapshotAge;p->snapshotAge+=dt;if(before<15&&p->snapshotAge>=15){fail(p,"The puffle list timed out. Please try again.");p->snapshotPending=false;p->snapshotAge=0;}}
+ if(p->action!=PUFFLE_IDLE){float before=p->actionAge;p->actionAge+=dt;if(before<15&&p->actionAge>=15){fail(p,"The puffle action timed out. Please try again.");p->action=PUFFLE_IDLE;p->actionAge=0;}}
  p->accumulator+=dt;
  while(p->accumulator>=1.0f/24){
   p->accumulator-=1.0f/24;
   for(unsigned i=0;i<p->count;i++){
-   Puffle *pet=&p->pets[i];if(pet->owner!=p->mine&&!puffles_visible(p,pet,world))continue;
+   Puffle *pet=&p->pets[i];bool visible=puffles_visible(p,pet,world);
+   if(visible&&!pet->present){
+    // Arriving: start beside the owner or at home, never at a position from the previous room.
+    const Actor *owner=pet->walking?actor(world,pet->owner):NULL;
+    if(owner)place(pet,owner->x-20,owner->y+8);else home(p,pet);
+    pet->following=false;pet->settled=0;
+   }
+   pet->present=visible;
+   if(pet->owner!=p->mine&&!visible)continue;
    pet->oldX=pet->x;pet->oldY=pet->y;
-   if(pet->reaction&&p->poseReady&&!p->poseReady(pet))continue;
+   if(pet->reaction&&pet->frame!=puffle_action_frames[pet->reaction-1]){pose(p,pet,puffle_action_frames[pet->reaction-1]);if(pet->frame!=puffle_action_frames[pet->reaction-1]){pet->clock++;continue;}pet->clock=0;}
    pet->clock++;unsigned frame=pet->direction;
    if(pet->reaction){pet->reactionTicks++;if(pet->reactionTicks>puffle_action_lengths[pet->type][pet->reaction-1])pet->reaction=0;else frame=puffle_action_frames[pet->reaction-1];}
    if(!pet->reaction&&pet->walking){const Actor *owner=actor(world,pet->owner);if(owner){
     float dx=owner->x-20-pet->x,dy=owner->y+8-pet->y,distance=hypotf(dx,dy);
-    if(distance>12||(owner->walking&&distance>1))pet->following=true;
+    // Circle Pad and D-pad movement leaves walking false and only sets the walk action.
+    bool moving=owner->walking||(owner->action>=9&&owner->action<=16);
+    if(distance>12||(moving&&distance>1))pet->following=true;
     if(pet->following){
-     pet->settled=!owner->walking&&distance<=3?pet->settled+1:0;
+     pet->settled=!moving&&distance<=3?pet->settled+1:0;
      if(pet->settled>=4)pet->following=false;
      else{
       if(distance>1){float step=fminf(distance,6);int angle=(int)(atan2f(dy,dx)*57.29577951308232f-90);if(angle<0)angle+=360;unsigned direction=(unsigned)floorf(angle/45.0f+.5f)+1;pet->direction=direction>8?1:direction;pet->x+=dx/distance*step;pet->y+=dy/distance*step;}
@@ -187,7 +209,7 @@ void puffles_step(Puffles *p,const Demo *world,float elapsed){
     }
     if(!pet->following)frame=pet->direction;
    }}else if(!pet->reaction){pet->following=false;pet->settled=0;}
-   if(frame!=pet->frame){pet->frame=frame;pet->clock=0;}
+   pose(p,pet,frame);
   }
  }
 }

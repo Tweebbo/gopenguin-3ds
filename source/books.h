@@ -3,7 +3,7 @@
 #include <stdint.h>
 typedef struct {uint16_t id,frames;bool archive;const char *key,*title;} BookInfo;
 static const BookInfo bookInfo[]={
- {1,21,false,"clothing","CLOTHING CATALOGUE"},
+ {28,21,true,"clothing","PENGUIN STYLE NOVEMBER 2011"},
  {2,7,false,"sport","SPORT CATALOGUE"},
  {3,6,false,"costume","COSTUME CATALOGUE"},
  {4,5,false,"pets","PETS CATALOGUE"},
@@ -30,7 +30,6 @@ static const BookInfo bookInfo[]={
  {25,20,true,"archive/2012-02","PENGUIN STYLE FEBRUARY 2012"},
  {26,20,true,"archive/2012-01","PENGUIN STYLE JANUARY 2012"},
  {27,21,true,"archive/2011-12","PENGUIN STYLE DECEMBER 2011"},
- {28,21,true,"archive/2011-11","PENGUIN STYLE NOVEMBER 2011"},
  {29,23,true,"archive/2011-10","PENGUIN STYLE OCTOBER 2011"},
  {30,23,true,"archive/2011-09","PENGUIN STYLE SEPTEMBER 2011"},
  {31,25,true,"archive/2011-08","PENGUIN STYLE AUGUST 2011"},
@@ -43,4 +42,4 @@ static const BookInfo bookInfo[]={
  {38,24,true,"archive/2010-12","PENGUIN STYLE DECEMBER 2010"},
  {39,1,false,"pirate","PIRATE CATALOGUE"},
 };
-#define BOOK_COUNT 39
+#define BOOK_COUNT 38

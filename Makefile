@@ -79,6 +79,7 @@ export OFILES += $(notdir $(patsubst %.c,%.o,$(wildcard $(CURDIR)/source/game_*.
 export OFILES += $(notdir $(patsubst %.c,%.o,$(wildcard $(CURDIR)/source/ui_*.c)))
 export OFILES += lobby.o
 export OFILES += room_tube.o
+export OFILES += cave_mine.o
 export OFILES += room_npc.o
 export OFILES += epf_access.o
 export OFILES += pcm_stream.o

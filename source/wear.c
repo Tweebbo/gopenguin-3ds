@@ -110,8 +110,12 @@ void wear_update(void){
  WearLoadResult result={0};
  if(wear_loader_take(&result)){publish(&result);wear_loader_result_free(&result);}
  if(wear_loader_busy())return;
- for(unsigned n=0;n<count;n++){
+ // Take turns: assets still downloading must not starve later requests such as puffles.
+ static unsigned cursor;
+ for(unsigned i=0;i<count;i++){
+  unsigned n=(cursor+i)%count;
   if(find(wanted[n].id,wanted[n].rotation,wanted[n].variation)||now_ms()<retryAt[n]||(needed[n]&&!fits(n,needed[n])))continue;
+  cursor=n+1;
   WearLoadRequest request={wanted[n].id,wanted[n].rotation,wanted[n].variation};
   if(wear_loader_start())wear_loader_request(request);
   else{wear_loader_prepare(&result,request,NULL,NULL);publish(&result);wear_loader_result_free(&result);}

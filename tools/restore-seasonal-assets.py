@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Restore reviewed seasonal resources over the release RomFS base."""
+"""Restore reviewed resources over the release RomFS base."""
 import argparse
 import hashlib
 import json
@@ -17,7 +17,7 @@ parser.add_argument('--check', action='store_true')
 args = parser.parse_args()
 if args.skip_missing and not (args.romfs / 'data/client.bin').exists():
     raise SystemExit(0)
-assets = root / 'assets/halloween-2010'
+assets = root / 'assets/hud-icons'
 profile = json.loads((assets / 'profile.json').read_text())
 pending = []
 for entry in profile['files']:
@@ -44,6 +44,6 @@ for target, data in pending:
         temporary = Path(stream.name)
         stream.write(data)
     os.replace(temporary, target)
-print(f"Seasonal profile: {len(profile['files'])} verified files, {len(pending)} restored.")
+print(f"Resource profile: {len(profile['files'])} verified files, {len(pending)} restored.")
 subprocess.run([sys.executable, str(root / 'tools/restore-outfit-assets.py'),
                 '--romfs', str(args.romfs), *(['--check'] if args.check else [])], check=True)

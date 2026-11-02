@@ -1,0 +1,16 @@
+{
+  "name": "Original HUD icons",
+  "sourceRelease": "https://github.com/Tweebbo/gopenguin-3ds/releases/tag/v1.2.5",
+  "source3dsxSha256": "fd942374472f062bab149ad6a9a2d769a230a05a1462409110e0f5015f0a4547",
+  "files": [
+    {
+      "path": "gfx/icons.t3x",
+      "bytes": 9121,
+      "sha256": "d2c468b88db9be423738d88c4ce531e7fd4f91ed5a2f30602c33f39286979ed6",
+      "replacesSha256": [
+        "2f8c647d5b655e11e0681ec63c4d91b87eaa1f786d0e5f48f4159c999eb4a361"
+      ],
+      "allowMissing": false
+    }
+  ]
+}
