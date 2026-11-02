@@ -31,6 +31,8 @@
 #include "asset_cache.h"
 #include "wear.h"
 #include "frame_hacks.h"
+#include "mining.h"
+#include "book_camera.h"
 #include "room_dance.h"
 #include "client_data.h"
 #include "profile.h"
@@ -110,7 +112,7 @@ static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters",
 };
 static IglooGeometry *iglooGeometry;
 static MovieBank *roomBank;
-static float miningTime;
+static Mining mining;
 static float furnitureTime[IGLOO_ITEMS];
 static SWLArt lastFloorArt;
 static bool floorPresent;
@@ -145,7 +147,7 @@ static bool mapList;
 #ifdef GP_LAN_ONLY
 static bool loadTesting;
 #endif
-static struct {const BookInfo *info;MovieBank *bank;unsigned page,wanted,item,colour,symbol,secrets,resourceId,mailUid;char sender[49];bool open,close,roomReleased,sportPink,zoom,boundsReady,poster;float bounds[4];float clock,x,y;} book;
+static struct {const BookInfo *info;MovieBank *bank;unsigned page,wanted,item,colour,symbol,secrets,resourceId,mailUid;char sender[49];bool open,close,roomReleased,sportPink,zoom,boundsReady,poster;float bounds[4];float clock;BookCamera camera;} book;
 static unsigned hoveredIndex=~0u,hoverFirst,hoverCount;
 static unsigned safeParent,safePage,bookListPage;
 static void content(const char *name);
@@ -282,8 +284,35 @@ static void chat_font_text(float x,float y,unsigned size,unsigned colour,const c
 }
 static float keyboard_width(unsigned size,const char *s){return (float)textWidth(size,s);}
 static void icon(int i,float x,float y,float scale){crop(&icons,i*32,0,32,32,x,y,scale,0xffffffff);}
-static unsigned actor_action(const Actor *a){unsigned base=a->action>=1&&a->action<=30?(unsigned)a->action:1,secret=penguin_secret_frame(a->look,base);return secret<COUNT(sequences)&&sequences[secret].count?secret:base;}
-static void actor(Actor *a,float x,float y,float scale){unsigned action=actor_action(a);Sequence seq=sequences[action];unsigned clock=(unsigned)a->clock,n=seq.start+(action==36&&clock>=seq.count?1+(clock-1)%(seq.count-1):clock%seq.count);const PenguinFrame *f=&penguinFrames[n];C2D_SetTintMode(C2D_TintSolid);crop(&body[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));C2D_SetTintMode(C2D_TintMult);crop(&detail[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,0xffffffff);const unsigned slots[]={5,3,2,4,1,0};for(unsigned i=0;i<6;i++)wear_draw(a->look[slots[i]],(unsigned)action,(unsigned)a->clock,x,y,scale);}
+static unsigned actor_base(const Actor *a){return a->action>=1&&a->action<=30?(unsigned)a->action:1;}
+static unsigned actor_outfit(const Actor *a){return penguin_outfit_frame(a->look,actor_base(a));}
+static bool outfit_ready(const Actor *a,unsigned action){
+ if(!wear_pose_ready(asset_key(ASSET_AVATAR,1),action,1)||!wear_pose_ready(asset_key(ASSET_AVATAR,1),action,2))return false;
+ for(unsigned i=0;i<6;i++)if(a->look[i]&&!wear_pose_ready(asset_key(ASSET_OUTFIT,a->look[i]),action,1))return false;
+ return true;
+}
+static unsigned actor_action(const Actor *a){unsigned action=actor_outfit(a);return action>30&&outfit_ready(a,action)?action:actor_base(a);}
+static void actor_want(const Actor *a){
+ unsigned action=actor_outfit(a);const unsigned slots[]={5,3,2,4,1,0};
+ if(action>30){
+  wear_want_pose(asset_key(ASSET_AVATAR,1),action,1);wear_want_pose(asset_key(ASSET_AVATAR,1),action,2);
+  for(unsigned i=0;i<6;i++)wear_want_pose(asset_key(ASSET_OUTFIT,a->look[slots[i]]),action,1);
+  if(outfit_ready(a,action))return;
+ }
+ for(unsigned i=0;i<6;i++)wear_want_pose(a->look[slots[i]],actor_base(a),1);
+}
+static void avatar_layer(unsigned action,unsigned layer,unsigned clock,float x,float y,float scale,u32 colour){
+ SWLGPUAtlas atlas;SWLArt art;if(!wear_pose_view(asset_key(ASSET_AVATAR,1),action,layer,clock,&atlas,&art)||!art.w||!art.h)return;
+ Tex3DS_SubTexture sub={.width=art.w,.height=art.h,.left=atlas.sub->left+(float)art.x/atlas.texture->width,.top=atlas.sub->top-(float)art.y/atlas.texture->height,.right=atlas.sub->left+(float)(art.x+art.w)/atlas.texture->width,.bottom=atlas.sub->top-(float)(art.y+art.h)/atlas.texture->height};
+ C2D_ImageTint tint;C2D_PlainImageTint(&tint,colour,1);C2D_DrawImageAt((C2D_Image){atlas.texture,&sub},x+art.left*scale,y+art.top*scale,.5f,&tint,art.width/art.w*scale,art.height/art.h*scale);
+}
+static void actor(Actor *a,float x,float y,float scale){
+ unsigned action=actor_action(a);unsigned clock=(unsigned)a->clock;
+ if(a->renderedAction!=action){a->renderedAction=action;a->clock=0;clock=0;}
+ if(action>30){C2D_SetTintMode(C2D_TintMult);avatar_layer(action,1,clock,x,y,scale,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));C2D_SetTintMode(C2D_TintMult);avatar_layer(action,2,clock,x,y,scale,0xffffffff);}
+ else{Sequence seq=sequences[action];unsigned n=seq.start+clock%seq.count;const PenguinFrame *f=&penguinFrames[n];C2D_SetTintMode(C2D_TintSolid);crop(&body[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));C2D_SetTintMode(C2D_TintMult);crop(&detail[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,0xffffffff);}
+ const unsigned slots[]={5,3,2,4,1,0};for(unsigned i=0;i<6;i++){unsigned id=a->look[slots[i]];wear_draw(action>30?asset_key(ASSET_OUTFIT,id):id,action,clock,x,y,scale);}
+}
 static float actor_depth(unsigned index){return 901+index+1000*floorf(demo.actors[index].y);}
 static void make_order(ActorOrder *order,bool players,float scale,float ox,float oy){
  order->count=order->next=0;order->scale=scale;order->ox=ox;order->oy=oy;
@@ -333,7 +362,7 @@ static bool enter_room(unsigned id,float x,float y){
  snprintf(file,sizeof file,"romfs:/scenes/%s.swl",room->key);SWLScene *next=swl_load_file(file,&error);if(!next){island_free(nav);message(error?error:"Could not load this scene.");return false;}
  release_room_textures();
  if(!room_textures(room)){release_room_textures();if(currentRoom)room_textures(currentRoom);swl_free(next);island_free(nav);message("Could not load this room's artwork.");return false;}
- if(roomBank){movie_bank_free(roomBank);roomBank=NULL;}else swl_free(scene);igloo_geometry_free(iglooGeometry);iglooGeometry=NULL;igloo.editing=false;island_free(navigation);scene=next;navigation=nav;currentRoom=room;currentRoomId=id;sceneOK=true;
+ if(roomBank){movie_bank_free(roomBank);roomBank=NULL;}else swl_free(scene);igloo_geometry_free(iglooGeometry);iglooGeometry=NULL;igloo.editing=false;island_free(navigation);scene=next;navigation=nav;currentRoom=room;currentRoomId=id;mining_enter(&mining,id);sceneOK=true;
  if(x<0||y<0)island_start(nav,&x,&y);
  demo.blocked=epf_access_blocked;demo.room=&epfAccess;demo.mask=NULL;
  demo.actors[0].x=demo.actors[0].tx=x;demo.actors[0].y=demo.actors[0].ty=y;demo.actors[0].walking=false;demo.actors[0].clock=0;demo.actors[0].action=1;triggerDelay=1;
@@ -402,8 +431,8 @@ static void open_igloo(unsigned owner){
  char id[20];snprintf(id,sizeof id,"%u",owner);if(!pnet_send_to('r',"gm",1,(const char *[]){id})){message("Could not request the igloo.");return;}wantedRoom=0;wantedIglooOwner=owner;waitingIgloo=true;message("Loading igloo...");
 }
 static SWLMatrix book_view(unsigned width,unsigned height,float y,bool zoom){
- if(book.resourceId&&book.bank&&book.boundsReady){const float *b=book.bounds;if(b[2]>b[0]&&b[3]>b[1]){float scale=fminf((width-16)/(b[2]-b[0]),(height-16)/(b[3]-b[1]));if(zoom&&book.zoom)scale*=1.6f;return (SWLMatrix){.a=scale,.d=scale,.x=width/2.0f-(zoom&&book.zoom?book.x:(b[0]+b[2])/2)*scale,.y=y+height/2.0f-(zoom&&book.zoom?book.y:(b[1]+b[3])/2)*scale};}}
- float scale=fminf(width/760.0f,height/480.0f);if(zoom&&book.zoom)scale*=1.6f;return (SWLMatrix){.a=scale,.d=scale,.x=width/2.0f-(zoom&&book.zoom?book.x:380)*scale,.y=y+height/2.0f-(zoom&&book.zoom?book.y:240)*scale};
+ if(book.resourceId&&book.bank&&book.boundsReady){const float *b=book.bounds;if(b[2]>b[0]&&b[3]>b[1]){float scale=fminf((width-16)/(b[2]-b[0]),(height-16)/(b[3]-b[1]));if(zoom&&book.zoom)scale*=1.6f;return (SWLMatrix){.a=scale,.d=scale,.x=width/2.0f-(zoom&&book.zoom?book.camera.x:(b[0]+b[2])/2)*scale,.y=y+height/2.0f-(zoom&&book.zoom?book.camera.y:(b[1]+b[3])/2)*scale};}}
+ float scale=fminf(width/760.0f,height/480.0f);if(zoom&&book.zoom)scale*=1.6f;return (SWLMatrix){.a=scale,.d=scale,.x=width/2.0f-(zoom&&book.zoom?book.camera.x:380)*scale,.y=y+height/2.0f-(zoom&&book.zoom?book.camera.y:240)*scale};
 }
 static void top(void){
  if(game){game_port_draw_top(game,sceneTop);return;}
@@ -424,6 +453,7 @@ static void top(void){
 
  for(unsigned i=0;!igloo.editing&&i<demo.count;i++){Actor *a=&demo.actors[i];if(a->bubbleTime<=0)continue;if(a->emote>=1&&a->emote<=30){const EmoteArt *f=&emoteArt[a->emote-1];crop(&emotes,f->x,f->y,f->w,f->h,ox+(a->x+f->left)*scale,oy+(a->y+f->top)*scale,scale*2,0xffffffff);continue;}float x=fmaxf(80,fminf(320,ox+a->x*scale)),y=fmaxf(30,oy+a->y*scale-43);char label[145];snprintf(label,sizeof label,"%.144s",a->chat+a->chatOffset);char *separator=strchr(label,'|');if(separator)*separator=0;if(strlen(label)>45)strcpy(label+42,"...");float w=fminf(376,textWidth(11,label)+12);box(x-w/2,y,w,23,0xffffff);center(x,y+5,11,0x003366,label);}
  if(currentRoom){const char *title=currentRoom->title;ui_label(5,5,textWidth(11,title)+34,21);text(29,9,11,0xffffff,title);}
+ if(!game&&!book.open&&currentRoomId==813&&mining.rewardTime>0){char reward[32];snprintf(reward,sizeof reward,"+%u coins",mining.earned);float x=ox+mining.rewardX*scale,y=oy+(mining.rewardY-55-(1.5f-mining.rewardTime)*12)*scale;center(x+1,y+1,12,0x003366,reward);center(x,y,12,0xffcc00,reward);}
  if(demo.stats){char s[80];snprintf(s,sizeof s,"%.0f FPS  |  %.1f ms  |  %lu KB free",fps,frameMS,(unsigned long)(linearSpaceFree()/1024));box(4,219,392,18,0x003366);text(9,221,11,0xffffff,s);}
  if(noticeTime>0){box(12,188,376,25,0xffffff);center(200,194,11,0x003366,notice);}
 }
@@ -465,9 +495,9 @@ static void book_page(void *unused,unsigned frame){
  if(newspaper.open){if(!newspaper_goto(&newspaper,frame))return;unsigned resource=newspaper_resource(&newspaper);if(resource!=book.resourceId){book.resourceId=resource;book.wanted=frame;}else if(book.bank){swl_target(movie_bank_scene(book.bank),"news#1",frame,NULL,false);book.page=frame;}return;}
  if(book.info&&frame&&frame<=book.info->frames&&frame!=book.page)book.wanted=frame;
 }
-static void book_toggle_zoom(bool reset){
+static void book_toggle_zoom(void){
  if(!book.bank)return;
- book.zoom=!book.zoom;if(reset){book.x=book.resourceId&&book.boundsReady?(book.bounds[0]+book.bounds[2])/2:380;book.y=book.resourceId&&book.boundsReady?(book.bounds[1]+book.bounds[3])/2:240;}
+ book.zoom=!book.zoom;book_camera_cancel(&book.camera);
 #ifdef GP_LAN_ONLY
  if(!book.resourceId){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"catalogue zoom=%u id=%u\n",book.zoom,book.info->id);fclose(trace);}}
 #endif
@@ -494,7 +524,7 @@ static bool book_custom(void *unused,unsigned id,const char *path){
 }
 static void book_room(void *unused,const char *key){(void)unused;const IslandRoom *room=island_key(key);if(room){wantedRoom=room->id;wantedX=wantedY=-1;book.close=true;}}
 static const MovieHooks bookHooks={.custom=book_custom,.page=book_page,.buy=book_buy,.adopt=book_adopt,.close=book_close,.room=book_room};
-static void book_open(const char *key){for(unsigned i=0;i<BOOK_COUNT;i++)if(!strcmp(bookInfo[i].key,key)){book.info=&bookInfo[i];book.resourceId=book.mailUid=0;book.sender[0]=0;book.open=true;book.close=false;book.wanted=1;book.page=0;book.clock=0;book.zoom=false;book.x=380;book.y=240;demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;return;}modal_message("This catalogue is not available yet.");}
+static void book_open(const char *key){for(unsigned i=0;i<BOOK_COUNT;i++)if(!strcmp(bookInfo[i].key,key)){book.info=&bookInfo[i];book.resourceId=book.mailUid=0;book.sender[0]=0;book.open=true;book.close=false;book.wanted=1;book.page=0;book.clock=0;book.zoom=false;book_camera_reset(&book.camera,380,240);demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;return;}modal_message("This catalogue is not available yet.");}
 static void book_update(void){
 #ifdef GP_LAN_ONLY
  if(book.close&&newspaper.open){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fputs("newspaper closed\n",trace);fclose(trace);}}
@@ -515,13 +545,13 @@ static void book_update(void){
 #ifdef GP_LAN_ONLY
  if(newspaper.open){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"newspaper page=%u frame=%u resource=%u\n",newspaper.page,newspaper.frame,book.resourceId);fclose(trace);}}
 #endif
- book.boundsReady=book.resourceId&&swl_bounds(movie_bank_scene(book.bank),book.bounds);if(book.boundsReady){book.x=(book.bounds[0]+book.bounds[2])/2;book.y=(book.bounds[1]+book.bounds[3])/2;}
+ book_camera_cancel(&book.camera);book.boundsReady=book.resourceId&&swl_bounds(movie_bank_scene(book.bank),book.bounds);if(book.boundsReady){book.camera.x=(book.bounds[0]+book.bounds[2])/2;book.camera.y=(book.bounds[1]+book.bounds[3])/2;}
  book.page=book.wanted;book.wanted=0;book.clock=0;book.item=book.colour=book.symbol=book.secrets=0;book.sportPink=false;
 #ifdef GP_LAN_ONLY
  if(!book.resourceId){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"catalogue id=%u page=%u embedded=%u\n",book.info->id,book.page,embedded);fclose(trace);}}
 #endif
 }
-static void resource_open(unsigned id,const char *sender,unsigned uid){if(!newspaper.open){resourceInfo.frames=1;resourceInfo.title="POSTCARD";}book.info=&resourceInfo;book.resourceId=id;book.mailUid=uid;snprintf(book.sender,sizeof book.sender,"%.48s",sender);book.open=true;book.close=false;book.wanted=1;book.page=0;book.clock=0;book.zoom=false;book.x=380;book.y=240;demo.actors[0].walking=false;}
+static void resource_open(unsigned id,const char *sender,unsigned uid){if(!newspaper.open){resourceInfo.frames=1;resourceInfo.title="POSTCARD";}book.info=&resourceInfo;book.resourceId=id;book.mailUid=uid;snprintf(book.sender,sizeof book.sender,"%.48s",sender);book.open=true;book.close=false;book.wanted=1;book.page=0;book.clock=0;book.zoom=false;book_camera_reset(&book.camera,380,240);demo.actors[0].walking=false;}
 static void newspaper_show(void){postcardId=0;newspaper_open(&newspaper);resource_open(newspaper_resource(&newspaper),"",0);resourceInfo.frames=NEWSPAPER_FRAMES;resourceInfo.title="CLUB PENGUIN TIMES";}
 static void confirm_command(const char *text,const char *command,unsigned id){modal_message(text);modal.confirm=true;snprintf(modal.command,sizeof modal.command,"%s",command);snprintf(modal.argument,sizeof modal.argument,"%u",id);}
 static Actor *selected_actor(void){Actor *a=world_actor(&demo,selectedPlayer);return a?a:social_player(&social,selectedPlayer);}
@@ -697,9 +727,10 @@ static void toggle_penguin_visibility(void){
  settings=next;if(settings.hideOtherPenguins)wear_trim_unwanted();
 }
 
-static void penguin_open(void){demo.tab=18;demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;message("Your penguin is saved automatically.");}
+static void penguin_open(void){demo.tab=18;demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;message(settings.restoreRequired?"Restore your penguin or check the SD card.":"Your penguin is saved automatically.");}
 static bool account_backup_session(void);
 static bool account_storage_ready(void){
+ if(settings.restoreRequired)return true;
  if(settings_save(&settings,SETTINGS_FILE)&&account_backup_session())return true;
  modal_message("Could not save your current penguin. Check the SD card before switching.");return false;
 }
@@ -1304,6 +1335,25 @@ static void game_start(const char *key){
  queuedGame.fromSensei=fromSensei;
 #endif
 }
+#ifdef GP_LAN_ONLY
+static unsigned gameplayStep;
+static void gameplay_test_step(void){
+ if(pnet_state()!=PNET_ONLINE)return;
+ FILE *file=fopen(DATA_DIR "/gameplay-step","r");if(!file)return;
+ unsigned step=0;int read=fscanf(file,"%u",&step);fclose(file);if(read!=1||!step||step==gameplayStep)return;
+ gameplayStep=step;if(step==1)demo.zoom=true;Actor *me=&demo.actors[0];
+ if(step==7){book_open("clothing");book_page(NULL,6);return;}
+ if(step==8){pnet_account_rename(&settings.network,settings.session,"SaveFixture");return;}
+ if(step==9){buy(429);return;}
+ if(step==2){wantedRoom=813;wantedX=540;wantedY=400;return;}
+ if(step==1||step==3||step==6){
+  const char *commands[]={"s#uph","s#upf","s#upn","s#upb","s#upa","s#upe"};
+  for(unsigned slot=0;slot<6;slot++){unsigned id=step==1?(slot==0?424:slot==3?240:0):step==3&&slot==0?429:0;char value[20];snprintf(value,sizeof value,"%u",id);pnet_send(commands[slot],1,(const char *[]){value});me->look[slot]=id;}
+  action(26);
+ }else if(step==4){me->x=me->tx=600;me->y=me->ty=400;me->walking=false;pnet_send("u#sp",2,(const char *[]){"600","400"});action(26);}
+ else if(step==5)action(25);
+}
+#endif
 static void game_restore(void){
  bool table=queuedGame.table!=0,lost=gameMultiplayerLost||pnet_state()!=PNET_ONLINE;
  const LobbyGeometrySeat *point=table?lobby_geometry_lookup(queuedGame.returnRoom,LOBBY_TABLE,queuedGame.table,queuedGame.seat):NULL;
@@ -1480,7 +1530,7 @@ static void touch(int x,int y){
  if(demo.tab==6&&!book.open){if(y>=185){if(x<100&&bookListPage)bookListPage--;if(x>=221&&(bookListPage+1)*6<BOOK_COUNT)bookListPage++;}else if(y>=34&&y<184){unsigned col=x>=164,row=(unsigned)(y-34)/50,i=bookListPage*6+row*2+col;if(row<3&&i<BOOK_COUNT)book_open(bookInfo[i].key);}return;}
  if(book.open){
   if(book.poster){if(y>=204){if(x<160)book_room(NULL,"forest");else book.close=true;}return;}
-  if(!book.resourceId&&y>=207&&y<228){if(x<85){if(book.page>1&&!book.wanted)book_page(NULL,book.page-1);}else if(x>=235){if(book.page<book.info->frames&&!book.wanted)book_page(NULL,book.page+1);}else book_toggle_zoom(false);return;}
+  if(!book.resourceId&&y>=207&&y<228){if(x<85){if(book.page>1&&!book.wanted)book_page(NULL,book.page-1);}else if(x>=235){if(book.page<book.info->frames&&!book.wanted)book_page(NULL,book.page+1);}else book_toggle_zoom();return;}
   if((book.info->id==1||book.info->archive)&&x<92&&y>=29&&y<=48){book.close=true;demo.tab=6;bookListPage=2;return;}
   if(book.bank&&book.resourceId&&!newspaper.open&&y>=207&&y<230){
    if(book.mailUid){
@@ -1489,7 +1539,7 @@ static void touch(int x,int y){
    }else if(postcardId){if(x<160){modal_message("Send this postcard for 10 coins?");modal.confirm=true;snprintf(modal.command,sizeof modal.command,"l#ms");snprintf(modal.argument,sizeof modal.argument,"%u",postcardRecipient);}else book.close=true;}
    return;
   }
-  if(book.bank&&!book.wanted){MovieHooks hooks=bookHooks;if(book.resourceId&&!newspaper.open)hooks.page=NULL;SWLMatrix view=book_view(320,177,28,false);movie_meta_click(movie_bank_meta(book.bank),movie_bank_scene(book.bank),(x-view.x)/view.a,(y-view.y)/view.d,&hooks,NULL);}
+  if(book.bank&&!book.wanted){MovieHooks hooks=bookHooks;if(book.resourceId&&!newspaper.open)hooks.page=NULL;SWLMatrix view=book_view(320,177,28,false);movie_meta_touch(movie_bank_meta(book.bank),movie_bank_scene(book.bank),(x-view.x)/view.a,(y-view.y)/view.d,6.0f/view.a,&hooks,NULL);}
   return;
  }
  if(y>=207){demo.tab=x/64;return;}
@@ -1548,10 +1598,13 @@ int main(int argc,char **argv){
  gp_update_init(argc>0?argv[0]:NULL);
  gfxInitDefault();romfsInit();APT_CheckNew3DS(&isNew3DS);C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);C2D_Init(8192);C2D_Prepare();C2D_SetTintMode(C2D_TintMult);
  mkdir("sdmc:/3ds",0777);mkdir(DATA_DIR,0700);settings_load(&settings,SETTINGS_FILE);
+ if(settings.recoveredFromBackup&&settings_save(&settings,SETTINGS_FILE))settings.recoveredFromBackup=false;
+ if(!settings.restoreRequired&&!settings.session[0]&&settings.network.api[0]&&settings.network.world[0]&&!settings_save(&settings,SETTINGS_FILE))settings.restoreRequired=true;
+ if(settings.restoreRequired)modal_message("Your saved penguin could not be read or saved on SD. No new penguin has been created. Check the SD card or restore your penguin from Account.");
  power_apply();
 #ifndef GP_LAN_ONLY
  if(settings.session[0])pnet_start(&settings.network,settings.session,"","",false);
- else if(!pnet_start_guest(&settings.network))message("Could not connect. Check your connection and try again.");
+ else if(!settings.restoreRequired&&!pnet_start_guest(&settings.network))message("Could not connect. Check your connection and try again.");
 #endif
 #ifdef GP_LAN_ONLY
  FILE *loadFlag=fopen(DATA_DIR "/load-test","r");if(loadFlag){loadTesting=true;fclose(loadFlag);}
@@ -1577,8 +1630,8 @@ int main(int argc,char **argv){
  if(!ok){consoleInit(GFX_BOTTOM,NULL);printf("Could not load demo assets.\n%s\nRun tools/export-scene.mjs and rebuild.\nPress START to exit.\n",sceneError?sceneError:"");while(aptMainLoop()){hidScanInput();if(hidKeysDown()&KEY_START)break;gspWaitForVBlank();}goto done;}
 #ifdef GP_LAN_ONLY
  if(settings.session[0])pnet_start(&settings.network,settings.session,"","",false);
- else if(settings.network.api[0]&&settings.network.world[0])pnet_start_guest(&settings.network);
- else offline_begin();
+ else if(!settings.restoreRequired&&settings.network.api[0]&&settings.network.world[0])pnet_start_guest(&settings.network);
+ else if(!settings.restoreRequired)offline_begin();
 #endif
  if(settings.assets[0]&&!asset_cache_start(settings.assets,DATA_DIR "/cache"))message("Could not prepare the resource cache. Check your SD card and resource settings.");
  u64 last=osGetTime(),sample=last,lastMove=0,updateCheckAt=last+10000;char offeredUpdate[24]="";unsigned frames=0;float sceneClock=0,lastX=demo.actors[0].x,lastY=demo.actors[0].y;bool wasMoving=false;PNetState previousState=PNET_OFFLINE;
@@ -1604,13 +1657,22 @@ int main(int argc,char **argv){
    if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);gameTouchX=p.px;gameTouchY=p.py;game_port_touch(game,down&KEY_TOUCH?GAME_TOUCH_DOWN:GAME_TOUCH_MOVE,gameTouchX,gameTouchY);}
    if(hidKeysUp()&KEY_TOUCH)game_port_touch(game,GAME_TOUCH_UP,gameTouchX,gameTouchY);
   }else{
-   if(down&KEY_TOUCH){touchPosition p;hidTouchRead(&p);if((held&KEY_B)&&sitting()&&!modal.open&&!book.open&&!igloo.editing&&p.px>=9&&p.px<=184&&p.py>=36&&p.py<=146)sit_touch(p.px,p.py);else touch(p.px,p.py);}
-   if(book.open&&book.bank&&book.zoom&&!modal.open&&(held&KEY_TOUCH)){touchPosition p;hidTouchRead(&p);if(p.py>=28&&p.py<205){SWLMatrix v=book_view(320,177,28,false);book.x=(p.px-v.x)/v.a;book.y=(p.py-v.y)/v.d;}}
+   if(!book.open||!book.bank||!book.zoom||book.wanted||modal.open)book_camera_cancel(&book.camera);
+   if(down&KEY_TOUCH){
+    touchPosition p;hidTouchRead(&p);
+    if(book.open&&book.bank&&book.zoom&&!book.wanted&&!modal.open&&p.py>=28&&p.py<205)book_camera_begin(&book.camera,p.px,p.py);
+    else if((held&KEY_B)&&sitting()&&!modal.open&&!book.open&&!igloo.editing&&p.px>=9&&p.px<=184&&p.py>=36&&p.py<=146)sit_touch(p.px,p.py);
+    else touch(p.px,p.py);
+   }
+   if(book.camera.tracking){
+    if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);SWLMatrix view=book_view(320,177,28,false);book_camera_drag(&book.camera,p.px,p.py,view.a,view.d);}
+    if(hidKeysUp()&KEY_TOUCH){float x=book.camera.touchX,y=book.camera.touchY;if(book_camera_end(&book.camera))touch((int)x,(int)y);}
+   }
    if(lobby_locked()&&!modal.open){if(down&KEY_B)lobby_close();}
    else if(igloo.editing&&!modal.open){editor_drag(held,hidKeysUp());if(down&KEY_X)editor_remove();if(down&KEY_Y)editor_turn(0,1);if(down&KEY_L)editor_turn(-1,0);if(down&KEY_R)editor_turn(1,0);if(down&KEY_A){editor_cancel_drag();editor.inventory=!editor.inventory;}if(down&KEY_B){if(editor.inventory)editor.inventory=false;else editor_save();}}
    else if(!modal.open&&!book.open){if(down&KEY_X)action(25);if(down&KEY_Y)action(26);if(down&KEY_B){if(demo.tab)demo.tab=0;else action(17);}if(down&KEY_A){if(rockhopper_near())rockhopper_open();else if(!room_npc_action())chat();}if(down&KEY_L)history_open();else if(down&KEY_R)chat();}else if(down&KEY_B){if(modal.open)modal.open=false;else if(book.open)book.close=true;}
    if(book.open&&book.poster&&!modal.open&&(down&KEY_A))book_room(NULL,"forest");
-   if(book.open&&!book.poster&&!modal.open&&(down&(KEY_L|KEY_R)))book_toggle_zoom(true);
+   if(book.open&&!book.poster&&!modal.open&&(down&(KEY_L|KEY_R)))book_toggle_zoom();
    if(down&KEY_SELECT){if(demo.tab==1&&pnet_state()==PNET_OFFLINE)mapList=!mapList;else demo.stats=!demo.stats;}
   }
   }
@@ -1683,6 +1745,7 @@ int main(int argc,char **argv){
    if(!strcmp(packet.command,"ba"))pnet_send("b#gb",0,NULL);
    if(!strcmp(packet.command,"bf")&&social.foundRoom){const IslandRoom *room=island_room(social.foundRoom);if(room){char prompt[140];snprintf(prompt,sizeof prompt,"Your buddy is in %s. Go there?",room->title);modal_message(prompt);modal.confirm=true;modal.room=room->id;}else modal_message("Your buddy is in an igloo.");}
    unsigned room=world_apply(&demo,&packet,pnet_id());profile_apply(&profile,&packet,pnet_id());
+   if(!strcmp(packet.command,"cdu")&&packet.count==2){char *end;unsigned long earned=strtoul(packet.args[0],&end,10);if(*packet.args[0]&&!*end&&earned<=100)mining_reply(&mining,(unsigned)earned);}
    if(!strcmp(packet.command,"jr")&&room){
     bool chooser=(lobbyUI.open&&!lobby.needsLeave&&lobby.state!=LOBBY_LAUNCHED)||lobbyUI.routeRoom==room;
     lobby_stop();lobby_init(&lobby,game_send,NULL);lobbyUI.leavePending=false;
@@ -1722,15 +1785,20 @@ int main(int argc,char **argv){
   if(networkState==PNET_ONLINE&&puffles.mine!=pnet_id()){puffles_init(&puffles,pets_send,NULL);petRoom=0;pets_enter(roomBank?igloo.layout.owner:0);}
   else if((networkState==PNET_OFFLINE||networkState==PNET_RETRYING||networkState==PNET_SIGN_IN)&&puffles.mine){puffles_init(&puffles,pets_send,NULL);petRoom=wantedPetOwner=0;}
   if(wantedPetOwner&&networkState==PNET_ONLINE&&!puffles.snapshotPending&&puffles_request(&puffles,wantedPetOwner))wantedPetOwner=0;
-  Actor *miner=&demo.actors[0];bool digging=!game&&networkState==PNET_ONLINE&&currentRoomId==813&&!miner->walking&&miner->action==26&&penguin_secret_frame(miner->look,26)!=26&&(miner->look[4]==342||miner->look[0]==403||miner->look[0]==429||miner->look[0]==674||miner->look[0]==10403)&&miner->x>=126.55f&&miner->x<=636.4f&&miner->y>=274.4f&&miner->y<=482.4f;
-  if(digging){miningTime+=dt;if(miningTime>=2){miningTime=0;pnet_send("r#cdu",0,NULL);}}else miningTime=0;
+#ifdef GP_LAN_ONLY
+  gameplay_test_step();
+#endif
+  Actor *miner=&demo.actors[0];bool miningEnabled=!game&&!book.open&&!modal.open&&networkState==PNET_ONLINE;
+  for(unsigned slot=0;slot<6;slot++)if(miner->look[slot]&&!profile_has(&profile,miner->look[slot]))miningEnabled=false;
+  mining.room=currentRoomId;
+  if(mining_update(&mining,dt,miningEnabled,miner->look,(unsigned)miner->action,miner->walking,miner->x,miner->y)&&!pnet_send("r#cdu",0,NULL))mining.pending=0;
   demo_index(&demo);puffles.poseReady=pets_pose_ready;puffles_step(&puffles,&demo,dt);if(*puffles.error){modal_message(puffles.error);puffles.error[0]=0;}
   if(igloo.awaitingStyle&&now-styles.started>15000){igloo.awaitingStyle=false;igloo.slotsReady=igloo.activeKnown=false;modal_message("The igloo change timed out. Refresh to check the server state before retrying.");}
   if(igloo.awaitingMusic&&now-musicStarted>15000){igloo.awaitingMusic=false;modal_message("The music change timed out. Reopen your igloo to check its saved music.");}
   if(*profile.error){if(game)message(profile.error);else modal_message(profile.error);profile.error[0]=0;}
   if(!game){if(profile.inventoryRevision!=roomInventoryStamp)room_inventory();room_hover(held);}gp_audio_update();lobby_update(dt);
   if(room_tube_locked(&roomTube)&&(lobby_locked()||game||gameQueued||book.open||modal.open||demo.tab!=0||wantedRoom||waitingIgloo||wantedIgloo||(pnet_id()&&networkState!=PNET_ONLINE)))room_tube_cancel(&roomTube,&tubeHooks);
-  circlePosition pad;hidCircleRead(&pad);circlePosition cstick;hidCstickRead(&cstick);if(chatKeyboard.active||keyboardInput||chatHistory.open||historyInput){memset(&pad,0,sizeof pad);down=held=0;}float dx=pad.dx/150.0f,dy=-pad.dy/150.0f;if(held&KEY_DLEFT)dx=-1;if(held&KEY_DRIGHT)dx=1;if(held&KEY_DUP)dy=-1;if(held&KEY_DDOWN)dy=1;if(book.open&&book.zoom&&!modal.open){SWLMatrix view=book_view(400,240,0,true);const float stage[]={0,0,760,480},*b=book.resourceId&&book.boundsReady?book.bounds:stage;float halfX=fminf(200/view.a,(b[2]-b[0])/2),halfY=fminf(120/view.d,(b[3]-b[1])/2);book.x=fmaxf(b[0]+halfX,fminf(b[2]-halfX,book.x+dx*240*dt));book.y=fmaxf(b[1]+halfY,fminf(b[3]-halfY,book.y+dy*240*dt));}float rawDx=dx,rawDy=dy;if(!game&&!gameQueued&&!modal.open&&!book.open&&!igloo.editing&&demo.tab==0&&sitting()){float csx=cstick.dx/150.0f,csy=-cstick.dy/150.0f;if(fabsf(csx)>0.35f||fabsf(csy)>0.35f){sit_turn(csx,csy);dx=dy=0;}else if((held&KEY_B)&&(fabsf(rawDx)>0.35f||fabsf(rawDy)>0.35f)){sit_turn(rawDx,rawDy);dx=dy=0;}}if(lobby_locked()||room_tube_locked(&roomTube)||game||gameQueued||modal.open||book.open||igloo.editing||waitingIgloo||wantedIgloo)dx=dy=0;demo_step(&demo,dt,dx,dy);if(!game)lobby_progress(dt);if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++)furnitureTime[i]+=dt;overlay_step(&overlay,dt);if(noticeTime>0)noticeTime-=dt;
+  circlePosition pad;hidCircleRead(&pad);circlePosition cstick;hidCstickRead(&cstick);if(chatKeyboard.active||keyboardInput||chatHistory.open||historyInput){memset(&pad,0,sizeof pad);down=held=0;}float dx=pad.dx/150.0f,dy=-pad.dy/150.0f;if(held&KEY_DLEFT)dx=-1;if(held&KEY_DRIGHT)dx=1;if(held&KEY_DUP)dy=-1;if(held&KEY_DDOWN)dy=1;if(book.open&&book.zoom&&!modal.open){SWLMatrix view=book_view(400,240,0,true);const float stage[]={0,0,760,480},*b=book.resourceId&&book.boundsReady?book.bounds:stage;float panX=dx,panY=dy;if(held&(KEY_DLEFT|KEY_DRIGHT|KEY_DUP|KEY_DDOWN)){panX=((held&KEY_DRIGHT)?1:0)-((held&KEY_DLEFT)?1:0);panY=((held&KEY_DDOWN)?1:0)-((held&KEY_DUP)?1:0);}book_camera_pan(&book.camera,panX,panY,dt);book_camera_clamp(&book.camera,b[0],b[1],b[2],b[3],200/view.a,120/view.d);}float rawDx=dx,rawDy=dy;if(!game&&!gameQueued&&!modal.open&&!book.open&&!igloo.editing&&demo.tab==0&&sitting()){float csx=cstick.dx/150.0f,csy=-cstick.dy/150.0f;if(fabsf(csx)>0.35f||fabsf(csy)>0.35f){sit_turn(csx,csy);dx=dy=0;}else if((held&KEY_B)&&(fabsf(rawDx)>0.35f||fabsf(rawDy)>0.35f)){sit_turn(rawDx,rawDy);dx=dy=0;}}if(lobby_locked()||room_tube_locked(&roomTube)||game||gameQueued||modal.open||book.open||igloo.editing||waitingIgloo||wantedIgloo)dx=dy=0;demo_step(&demo,dt,dx,dy);if(!game)lobby_progress(dt);if(roomBank)for(unsigned i=0;i<igloo.layout.count;i++)furnitureTime[i]+=dt;overlay_step(&overlay,dt);if(noticeTime>0)noticeTime-=dt;
   if(game||gameQueued){dx=dy=0;demo.actors[0].walking=false;}
   Actor *me=&demo.actors[0];bool moving=me->walking||hypotf(dx,dy)>.15f;
   if(actionPosition){actionPosition=false;lastX=me->x;lastY=me->y;wasMoving=false;lastMove=now;}
@@ -1758,7 +1826,7 @@ int main(int argc,char **argv){
   if(styles.preparing||igloo.awaitingStyle){demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;}
   if(!game){bool holdTube=tubeArmed;sceneClock+=dt;while(sceneClock>=1/swl_rate(scene)){epf_access_tick(&epfAccess,&epfHooks);if(holdTube)holdTube=false;else room_tube_tick(&roomTube,&tubeHooks);sceneOK=swl_tick(scene)&&sceneOK;sceneClock-=1/swl_rate(scene);}interpolation=sceneClock*swl_rate(scene);swl_begin(scene);}
   if(!game){
-  wear_begin();if(roomBank&&!book.open){if(igloo.layout.floor)wear_want_pose(asset_key(ASSET_FLOOR,igloo.layout.floor),iglooGeometry->floorFrame,1);for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];wear_want_pose(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame);}}if(igloo.editing&&editor.inventory){editor_inventory();for(unsigned n=editor.page*6;n<editor.count&&n<(editor.page+1)*6;n++)wear_want(asset_key(ASSET_FURNITURE_ICON,editor.items[n]));}if(!book.open&&demo.tab==7){Actor *a=selected_actor();if(a){if(a->look[7])wear_want(asset_key(ASSET_PHOTO,a->look[7]));for(unsigned i=0;i<6;i++)wear_want(asset_key(ASSET_PAPER,a->look[i]));if(a->look[6])wear_want(asset_key(ASSET_ICON,a->look[6]));}}if(!book.open&&demo.tab==2)inventory_prepare(&inventoryUI,clientData,&profile,&demo.actors[0]);for(unsigned i=0;!book.open&&i<demo.count;i++)if(room_actor_visible(i)){const unsigned slots[]={5,3,2,4,1,0};for(unsigned slot=0;slot<6;slot++)wear_want_pose(demo.actors[i].look[slots[slot]],actor_action(&demo.actors[i]),1);}
+  wear_begin();if(roomBank&&!book.open){if(igloo.layout.floor)wear_want_pose(asset_key(ASSET_FLOOR,igloo.layout.floor),iglooGeometry->floorFrame,1);for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];wear_want_pose(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame);}}if(igloo.editing&&editor.inventory){editor_inventory();for(unsigned n=editor.page*6;n<editor.count&&n<(editor.page+1)*6;n++)wear_want(asset_key(ASSET_FURNITURE_ICON,editor.items[n]));}if(!book.open&&demo.tab==7){Actor *a=selected_actor();if(a){if(a->look[7])wear_want(asset_key(ASSET_PHOTO,a->look[7]));for(unsigned i=0;i<6;i++)wear_want(asset_key(ASSET_PAPER,a->look[i]));if(a->look[6])wear_want(asset_key(ASSET_ICON,a->look[6]));}}if(!book.open&&demo.tab==2)inventory_prepare(&inventoryUI,clientData,&profile,&demo.actors[0]);for(unsigned i=0;!book.open&&i<demo.count;i++)if(room_actor_visible(i))actor_want(&demo.actors[i]);
   if(!book.open)for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo)||(demo.tab==13&&puffles.pets[i].owner==pnet_id()&&puffles.pets[i].id==petSelected))wear_want_pose(asset_key(ASSET_PUFFLE,puffles.pets[i].type+1),puffles.pets[i].frame,1);
   }
   C3D_FrameBegin(C3D_FRAME_SYNCDRAW);game_transition();
@@ -1778,7 +1846,11 @@ int main(int argc,char **argv){
    fps=frames*1000.0f/(now-sample);frames=0;sample=now;
 #ifdef GP_LAN_ONLY
    unsigned visible=0;for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo))visible++;
-   FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"load players=%u puffles=%u fps=%.2f draw=%u linear=%u wear=%u\n",demo.count,visible,fps,(unsigned)frameMS,(unsigned)linearSpaceFree(),(unsigned)wear_bytes());fclose(trace);}
+   FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){
+    if(book.open&&book.bank)fprintf(trace,"camera zoom=%u x=%.3f y=%.3f tracking=%u dragging=%u modal=%u page=%u\n",book.zoom,book.camera.x,book.camera.y,book.camera.tracking,book.camera.dragging,modal.open,book.page);
+    FILE *audit=fopen(DATA_DIR "/save-audit","r");if(audit){fclose(audit);fprintf(trace,"savecheck connected=%u saved=%u restore=%u coins=%u head=%u\n",pnet_state()==PNET_ONLINE,settings.session[0]!=0,settings.restoreRequired,profile.coins,demo.actors[0].look[0]);}
+    if(gameplayStep)fprintf(trace,"gameplay step=%u room=%u base=%d drawn=%u coins=%u wear=%u\n",gameplayStep,currentRoomId,demo.actors[0].action,actor_action(&demo.actors[0]),profile.coins,(unsigned)wear_bytes());
+    fprintf(trace,"load players=%u puffles=%u fps=%.2f draw=%u linear=%u wear=%u\n",demo.count,visible,fps,(unsigned)frameMS,(unsigned)linearSpaceFree(),(unsigned)wear_bytes());fclose(trace);}
 #endif
   }
  }

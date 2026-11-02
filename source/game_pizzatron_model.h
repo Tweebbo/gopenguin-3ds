@@ -14,7 +14,7 @@ typedef struct {
  double x,y,speed,boost,mouseX,mouseY,strengthX,strengthY,oldX[2],oldY[2];
  PizzPhase phase;unsigned order,made,ordersMade,failures,score,tips,consecutive;
  int handicap;
- bool candy,normal,hot,cheese,perfect,held;
+ bool candy,normal,hot,cheese,perfect,held,squeezed;
  unsigned counts[4],splatCount,toppingCount,dropCount,serial,ingredient,variant,result,popup,popupSerial,overflow;
  PizzSplat splats[PIZZ_SAUCE_SLOTS];PizzTopping toppings[PIZZ_TOPPING_SLOTS];PizzDrop drops[PIZZ_DROP_SLOTS];
  const char *sounds[4];unsigned soundCount;
@@ -24,6 +24,8 @@ typedef struct {
 void pizz_model_init(PizzModel *model,bool candy,PizzRandom random,void *user);
 void pizz_model_pickup(PizzModel *model,unsigned ingredient);
 void pizz_model_step(PizzModel *model);
+void pizz_model_release(PizzModel *model);
+void pizz_model_squeeze(PizzModel *model);
 bool pizz_model_hit(const PizzModel *model,double x,double y);
 const PizzOrder *pizz_model_order(const PizzModel *model);
 const char *pizz_model_label(const PizzModel *model,unsigned field);

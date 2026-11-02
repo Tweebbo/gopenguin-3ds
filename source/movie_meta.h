@@ -12,6 +12,8 @@ typedef struct {
 MovieMeta *movie_meta_load(const void *bytes,size_t length);
 void movie_meta_free(MovieMeta *meta);
 bool movie_meta_click(MovieMeta *meta,SWLScene *scene,float x,float y,const MovieHooks *hooks,void *user);
+// Exact controls take priority; nearby purchase buttons retain their confirmation flow.
+bool movie_meta_touch(MovieMeta *meta,SWLScene *scene,float x,float y,float radius,const MovieHooks *hooks,void *user);
 unsigned movie_meta_frames(const MovieMeta *meta);
 const char *movie_meta_clip(const MovieMeta *meta);
 unsigned movie_meta_source(const MovieMeta *meta,unsigned symbol);

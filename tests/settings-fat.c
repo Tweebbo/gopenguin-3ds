@@ -11,7 +11,7 @@ static bool failPublish;
 static unsigned collisions;
 int __wrap_rename(const char *old,const char *next){
  if(!access(next,F_OK)){collisions++;errno=EEXIST;return -1;}
- if(failPublish&&strstr(old,".tmp")){errno=EIO;return -1;}
+ if(failPublish&&(strstr(old,".tmp")||strstr(old,".repair"))){errno=EIO;return -1;}
  return __real_rename(old,next);
 }
 int main(void){
@@ -26,6 +26,9 @@ int main(void){
  assert(settings_load(&saved,path));assert(!strcmp(saved.name,"Renamed"));
  failPublish=false;assert(settings_save(&s,path));
  assert(unlink(path)==0);assert(settings_load(&saved,path));assert(!strcmp(saved.session,"fixed-fixture-token"));
- unlink(backup);rmdir(dir);
+ FILE *bad=fopen(path,"wb");assert(bad);fputs("{",bad);assert(!fclose(bad));
+ failPublish=true;assert(!settings_save(&saved,path));failPublish=false;
+ Settings recovered;assert(settings_load(&recovered,path));assert(!strcmp(recovered.session,"fixed-fixture-token"));
+ unlink(path);unlink(backup);rmdir(dir);
  puts("PASS FAT no-overwrite rename, name-only save, unchanged session without I/O, failed publish rollback and backup load");
 }

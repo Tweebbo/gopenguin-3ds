@@ -45,6 +45,8 @@ bool swl_render(SWLScene *scene,SWLMatrix view,int layer,float interpolation,con
  *  Clear with frame 0 before ticking the scene; used for a second-screen composition. */
 bool swl_view_frame(SWLScene *scene,const char *path,unsigned frame);
 bool swl_tick(SWLScene *scene);
+// Advance timelines; combine the final preparation with subsequent controller edits.
+bool swl_tick_deferred(SWLScene *scene);
 bool swl_goto(SWLScene *scene,const char *path,unsigned frame,const char *label,bool playing);
 bool swl_target(SWLScene *scene,const char *path,unsigned frame,const char *label,bool playing);
 bool swl_color(SWLScene *scene,const char *path,SWLColor color);

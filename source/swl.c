@@ -278,13 +278,15 @@ void swl_text_handler(SWLScene *s,SWLText handler,void *user){s->text=handler;s-
 void swl_invalidate(SWLScene *s){s->dirty=true;}
 void swl_sound_handler(SWLScene *s,SWLSound handler,void *user){s->sound=handler;s->soundUser=user;}
 bool swl_restart(SWLScene *s){s->used=0;s->error=NULL;s->drawCount=s->oldCount=0;memset(s->hash,0,sizeof s->hash);return prepare(s);}
-bool swl_tick(SWLScene *s){
+static bool tick_scene(SWLScene *s,bool deferred){
  if(s->dirty&&!prepare(s))return false;
  unsigned count=s->used;bool changed=false;
  for(unsigned i=0;i<count;i++){Head *h=&s->heads[i];if(!h->active||!h->seen||!h->playing)continue;changed=true;const uint8_t *t=symbol(s,TL,h->symbol);h->frame=h->frame>=u32(t+8)?1:h->frame+1;if(!run(s,h))return false;}
  if(!changed){for(unsigned i=0;i<s->drawCount;i++)s->draw[i].previous=-1;return !s->error;}
- return !s->error&&prepare(s);
+ s->dirty=true;return !s->error&&(deferred||prepare(s));
 }
+bool swl_tick(SWLScene *s){return tick_scene(s,false);}
+bool swl_tick_deferred(SWLScene *s){return tick_scene(s,true);}
 bool swl_render(SWLScene *s,SWLMatrix view,int layer,float interpolation,const SWLRenderer *renderer,void *user){
  if(!renderer||!renderer->emit||!finite_matrix(view)||!isfinite(interpolation))return fail(s,"Invalid renderer or view");
  if(s->dirty&&!prepare(s))return false;

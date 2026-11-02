@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -43,3 +45,5 @@ for target, data in pending:
         stream.write(data)
     os.replace(temporary, target)
 print(f"Seasonal profile: {len(profile['files'])} verified files, {len(pending)} restored.")
+subprocess.run([sys.executable, str(root / 'tools/restore-outfit-assets.py'),
+                '--romfs', str(args.romfs), *(['--check'] if args.check else [])], check=True)

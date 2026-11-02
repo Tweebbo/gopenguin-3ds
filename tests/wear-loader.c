@@ -97,6 +97,11 @@ int main(void){
  assert(result.status==WEAR_LOAD_TEXTURE&&result.page==0);wear_loader_result_free(&result);
  assert(wear_loader_request((WearLoadRequest){asset_key(ASSET_MOVIE,1),1,1}));result=receive();
  assert(result.status==WEAR_LOAD_MOVIE&&!result.texture.pixels);wear_loader_result_free(&result);
+ for(unsigned kind=ASSET_AVATAR;kind<=ASSET_OUTFIT;kind++){
+  assert(wear_loader_request((WearLoadRequest){asset_key(kind,kind==ASSET_AVATAR?1:424),2,1}));result=receive();
+  assert(result.status==WEAR_LOAD_TEXTURE&&result.sprite&&result.page==1);wear_loader_result_free(&result);
+ }
+ assert(wear_loader_request((WearLoadRequest){asset_key(ASSET_OUTFIT,999),1,1}));result=receive();assert(result.status==WEAR_LOAD_FAILED);wear_loader_result_free(&result);
  assert(wear_loader_request((WearLoadRequest){999,1,1}));result=receive();
  assert(result.status==WEAR_LOAD_WAITING);wear_loader_result_free(&result);
  wear_loader_request_stop();assert(wear_loader_stop_within(1500));assert(wear_loader_core()==-3);assert(wear_loader_stop_within(0));

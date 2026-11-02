@@ -61,6 +61,14 @@ static void use_ingredient(PizzModel *m){
  }else throw_ingredient(m,ingredient);
  m->ingredient=0;
 }
+void pizz_model_release(PizzModel *m){
+ if(m->result||m->held)return;
+ m->soundCount=0;use_ingredient(m);
+}
+void pizz_model_squeeze(PizzModel *m){
+ if(m->result||m->squeezed||!m->held||m->ingredient<1||m->ingredient>2||!pizz_model_hit(m,m->mouseX,m->mouseY+100))return;
+ use_ingredient(m);m->squeezed=true;
+}
 void pizz_model_step(PizzModel *m){
  if(m->result)return;
  m->soundCount=0;
@@ -79,7 +87,8 @@ void pizz_model_step(PizzModel *m){
   unsigned tier=m->consecutive/5;if(tier>6)tier=6;if(tier){m->tips+=5+tier*5;m->popup=2+tier;m->popupSerial++;}
   m->ordersMade++;m->normal=m->hot=m->cheese=false;memset(m->counts,0,sizeof m->counts);m->splatCount=0;m->boost=0;m->overflow=0;memset(m->splats,0,sizeof m->splats);memset(m->toppings,0,sizeof m->toppings);m->phase=PIZZ_PLACE;
  }else{m->x=-240;m->y=375;m->serial++;m->phase=PIZZ_ORDER;}
- use_ingredient(m);
+ if(!m->squeezed)use_ingredient(m);
+ m->squeezed=false;
  if(m->splatCount>189){m->speed++;m->overflow=m->normal?1:m->hot?2:0;}
  else{static const int thresholds[8]={-2,-1,4,8,13,19,26,34};for(unsigned i=0;i<8;i++)if(m->handicap<=thresholds[i]){m->speed=i+1+(m->candy?1:0);break;}}
  m->strengthX=fmax(-30,fmin(30,(m->oldX[0]-m->mouseX)/3));m->strengthY=fmax(-20,fmin(40,(m->oldY[0]-m->mouseY+60)/3));

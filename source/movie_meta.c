@@ -112,3 +112,32 @@ bool movie_meta_click(MovieMeta *m,SWLScene *scene,float x,float y,const MovieHo
  }
  return false;
 }
+
+static float segment_distance(float x,float y,float ax,float ay,float bx,float by){
+ float dx=bx-ax,dy=by-ay,length=dx*dx+dy*dy;
+ float t=length?fmaxf(0,fminf(1,((x-ax)*dx+(y-ay)*dy)/length)):0;
+ dx=x-ax-t*dx;dy=y-ay-t*dy;return dx*dx+dy*dy;
+}
+bool movie_meta_touch(MovieMeta *m,SWLScene *scene,float x,float y,float radius,const MovieHooks *hooks,void *user){
+ if(movie_meta_click(m,scene,x,y,hooks,user))return true;
+ if(!m||!scene||!hooks||!isfinite(x)||!isfinite(y)||!isfinite(radius)||radius<=0)return false;
+ float best=radius*radius,chosenX=0,chosenY=0;bool found=false;
+ for(unsigned i=swl_hits(scene);i>0;i--){
+  const SWLHit *hit=swl_hit(scene,i-1);if(!hit)continue;json_t *control=NULL;
+  for(size_t j=0;j<json_array_size(m->controls);j++){json_t *c=json_array_get(m->controls,j);if(number(c,"id")==hit->id){control=c;break;}}
+  if(!control)continue;
+  json_t *commands=json_object_get(control,"commands");bool purchase=false;
+  for(size_t j=0;j<json_array_size(commands);j++)if(number(json_array_get(commands,j),"op")==10)purchase=true;
+  if(!purchase)continue;
+  SWLInstance instance;if(!swl_instance(scene,hit->path,&instance))continue;
+  json_t *b=json_array_get(json_object_get(control,"bounds"),instance.frame?instance.frame-1:0);if(!json_is_array(b))continue;
+  float left=json_number_value(json_array_get(b,0)),top=json_number_value(json_array_get(b,1)),right=json_number_value(json_array_get(b,2)),bottom=json_number_value(json_array_get(b,3));
+  SWLMatrix v=hit->matrix;if(fabsf(v.a*v.d-v.b*v.c)<1e-8f||right<=left||bottom<=top)continue;
+  float lx[4]={left,right,right,left},ly[4]={top,top,bottom,bottom},px[4],py[4];
+  for(unsigned n=0;n<4;n++){px[n]=v.a*lx[n]+v.c*ly[n]+v.x;py[n]=v.b*lx[n]+v.d*ly[n]+v.y;}
+  float distance=best;
+  for(unsigned n=0;n<4;n++){float d=segment_distance(x,y,px[n],py[n],px[(n+1)%4],py[(n+1)%4]);if(d<distance)distance=d;}
+  if(distance<best){best=distance;chosenX=v.a*(left+right)/2+v.c*(top+bottom)/2+v.x;chosenY=v.b*(left+right)/2+v.d*(top+bottom)/2+v.y;found=true;}
+ }
+ return found&&movie_meta_click(m,scene,chosenX,chosenY,hooks,user);
+}

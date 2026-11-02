@@ -16,7 +16,7 @@ typedef struct {
  PizzModel model;uint32_t seed;
  unsigned screen,focus,lastOrder,lastResult,lastPopup;
  unsigned shownSplats[PIZZ_SAUCE_SLOTS],shownToppings[PIZZ_TOPPING_SLOTS];
- bool started,candy,finished,stylus,keyHeld;
+ bool started,candy,finished,stylus,keyHeld,inputDirty;
  float pointerX,pointerY;
 #ifdef GP_LAN_ONLY
  unsigned profileTicks;u64 sceneMS,modelMS,syncMS;
@@ -93,7 +93,7 @@ static void tick(void *game){
 #ifdef GP_LAN_ONLY
  u64 before=now_ms();
 #endif
- if(p->scene)swl_tick(p->scene);
+ if(p->scene)swl_tick_deferred(p->scene);
  if(!p->started)return;
 #ifdef GP_LAN_ONLY
  u64 sceneAt=now_ms();
@@ -124,17 +124,26 @@ static void frame(void *game,float seconds,const GameInput *input){
  if(p->finished||p->model.result)return;
  if(input->down&(GAME_KEY_L|GAME_KEY_LEFT))p->focus=p->focus>1?p->focus-1:7;
  if(input->down&(GAME_KEY_R|GAME_KEY_RIGHT))p->focus=p->focus<7?p->focus+1:1;
+ p->keyHeld=(input->held&GAME_KEY_A)!=0;
  if(!p->stylus){
   p->pointerX=fmaxf(8,fminf(312,p->pointerX+input->stickX*150*seconds));p->pointerY=fmaxf(100,fminf(232,p->pointerY-input->stickY*100*seconds));
   if(input->down&GAME_KEY_A)pizz_model_pickup(&p->model,p->focus);
-  p->keyHeld=(input->held&GAME_KEY_A)!=0;p->model.held=p->keyHeld;pointer(p);
+  p->model.held=p->keyHeld;pointer(p);
  }
+ if(p->inputDirty){sync(p);p->inputDirty=false;}
 }
 static void touch(void *game,GameTouch phase,float x,float y){
- Pizzatron *p=game;if(!p->started||p->finished||p->model.result||y<30)return;
+ Pizzatron *p=game;if(!p->started||p->finished||p->model.result)return;
+ if(y<30&&phase!=GAME_TOUCH_UP)return;
  p->pointerX=x;p->pointerY=y;
- if(phase==GAME_TOUCH_DOWN&&y<92){unsigned ingredient=x<42?1:x<84?2:x<134?3:x<179?4:x<224?5:x<269?6:7;p->focus=ingredient;pizz_model_pickup(&p->model,ingredient);}
+ if(phase==GAME_TOUCH_DOWN){
+  if(y<92){unsigned ingredient=x<42?1:x<84?2:x<134?3:x<179?4:x<224?5:x<269?6:7;p->focus=ingredient;if(p->model.ingredient!=ingredient)pizz_model_pickup(&p->model,ingredient);}
+  else if(!p->model.ingredient)pizz_model_pickup(&p->model,p->focus);
+ }
  p->stylus=phase!=GAME_TOUCH_UP;p->model.held=p->stylus||p->keyHeld;pointer(p);
+ if(phase!=GAME_TOUCH_UP)pizz_model_squeeze(&p->model);
+ if(phase==GAME_TOUCH_UP){p->model.soundCount=0;pizz_model_release(&p->model);for(unsigned i=0;i<p->model.soundCount;i++)game_port_sound(p->port,p->model.sounds[i],100,false);p->model.soundCount=0;}
+ p->inputDirty=true;
 }
 static void close_game(void *game){finish(game);}
 static bool bank_view(void *game,unsigned bank,SWLMatrix *view){

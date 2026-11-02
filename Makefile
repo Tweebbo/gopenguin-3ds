@@ -2,6 +2,11 @@
 ifeq ($(strip $(DEVKITARM)),)
 $(error DEVKITARM is not set. Use ./build.sh)
 endif
+TOPDIR ?= $(CURDIR)
+LIBCTRU_BUILD_ID := $(shell python3 "$(TOPDIR)/tools/check-libctru.py")
+ifeq ($(strip $(LIBCTRU_BUILD_ID)),)
+$(error libctru 2.7.1 or newer is required. See docs/DEVELOPING.md)
+endif
 include $(DEVKITARM)/3ds_rules
 TARGET := gopenguin-3ds-demo
 BUILD := obj
@@ -84,7 +89,7 @@ export OFILES += wear_index.o
 export OFILES += wear_loader.o wear_texture.o
 export OFILES += actor_index.o render_order.o name_tag.o
 export OFILES += incremental.o
-export OFILES += frame_hacks.o
+export OFILES += frame_hacks.o mining.o book_camera.o
 ifeq ($(GPU_TEST),1)
 export OFILES := gpu_test.o swl.o swl_gpu.o swl_shader.shbin.o
 endif
@@ -102,9 +107,11 @@ export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/games/debug-card-preview/*.gpk
 endif
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/games/card-preview/*.gpk)
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/npcs/*.nav)
-export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/missions/1/*.gpk) $(wildcard $(CURDIR)/$(ROMFS)/clothing/*.gpa)
+export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/missions/1/*.gpk) $(wildcard $(CURDIR)/$(ROMFS)/clothing/*.gpa) $(wildcard $(CURDIR)/$(ROMFS)/outfits/*.gpa) $(wildcard $(CURDIR)/$(ROMFS)/avatars/*.gpa)
 .PHONY: all atlas-profile seasonal-profile
 all: $(BUILD) atlas-profile seasonal-profile
+	@printf '%s\n' '$(LIBCTRU_BUILD_ID)' > $(BUILD)/libctru.next
+	@cmp -s $(BUILD)/libctru.next $(BUILD)/libctru.stamp || mv $(BUILD)/libctru.next $(BUILD)/libctru.stamp
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 atlas-profile:
 	@python3 tools/compact-atlas.py --romfs "$(ROMFS)" --skip-missing
@@ -114,7 +121,7 @@ $(BUILD):
 	@mkdir -p $(BUILD) out
 else
 .DEFAULT_GOAL := $(OUTPUT).3dsx
-$(OFILES): $(TOPDIR)/Makefile $(TOPDIR)/VERSION
+$(OFILES): $(TOPDIR)/Makefile $(TOPDIR)/VERSION $(DEPSDIR)/libctru.stamp
 swl_gpu.o: swl_shader_shbin.h
 swl_shader.shbin: $(TOPDIR)/source/swl_shader.v.pica
 	picasso -o $@ $<

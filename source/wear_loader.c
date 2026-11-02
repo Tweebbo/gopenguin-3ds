@@ -30,7 +30,9 @@ void wear_loader_prepare(WearLoadResult *result,WearLoadRequest request,bool (*c
  memset(result,0,sizeof *result);result->request=request;
  if(cancel&&cancel(user))return;
  FILE *file=NULL;
- if(request.id<0x100000){snprintf(result->path,sizeof result->path,"romfs:/clothing/%u.gpa",request.id);file=fopen(result->path,"rb");}
+ unsigned kind=request.id>>20;
+ if(kind==ASSET_AVATAR||kind==ASSET_OUTFIT){snprintf(result->path,sizeof result->path,"romfs:/%s/%u.gpa",kind==ASSET_AVATAR?"avatars":"outfits",request.id&0xfffff);file=fopen(result->path,"rb");if(!file)return;}
+ else if(request.id<0x100000){snprintf(result->path,sizeof result->path,"romfs:/clothing/%u.gpa",request.id);file=fopen(result->path,"rb");}
  if(file)fclose(file);
  else if(!asset_cache_request(request.id,result->path,sizeof result->path)){result->status=WEAR_LOAD_WAITING;return;}
  if(cancel&&cancel(user))return;

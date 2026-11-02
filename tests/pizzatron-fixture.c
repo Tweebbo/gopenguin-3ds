@@ -1,0 +1,2 @@
+#include "game_controller.h"
+const GameController GAME_HYDRO_CONTROLLER={.key="unused"},GAME_ROUNDUP_CONTROLLER={.key="unused"},GAME_BEANS_CONTROLLER={.key="unused"},GAME_CART_CONTROLLER={.key="unused"},GAME_THINICE_CONTROLLER={.key="unused"},GAME_FOUR_CONTROLLER={.key="unused"},GAME_MANCALA_CONTROLLER={.key="unused"},GAME_SLED_CONTROLLER={.key="unused"},GAME_FISH_CONTROLLER={.key="unused"},GAME_CARD_CONTROLLER={.key="unused"},GAME_FIRE_CONTROLLER={.key="unused"},GAME_AGENT_CONTROLLER={.key="unused"};

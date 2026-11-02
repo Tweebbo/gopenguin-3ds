@@ -53,3 +53,8 @@ path = root / 'romfs:/clothing/1001.gpa'
 path.write_bytes(seal(header, sequences + frame + large))
 for identity in range(1002, 1025):
     os.link(path, root / f'romfs:/clothing/{identity}.gpa')
+
+for folder in ['avatars','outfits']:
+    (root / ('romfs:/'+folder)).mkdir(exist_ok=True)
+(root / 'romfs:/avatars/1.gpa').write_bytes((root / 'assets/sprite.gpa').read_bytes())
+(root / 'romfs:/outfits/424.gpa').write_bytes((root / 'assets/sprite.gpa').read_bytes())

@@ -3,8 +3,8 @@
 #ifndef ASSET_CACHE_REVISION
 #define ASSET_CACHE_REVISION "gopenguin-resources-20261028-timeline-v2"
 #endif
-enum {ASSET_CLOTHING,ASSET_PAPER,ASSET_ICON,ASSET_PHOTO,ASSET_BOOK,ASSET_MOVIE,ASSET_FURNITURE,ASSET_FURNITURE_ICON,ASSET_FLOOR,ASSET_PUFFLE};
-static inline unsigned asset_key(unsigned kind,unsigned id){return kind<=ASSET_PUFFLE&&id&&id<=1000000?(kind<<20)|id:0;}
+enum {ASSET_CLOTHING,ASSET_PAPER,ASSET_ICON,ASSET_PHOTO,ASSET_BOOK,ASSET_MOVIE,ASSET_FURNITURE,ASSET_FURNITURE_ICON,ASSET_FLOOR,ASSET_PUFFLE,ASSET_AVATAR,ASSET_OUTFIT};
+static inline unsigned asset_key(unsigned kind,unsigned id){return kind<=ASSET_OUTFIT&&id&&id<=1000000?(kind<<20)|id:0;}
 bool asset_cache_start(const char *url,const char *directory);
 void asset_cache_stop(void);
 /** Exit path: waits at most `ms` for the download worker; false leaves it running. */
