@@ -271,7 +271,7 @@ bool swl_pose(const SWLScene *s,const char *path,SWLInstance *out){
 unsigned swl_frames(SWLScene *s,const char *path){SWLInstance instance;if(!swl_instance(s,path,&instance))return 0;const uint8_t *t=symbol(s,TL,instance.symbol);return t?u32(t+8):0;}
 unsigned swl_hits(SWLScene *s){return s->dirty&&!prepare(s)?0:s->hitCount;}
 const SWLHit *swl_hit(SWLScene *s,unsigned index){return index<swl_hits(s)?&s->hits[index]:NULL;}
-bool swl_visible(SWLScene *s,const char *path,bool visible){Override *o=override_at(s,path,true);if(!o)return false;o->hasVisible=true;o->visible=visible;s->dirty=true;return true;}
+bool swl_visible(SWLScene *s,const char *path,bool visible){Override *o=override_at(s,path,true);if(!o)return false;if(!o->hasVisible||o->visible!=visible){o->hasVisible=true;o->visible=visible;s->dirty=true;}return true;}
 unsigned swl_frame(const SWLScene *s,const char *path){Head *h=head_at(s,path);if(h)return h->frame;unsigned slot=override_slot(s,path),v=slot<OVERRIDE_HASH?s->overrideHash[slot]:0;if(v&&s->override[v-1].hasFrame)return s->override[v-1].frame;for(unsigned i=0;i<s->count[STATE];i++){const uint8_t *r=row(s,STATE,i);if(!strcmp(string_at(s,u32(r)),path)&&(u32(r+8)&2))return u32(r+4);}return 0;}
 bool swl_art(const SWLScene *s,unsigned id,SWLArt *art){const uint8_t *r=symbol(s,ART,id);if(!r)return false;*art=(SWLArt){u32(r),u32(r+4),u32(r+8),u32(r+12),u32(r+16),u32(r+20),f32(r+24),f32(r+28),f32(r+32),f32(r+36)};return true;}
 void swl_text_handler(SWLScene *s,SWLText handler,void *user){s->text=handler;s->textUser=user;s->dirty=true;}

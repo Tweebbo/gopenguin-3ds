@@ -1,0 +1,65 @@
+{
+  "mission": 2,
+  "files": [
+    {
+      "path": "missions/2/cave.gpk",
+      "bytes": 972903,
+      "sha256": "318ae7c7562c9db04bef7b8104b47936c91ab5fe331c107577224ee28826c4fa"
+    },
+    {
+      "path": "missions/2/clearing1.gpk",
+      "bytes": 652692,
+      "sha256": "0f234680a8e322459be3505a0efa0624e3a9e0be8b3ef8dc24e3b14f700a0e93"
+    },
+    {
+      "path": "missions/2/clearing2.gpk",
+      "bytes": 491440,
+      "sha256": "af3413bc826ea1e3ebb12afdc83768de73c45365d5a81471395ed3097111103f"
+    },
+    {
+      "path": "missions/2/crashSite.gpk",
+      "bytes": 623084,
+      "sha256": "e3adfe9abd9cd188e280e6484018f6c6aee929cb2d3e5eeca9848dab56473a90"
+    },
+    {
+      "path": "missions/2/guide.gpk",
+      "bytes": 450158,
+      "sha256": "4d9ee941917cf8d5724f026c47ef1579d24c1a514c6aa6eae3004bd255ff9b53"
+    },
+    {
+      "path": "missions/2/hillSigns.gpk",
+      "bytes": 110186,
+      "sha256": "6eee431bc903d298f7c1aee4ecc3cba634c63d99617088d2c8ba9880f14114d0"
+    },
+    {
+      "path": "missions/2/miniGame.gpk",
+      "bytes": 1020714,
+      "sha256": "0e3451ffa9b06f7d108f6d7aff8f9f230523f865aa7be101092302bb9c825f1c"
+    },
+    {
+      "path": "missions/2/mountain.gpk",
+      "bytes": 618877,
+      "sha256": "2ff667d9512b8e513dc662341111d91169bbc3b844b58fd4b33c1dd93bd58589"
+    },
+    {
+      "path": "missions/2/outsideCave.gpk",
+      "bytes": 724794,
+      "sha256": "ffb3b258a91c2a2944bec06f5f79866e84044f73604bd6f23a24089730f5f569"
+    },
+    {
+      "path": "missions/2/puffles.gpk",
+      "bytes": 845841,
+      "sha256": "c1c3f56d029159d795011c402a1c64d81d800427054bc84d03595598edeea261"
+    },
+    {
+      "path": "missions/2/river.gpk",
+      "bytes": 620780,
+      "sha256": "bdb339a0ccaaecbd2b2d07fff353832e907dad247ed6bfe9ee9a559b726c8d30"
+    },
+    {
+      "path": "missions/2/sportShop.gpk",
+      "bytes": 955125,
+      "sha256": "6f43333162cff8550e0a2204bb6bedd4e261e163f047c6460670d413dbf57fb6"
+    }
+  ]
+}

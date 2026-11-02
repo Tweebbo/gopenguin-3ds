@@ -21,6 +21,9 @@ int main(void){
   assert(render(scenes[0])==render(scenes[1]));
   for(unsigned i=0;i<2;i++)assert(swl_view_frame(scenes[i],"root",0));
  }
+ SWLScene *s=scenes[1];assert(swl_visible(s,"root.pizza",false));uint64_t hidden=render(s);unsigned prepared=swl_stats(s).preparations;
+ for(unsigned i=0;i<120;i++){assert(swl_visible(s,"root.pizza",false));assert(render(s)==hidden);assert(swl_stats(s).preparations==prepared);}
+ assert(swl_visible(s,"root.pizza",true));assert(render(s)!=hidden);assert(swl_stats(s).preparations==prepared+1);
  for(unsigned i=0;i<2;i++)game_bank_free(banks[i]);
  puts("PASS: eager/deferred timeline updates render identical original Pizzatron art, transforms, colours and masks on both screens for 120 frames.");return 0;
 }

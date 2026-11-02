@@ -4,6 +4,10 @@ out/
 romfs/
 !assets/halloween-2010/romfs/
 !assets/halloween-2010/romfs/**
+!assets/sharpness/romfs/
+!assets/sharpness/romfs/**
+!assets/mission2/romfs/
+!assets/mission2/romfs/**
 .env*
 *.pem
 *.key

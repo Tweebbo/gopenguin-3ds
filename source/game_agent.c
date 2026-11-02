@@ -74,7 +74,7 @@ static void destroy(void *game){Agent *a=game;json_decref(a->state);free(a);}
 static bool ready(void *game){Agent *a=game;const char *args[]={"907","0","0"};if(!game_port_descriptor(a->port)->online){snprintf(a->notice,sizeof a->notice,"Connect to save agent missions.");return true;}a->waiting=game_port_send(a->port,'s',"j#jr",3,args);a->sent=game_port_clock(a->port);return true;}
 static bool packet(void *game,const char *command,unsigned count,char *const *args){
  Agent *a=game;
- if(!strcmp(command,"jg")&&count&&atoi(args[0])==907){a->waiting=false;a->joined=true;send_action(a,"state",0);return true;}
+ if(!strcmp(command,"jg")&&count&&atoi(args[0])==907){a->waiting=false;a->joined=true;send_action(a,"select",1);return true;}
  if(strcmp(command,"psa"))return false;
  if(count!=1||strlen(args[0])>16384)return true;
  json_t *state=json_loads(args[0],JSON_REJECT_DUPLICATES,NULL);const char *room=string(state,"room");

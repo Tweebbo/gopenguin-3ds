@@ -160,3 +160,190 @@ the isolated native integration: camera gestures, confirmed Bee Antennae purchas
 free helmet equip, rename, full client/server restart, backup recovery and refusal
 to create a guest when all identity files are damaged. Credentials stay outside the
 report and packaged RomFS. Physical SD failure and console feel remain unverified.
+
+## Local mission 2 and minigame preparation work
+
+This unpublished candidate adds G's Secret Mission alongside Case of the Missing
+Puffles. Both are available through the PSA selector. Mission 2 uses the matching
+local PC/server source in the sibling `web-server/` workspace. The public server
+has not been changed. The version remains 1.3.6; these files are not a release.
+
+The server owns the riddle, item combinations, wilderness progression, prototype
+sled model, rescue and rewards. The native adapter keeps one mission scene bank
+resident and releases it before opening another. Each of its twelve scene/guide
+banks is at most 6 MiB of texture memory. The prototype bank uses RGBA4 at a 0.4
+raster scale. Its 21 independently animated track segments and landscape remain
+addressable after export, so the controller can position them from server state.
+The scene and guide artwork use the original English resources. Native input uses a
+five-letter word editor, paged choices, item combinations and stylus steering.
+
+Regenerate converted resources in the companion `web/` directory:
+
+```sh
+WADDLE_AUDIT=/path/to/Waddle-Forever-audit python3 -I tools/import-agent-assets.py
+WADDLE_AUDIT=/path/to/Waddle-Forever-audit node tools/import-mission2.mjs
+python3 -I tools/import-mission2-ride.py
+node tests/export-agent-trace.mjs
+```
+
+Then, from this native source:
+
+```sh
+GOPENGUIN_WEB=/path/to/web-server/web node tools/export-agent2.mjs
+python3 tools/check-agent-assets.py
+bash tests/agent2-controller.sh /path/to/mission2-trace.json
+SANITIZE=1 bash tests/agent2-controller.sh /path/to/mission2-trace.json
+bash tests/minigame-render.sh
+bash tests/pizzatron-input.sh
+bash build.sh
+```
+
+The normal build rejects missing, corrupt, misidentified or oversized mission 2
+banks. GPU-only regression fixtures do not require mission content. LAN/debug
+RomFS stages must include the new banks too. Keep emulator integration isolated
+from public worlds, as with the existing gameplay fixtures.
+
+The native controller replay covers 158 server snapshots, all scene transitions,
+the word editor's MOGUL packet, guide paging/close, map and inventory controls,
+camera, steering/poll and reward packets, valid touch rectangles, render traversal and the
+6 MiB limit, including ASan/UBSan. It is a host check, not console acceptance.
+
+Cart Surfer, Hydro Hopper, Puffle Roundup, Thin Ice and Sled Racing now defer the
+final timeline preparation until controller edits have been applied. Repeating
+the same explicit visibility value no longer invalidates a prepared scene. The
+eager API stays available for callers that inspect newly prepared animation
+state immediately, including Ice Fishing and Bean Counters.
+
+`tests/minigame-render.sh` compares the real controllers, the same seeded input
+and original banks, at 24 Hz for 480 frames with two screen transforms. The table
+compares eager and deferred preparation paths in the fixture. Both paths include
+the idempotent visibility setter. Their draw-command hashes match at complete
+logic frames, including masks, colours and text.
+
+| Game | Eager preparations | Deferred preparations |
+| --- | ---: | ---: |
+| Cart Surfer | 961 | 483 |
+| Hydro Hopper | 1438 | 962 |
+| Puffle Roundup | 958 | 482 |
+| Thin Ice | 920 | 463 |
+| Sled Racing | 963 | 483 |
+
+These are CPU-work counts. They are not FPS, GPU timings, battery-life results or
+physical Old 3DS measurements. Between-tick interpolation can use the previously
+displayed scene after batching; complete-frame hashes do not prove identical
+intermediate GPU pixels. Physical Old/New 3DS frame pacing, input feel, audio,
+suspend/resume and the reduced prototype raster need acceptance before release.
+Original mission audio, companion-puffle animation and full cutscene fidelity
+remain unfinished. Missions 3–11 and the other missing standalone games remain
+separate ports; this work does not mark them complete.
+
+## Reviewed 3DS sharpness profile
+
+`assets/sharpness/profile.json` pins sharper exports for Town, Coffee Shop,
+Book Room, Pizza Parlor, Dance Lounge, Gift Shop, Ski Village, Ski Lodge and
+Lodge Attic, plus the Cart Surfer and Pizzatron main banks. Room backdrops use
+two-thirds source density instead of half density. Each room still uses one
+2 MiB RGBA8 page. Each game main bank still uses six RGBA4 pages (6 MiB), with
+its existing 2 MiB title bank unchanged. Runtime linear filtering is retained.
+
+`tools/export-game.mjs` keeps SVGs at source resolution during composition.
+`tools/export-scene.mjs` combines primitive density and atlas fitting into one
+final resample. Stable room batches render at source scale before downsampling,
+preserving geometry when the requested density is fractional. The default room
+density remains 0.5; `tools/export-sharp-rooms.mjs` explicitly requests 2/3 and
+rejects growth beyond each existing room's page count and texture budget.
+
+Normal builds apply `tools/restore-sharpness-assets.py`; RomFS validation checks
+all 20 pinned resources. Unknown or missing bases fail before any replacement.
+Regenerated files are staged under `build/` and require a new visual review
+before updating the pinned profile. Bean Counters and Ice Fishing trials were
+excluded because they did not consistently improve the comparisons.
+
+The [local sharpness review](../../review/3ds-sharpness.md) includes source,
+before/after comparisons, native GPU screenshots and test logs. Town's four
+GPU cases passed in offline Azahar at 400×240 with Old 3DS settings. Pizzatron
+input/controller checks passed with the new bank, including ASan/UBSan, and
+Cart Surfer retained its 480-frame gameplay model hash. Physical 3DS LCD and
+frame-pacing validation remains pending; these checks do not establish FPS gains.
+
+## Offline native screenshots for review
+
+`tests/review_gpu_test.c` draws the real mission 2, Cart Surfer and Pizzatron
+controllers through `game_gpu.c` with the packaged movie banks. Its host drawing
+callbacks mirror the client's font, Unicode fallback and game buttons. It contains
+no network transport. Mission cases use recorded authoritative snapshots; game
+cases stop at fixed title/gameplay states. These are presentation captures rather
+than a live session or physical-console acceptance.
+
+Stage a recorded mission trace with
+`python3 tools/prepare-native-review.py --trace PATH`, then build with
+`make REVIEW_GPU_TEST=1` inside the SDK container. The prepared emulator runs
+`tools/native-review-emu-session.sh` with networking disabled. From the workspace
+root, `review/source/collect-native.py` preserves all raw captures and crops the
+400x240 top screen plus the centered 320x240 touch screen without rescaling.
+`review/native3ds/provenance.json` records source-state indices, texture memory
+and the hashes of the executable, original captures and crops.
+
+The first twelve render cases passed their texture limits. Visual inspection
+then exposed a guide mapping error: the first two timeline frames are the small
+inventory cover, not printed pages. This was corrected by the printed-page
+mapping and native text reader described below. The earlier cover-only capture
+is preserved in the review for comparison. Render success alone does not replace
+physical-console acceptance.
+
+## Mission 2 dialogue and original word form
+
+The native mission 2 dialogue and response labels use 14px bitmap text. Wrapping
+uses the exported font advances in pixels. English smart apostrophes are rendered
+with the bitmap apostrophe so a whole response does not fall back to the smaller
+system-font path. Long text is paged locally; it does not advance server dialogue.
+
+The word form uses the original English labels from quest 2's `uitext.swf`:
+`The word:`, `This is the word!` and
+`No, can you give me the riddle again?`. The old five-letter cycling controls
+were replaced by an empty editable field. `GameHost.edit_text` opens the platform
+keyboard; cancel discards the edited copy, accepted text retains up to sixteen
+letters, and an empty submission stays on the form. A also opens the field.
+The PC form uses the same labels and original riddle-again action. The server
+repeats G's original clue only while the player is at the answer prompt.
+
+The native host checks cover all 158 recorded states, text bounds, long-text
+next/previous paging, cancel, typing, filtering, the field limit, empty input
+and the riddle-again packet, with regular and ASan/UBSan runs. The full browser
+route covers asking for the riddle again, a wrong answer and completion. Updated
+offline GPU captures show the new dialogue and form; the HTML includes native
+before/after images. Physical 3DS acceptance remains pending.
+
+## Complete readable survival guide
+
+Release 1.3.7 pins the twelve mission banks in `assets/mission2/`. The build
+restores them with `tools/restore-agent-assets.py` before checking their package
+integrity and 6 MiB texture limit. This allows builds from the published 1.3.0
+RomFS base without the original audit checkout. Unknown existing mission banks
+are rejected. The release workflow restores seasonal art, mission banks and the
+sharpness profile before its RomFS checks.
+
+The original guide has eight printed pages in four spreads, at timeline frames
+4–7. Frames 1 and 2 contain only the small inventory cover. Logical pages now map
+to `[4, 4, 5, 5, 6, 6, 7, 7]` in both clients.
+
+`web/tools/import-mission2-guide.mjs` recovers all 23 nonnumeric text blocks from
+the pinned original SWF extraction. It checks that every original text block is
+accounted for, preserves the printed reading order and writes the shared PC data
+and `source/mission2_guide.h`. Original wording and spelling are retained; native
+display only normalizes smart apostrophes and whitespace for the bitmap font.
+
+The 3DS top screen shows the original illustrated spread. The touch screen shows
+all text for one printed page at 14px, in seven-line parts. Next/Previous traverse
+local parts before requesting another printed page; L/R do the same and B closes
+the book. The first and last bounds are disabled correctly. No texture bank was
+changed or enlarged; the original guide still uses 6 MiB of textures.
+
+The controller checks compare every displayed word across all eight pages with
+the recovered source. All thirteen readable parts match, with regular and
+ASan/UBSan runs. `build/agent-tests/guide-readability.json` records the page,
+spread frame and part count. The browser checks all eight logical page mappings.
+Use `tools/prepare-native-review.py --trace PATH --guide-pages` after the host
+checks to stage the twelve main cases plus every guide part for native capture.
+The HTML review embeds all captures and the complete original transcript. LCD
+appearance and reading comfort still need a physical 3DS check.

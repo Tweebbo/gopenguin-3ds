@@ -1,0 +1,334 @@
+{
+  "sourceRelease": "GoPenguin 1.3.6",
+  "nativeDisplay": [
+    400,
+    240
+  ],
+  "filter": "GPU_LINEAR",
+  "deployed": false,
+  "rooms": [
+    {
+      "room": "town",
+      "pages": 1,
+      "beforeTextureBytes": 2097152,
+      "afterTextureBytes": 2097152,
+      "bakeScale": 0.6666666666666666,
+      "format": "rgba8888"
+    },
+    {
+      "room": "coffee",
+      "pages": 1,
+      "beforeTextureBytes": 2097152,
+      "afterTextureBytes": 2097152,
+      "bakeScale": 0.6666666666666666,
+      "format": "rgba8888"
+    },
+    {
+      "room": "book",
+      "pages": 1,
+      "beforeTextureBytes": 2097152,
+      "afterTextureBytes": 2097152,
+      "bakeScale": 0.6666666666666666,
+      "format": "rgba8888"
+    },
+    {
+      "room": "pizza",
+      "pages": 1,
+      "beforeTextureBytes": 2097152,
+      "afterTextureBytes": 2097152,
+      "bakeScale": 0.6666666666666666,
+      "format": "rgba8888"
+    },
+    {
+      "room": "lounge",
+      "pages": 1,
+      "beforeTextureBytes": 2097152,
+      "afterTextureBytes": 2097152,
+      "bakeScale": 0.6666666666666666,
+      "format": "rgba8888"
+    },
+    {
+      "room": "shop",
+      "pages": 1,
+      "beforeTextureBytes": 2097152,
+      "afterTextureBytes": 2097152,
+      "bakeScale": 0.6666666666666666,
+      "format": "rgba8888"
+    },
+    {
+      "room": "village",
+      "pages": 1,
+      "beforeTextureBytes": 2097152,
+      "afterTextureBytes": 2097152,
+      "bakeScale": 0.6666666666666666,
+      "format": "rgba8888"
+    },
+    {
+      "room": "lodge",
+      "pages": 1,
+      "beforeTextureBytes": 2097152,
+      "afterTextureBytes": 2097152,
+      "bakeScale": 0.6666666666666666,
+      "format": "rgba8888"
+    },
+    {
+      "room": "attic",
+      "pages": 1,
+      "beforeTextureBytes": 2097152,
+      "afterTextureBytes": 2097152,
+      "bakeScale": 0.6666666666666666,
+      "format": "rgba8888"
+    }
+  ],
+  "games": [
+    {
+      "game": "cart",
+      "pages": 6,
+      "beforeTextureBytes": 6291456,
+      "afterTextureBytes": 6291456,
+      "format": "rgba4444",
+      "titleBankChanged": false
+    },
+    {
+      "game": "pizzatron",
+      "pages": 6,
+      "beforeTextureBytes": 6291456,
+      "afterTextureBytes": 6291456,
+      "format": "rgba4444",
+      "titleBankChanged": false
+    }
+  ],
+  "files": [
+    {
+      "path": "scenes/town.swl",
+      "bytes": 10439,
+      "sha256": "4a8975b118e55d120c157f3c1e738d5bf5aef524940dc3a0daf524aaebe485bb",
+      "replacesSha256": "67239edd219ee22347575c4a374f1b69242f3aa3e094ebee0594d3e1792bb03b"
+    },
+    {
+      "path": "gfx/swl-town-0.t3x",
+      "bytes": 324625,
+      "sha256": "5cad0fb38cc7a5d222c39e6f06716215d7f89c0753827eed5a2af876dc2da0cb",
+      "replacesSha256": "37cb21094b94cf26444527bb90dec23ff8f8081559c249453925b979bba663fd"
+    },
+    {
+      "path": "scenes/coffee.swl",
+      "bytes": 4796,
+      "sha256": "12a265ffb1a5e2a605c8075fe799d0c2d68f7e36f1d836feb13ebfeda4b12ae4",
+      "replacesSha256": "e878aa3d3786a85237369a72f40355a581620420cab56240099acb55e6c8e566"
+    },
+    {
+      "path": "gfx/swl-coffee-0.t3x",
+      "bytes": 331805,
+      "sha256": "6113029abdd9a70d903db5099bfe10c68a4ce408e19050ded84318e68085dbb3",
+      "replacesSha256": "f35b77907afa23875fad666afc1aa8a56d70a7babd4aa78590bcb9746bbdc7ba"
+    },
+    {
+      "path": "scenes/book.swl",
+      "bytes": 7177,
+      "sha256": "d24023a6bbffe12fde44cbf64b29aed7229ac87139dcba4120098957332ee8a7",
+      "replacesSha256": "2f2cf0beb8c7b1460235576bd077ce3d92816b0531ba5c88d4ed25a7cf405d84"
+    },
+    {
+      "path": "gfx/swl-book-0.t3x",
+      "bytes": 317885,
+      "sha256": "0bcf7a692a07e314493e0574d396779ecef33f0c904db958536b6f75d86b4f41",
+      "replacesSha256": "abf870eea9a9f2d3b46d2c1c0f733316bb5d130165a3b706cd248270ebe690a5"
+    },
+    {
+      "path": "scenes/pizza.swl",
+      "bytes": 6505,
+      "sha256": "e3dd4daaa27ba31adbfb8d6ac6e6af21b0907f59987160005cdb4b8b54b37a8e",
+      "replacesSha256": "f5cc05781e2af1854aa2b8cdf67dcc8435812258daf007da87cd39a56b8fcb41"
+    },
+    {
+      "path": "gfx/swl-pizza-0.t3x",
+      "bytes": 432577,
+      "sha256": "2bd6a5a3ad90c6b80f80bc87d9fdcc398a7aeb1973175e3c818a88fd51592f68",
+      "replacesSha256": "7a5dbed086cb2ec8f7f25ad8d668c960b40de3af4e2497ea5960b90ac24bca97"
+    },
+    {
+      "path": "scenes/lounge.swl",
+      "bytes": 4546,
+      "sha256": "217629a458e0ad4ba91c2e7a472c974edc561ecb128cf47e76ec7820433afe64",
+      "replacesSha256": "ef4468b8b74fa7c9fcc54cd5b6a64ca6d5f69f13e892e1b2559f9a17c7bc485d"
+    },
+    {
+      "path": "gfx/swl-lounge-0.t3x",
+      "bytes": 422069,
+      "sha256": "f4b8c251984c7e1ff307ab2f2e6695358b73af475f3ce19253bfdc516112820a",
+      "replacesSha256": "25e081fa8ccd6abee3c3e7de13b834142da5348b457fc6cad9618e58dea1899e"
+    },
+    {
+      "path": "scenes/shop.swl",
+      "bytes": 3325,
+      "sha256": "f6f0c3da6fa9526363a42c6107491d8bbe263c951c37de1c19b3208345be5ee9",
+      "replacesSha256": "ffc27bffcf224a689ce450ed394718e77df44328192b9c97611219c5bcfdfb4a"
+    },
+    {
+      "path": "gfx/swl-shop-0.t3x",
+      "bytes": 304937,
+      "sha256": "e7265bdf47c226fceb292425f9f83bb951cebe0dad81968743a7ba0bc0e197a4",
+      "replacesSha256": "fa13df2fa0b54ba63754b39bfacea7a1e84d505e6874d2e1daa2d64c32fc4c5b"
+    },
+    {
+      "path": "scenes/village.swl",
+      "bytes": 36683,
+      "sha256": "5a559237299a5f3cb36dc97eef3c1e25f7b898c4e3bd8143f4a926fe37b2904f",
+      "replacesSha256": "cfecf1cf6959cdc76775617ecf14e76d32321a04d702c5dab0d6000fcd9a93d9"
+    },
+    {
+      "path": "gfx/swl-village-0.t3x",
+      "bytes": 358397,
+      "sha256": "72aac10e1c87012ee707912c4f48dc03469073c39b7d57f605589dc6cad0087d",
+      "replacesSha256": "8b30b7b652b30b29f4dc4db953354dccceb5ab906d778d97f70992012e85c1b5"
+    },
+    {
+      "path": "scenes/lodge.swl",
+      "bytes": 13242,
+      "sha256": "8b1e440d3011e04fbb418c84bb5e87bad1d6701ef43df1515ed715ce8eba55f7",
+      "replacesSha256": "d1dfb40f211f99e3f90e0a0050d108167c439b74b8a48f74783c28a1984498a7"
+    },
+    {
+      "path": "gfx/swl-lodge-0.t3x",
+      "bytes": 398457,
+      "sha256": "7545baeedc0b54f857e985a409693bef9a968398b7a490ca2776b427d983943e",
+      "replacesSha256": "c63f7809701130015ee0cb92517e05537d3a909b3bd0cd7dd3d8ec623ac96801"
+    },
+    {
+      "path": "scenes/attic.swl",
+      "bytes": 6072,
+      "sha256": "eeaee0f0608ed0a956e065ba927ca485ebb6c44473aa46d8b8c736b85b95a389",
+      "replacesSha256": "ad12c6f6359fd31dc77a6008ff57946e55668a8ebb8219c98d8f66321baa757b"
+    },
+    {
+      "path": "gfx/swl-attic-0.t3x",
+      "bytes": 515773,
+      "sha256": "d664e97a485a41cb2358b2f747dcda7f4ad2b5d3abe8026449ac87d80c14f831",
+      "replacesSha256": "f4e5057c845a7390eb2832de7e4aeb25d67bb89a3eafaf2186749f904b52ff81"
+    },
+    {
+      "path": "games/cart.gpk",
+      "bytes": 392028,
+      "sha256": "3c1b8e1cc5fd59587d8ed17c6fca317fb6387743f138e741ff3c83919589f8e4",
+      "replacesSha256": "fed6c4da823cf4d0d15cb5b014b4c4720cefe9b5f6abf848d14395b5667b5b35"
+    },
+    {
+      "path": "games/pizzatron.gpk",
+      "bytes": 812388,
+      "sha256": "c92edc6d2b4be8e90d24a15b7ba37c9263b19af7cf53bbd70c571dfcfa4ee9b8",
+      "replacesSha256": "3b2bcc2d94b4a17ec1c96eed470d9ac0c1026bd2b2067dfe6d4138827857c864"
+    }
+  ],
+  "provenance": [
+    {
+      "name": "town",
+      "sourceTimelineSha256": "8ec11cac563c71ee63c8247f481fa737377e60194e8d0f665a8198642d493885",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "4a8975b118e55d120c157f3c1e738d5bf5aef524940dc3a0daf524aaebe485bb",
+      "atlasPngSha256": [
+        "245c210038f03a8d298504312bb8e2e2e3ed84c4a39284d7f3520464d910ebe3"
+      ]
+    },
+    {
+      "name": "coffee",
+      "sourceTimelineSha256": "fb910d2e14f30d89eaac291afbff893f357f5755e2d5509cc3b2eb3af2633fe1",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "12a265ffb1a5e2a605c8075fe799d0c2d68f7e36f1d836feb13ebfeda4b12ae4",
+      "atlasPngSha256": [
+        "099118d8dd6b06715817159298195786073c19997e265bec0f33260de6352cd2"
+      ]
+    },
+    {
+      "name": "book",
+      "sourceTimelineSha256": "e23a514f13a7cfdca385a9996677390dd8ef57564a9031842e5cd24a4e669779",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "d24023a6bbffe12fde44cbf64b29aed7229ac87139dcba4120098957332ee8a7",
+      "atlasPngSha256": [
+        "5c6f4cb51ee5c014b5d21b284f02d40d18dc25e2c893f85ca2f27e668a139e0a"
+      ]
+    },
+    {
+      "name": "pizza",
+      "sourceTimelineSha256": "0ad4a380a5180a518305143872c5ddf7fd0725ebd562ff1186ecc41dcb329e06",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "e3dd4daaa27ba31adbfb8d6ac6e6af21b0907f59987160005cdb4b8b54b37a8e",
+      "atlasPngSha256": [
+        "447fb0852f0ffa8d735872ef9fc814dc53f712342e0ed32fd9a4121dc3ae3505"
+      ]
+    },
+    {
+      "name": "lounge",
+      "sourceTimelineSha256": "25210cbd3f538db433178047b051b112dc5c099309afcefedda8fc7309deb7d5",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "217629a458e0ad4ba91c2e7a472c974edc561ecb128cf47e76ec7820433afe64",
+      "atlasPngSha256": [
+        "a8003f5e9e22e27b47d7dd127b3558bee33770ff2fdf6d6cc3b686931032bd8d"
+      ]
+    },
+    {
+      "name": "shop",
+      "sourceTimelineSha256": "6c7ff1e56459970d27344454572aae1a8b5eb93b5a53294a085a03643d790563",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "f6f0c3da6fa9526363a42c6107491d8bbe263c951c37de1c19b3208345be5ee9",
+      "atlasPngSha256": [
+        "73dcf55d7d6ec7f9fadbb212a410787c6da5ee7b85729622eb13642f3bb2a156"
+      ]
+    },
+    {
+      "name": "village",
+      "sourceTimelineSha256": "5bb04c3522c476410dba0cc90c8e3c399c2d0a3f02f0f64919d4d4ccc9b4363c",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "5a559237299a5f3cb36dc97eef3c1e25f7b898c4e3bd8143f4a926fe37b2904f",
+      "atlasPngSha256": [
+        "87900de9a88af78cd723e5b26e0fe08bd66205da3be347a8f439f84b5a6d8d56"
+      ]
+    },
+    {
+      "name": "lodge",
+      "sourceTimelineSha256": "a9505d8068fb42bc9b8385a7320e18a13eeef24da7f909894ff7ccd0c305bd48",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "8b1e440d3011e04fbb418c84bb5e87bad1d6701ef43df1515ed715ce8eba55f7",
+      "atlasPngSha256": [
+        "23af3a8184557afaed2c22575f674dc64b6923d511b20575ec734b8b0928a5a9"
+      ]
+    },
+    {
+      "name": "attic",
+      "sourceTimelineSha256": "34205b1bc0cc9d5570b659af1ec885e167298aeb47b8eb3adf5c181c1a821b9c",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "eeaee0f0608ed0a956e065ba927ca485ebb6c44473aa46d8b8c736b85b95a389",
+      "atlasPngSha256": [
+        "03ef6a462cdd03936b5f7393e2f08bf5573d96137fe7795f126189f01e431e8d"
+      ]
+    },
+    {
+      "name": "cart",
+      "sourceTimelineSha256": "0b31fb3a6e71344db2facea540195a176aedbec2841ded1932b0508ef24b8cde",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "b2cff8aa742ec667d825c9b39500eaf3812874d4784e33d7854cd9f1b222bfa5",
+      "atlasPngSha256": [
+        "52118b7b8d1a99e99e0c344822e4a400da30d979becb631bb206245a82579e63",
+        "9ade8219b379ff39898bb8c1d91563f1bf7719dd333be8f7722dc8da3fbe8991",
+        "524e877637aebb48cb862cbfbf7ed9bc18324f8953c935dcaf336ab06dc2cdd5",
+        "09b78a77c116933595e0f3bf9ff775aac5fc71c1df650dd66892b31de096ed3e",
+        "d266fcb67e9d74174c65f71ebafeeadf81e5dc007c8638462ee8b5e29a273bab",
+        "f659b08fe4446551013f3bd060f6b0190fe3856108260a1b563009aabc0a26f6"
+      ]
+    },
+    {
+      "name": "pizzatron",
+      "sourceTimelineSha256": "fbbdce322519e4de4c8dceb69bf510f63fe3edd62da4e3bce90537decd2973d7",
+      "webRendererSha256": "fe8ef391cb35ef0c486e21e848d41a91035568ff579ca990f82e94e0455149cc",
+      "sceneSha256": "efff37a6b0adc42220065d591bdcc5188a8b8a71949e26f092a682d06ca82602",
+      "atlasPngSha256": [
+        "2cc09d75ea0a91ed23727396736768dcc6cedddf90e4064e6bb5a64e81018905",
+        "dd1edaea1715cb9686f4ecb565392c3cacb70cbbdd8468bacef24e6ad5f116da",
+        "45f2417a96efc817f157041d3c8959b28ec33e5d651c852123aff50c1e826248",
+        "c05a4fe0c5eafe3fa8fc82f35373e0b59d0e66f2b919c804592597d69bf71605",
+        "deb2ffc36f9a80bf345b432c641f7f7fba9b6b24dd0a11c12a2bb9dd631d1a13",
+        "9158b61047153508cc377946604277b598c351e2d4ef74248ac50d163fd20fbb"
+      ]
+    }
+  ]
+}

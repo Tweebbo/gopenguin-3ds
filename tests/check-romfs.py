@@ -36,3 +36,5 @@ if missing:
 print(f'RomFS provides all {len(needed)} boot and room files for {len(rooms)} rooms.')
 subprocess.run([sys.executable, str(root / 'tools/restore-seasonal-assets.py'),
                 '--romfs', str(romfs), '--check'], check=True)
+subprocess.run([sys.executable, str(root / 'tools/restore-sharpness-assets.py'),
+                '--romfs', str(romfs), '--check'], check=True)

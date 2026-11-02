@@ -101,14 +101,15 @@ static bool gameQueued,gameLeaving,gameSuspended,gameMultiplayerLost;
 static unsigned gameReturnRoom;
 static int gameReturnX,gameReturnY,gameTouchX,gameTouchY;
 static unsigned gamePage;
+static bool missionMenu;
 static const char *gameKeys[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron"
 #ifdef GP_NINJA_GAMES
- ,"card","fire","mission1"
+ ,"card","fire","mission1","mission2"
 #endif
 };
 static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters","Cart Surfer","Thin Ice","Ice Fishing","Find Four","Mancala","Sled Racing","Pizzatron 3000"
 #ifdef GP_NINJA_GAMES
- ,"Card-Jitsu","Card-Jitsu Fire","PSA: Missing Puffles"
+ ,"Card-Jitsu","Card-Jitsu Fire","PSA: Missing Puffles","PSA: G's Secret Mission"
 #endif
 };
 static IglooGeometry *iglooGeometry;
@@ -669,7 +670,7 @@ static void books_draw(void){
 static void content(const char *name){
  if(!name||!*name)return;
  if(!strcmp(name,"halloween_poster")||!strcmp(name,"unavailable:halloween_poster")){resource_open(800001,"",0);resourceInfo.title="HALLOWEEN";book.poster=true;return;}
- if(!strcmp(name,"missions")||!strcmp(name,"unavailable:missions")){game_start("mission1");return;}
+ if(!strcmp(name,"missions")||!strcmp(name,"unavailable:missions")){missionMenu=true;gamePage=0;demo.tab=16;return;}
  if(!strncmp(name,"room:",5)){char key[40];float x,y;if(sscanf(name+5,"%39[^:]:%f:%f",key,&x,&y)==3&&isfinite(x)&&isfinite(y)){const IslandRoom *room=island_key(key);if(room){wantedRoom=room->id;wantedX=x;wantedY=y;}}return;}
  if(!strncmp(name,"igloo:",6)){open_igloo((unsigned)strtoul(name+6,NULL,10));return;}
  if(!strncmp(name,"buy:",4)){buy((unsigned)strtoul(name+4,NULL,10));return;}
@@ -1126,10 +1127,13 @@ static void game_stop_sounds(void *unused,const char *bank){(void)unused;(void)b
 static void game_text(void *unused,float x,float y,float size,uint32_t colour,GameAlign align,const char *value){(void)unused;unsigned pixels=(unsigned)fmaxf(FONT_MIN,fminf(FONT_MAX,size));if(align==GAME_ALIGN_CENTER)x-=textWidth(pixels,value)/2.0f;else if(align==GAME_ALIGN_RIGHT)x-=textWidth(pixels,value);text(x,y,pixels,colour,value);}
 static void game_rect(void *unused,float x,float y,float w,float h,uint32_t colour){(void)unused;ui_game_fill(x,y,w,h,colour);}
 static void game_button(void *unused,float x,float y,float w,float h,const char *label,bool pressed,bool enabled){(void)unused;float dy=ui_game_button(x,y,w,h,pressed,enabled)?1:0;button_label(x+w/2,y+h/2+dy,11,enabled?0x003366:0x526575,label);}
+static bool game_edit_text(void *unused,char *value,size_t capacity,const char *hint){(void)unused;return keyboard(value,capacity,hint,false);}
 static GameResource game_resource(void *unused,const char *name,char *path,size_t capacity){
  (void)unused;unsigned id=0;
  static const char *missionRooms[]={"auntarctic","icerink","petshop","sportshop","iceberg","mountain","tallmountain","tallmountaintop","telescope","minigame","note","ui"};
  for(unsigned i=0;i<COUNT(missionRooms);i++){char allowed[80];snprintf(allowed,sizeof allowed,"missions/1/%s.gpk",missionRooms[i]);if(!strcmp(name,allowed)){if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;FILE *f=fopen(path,"rb");if(!f)return GAME_RESOURCE_FAILED;fclose(f);return GAME_RESOURCE_READY;}}
+ static const char *mission2Rooms[]={"sportShop","mountain","hillSigns","miniGame","crashSite","clearing1","clearing2","puffles","river","outsideCave","cave","guide"};
+ for(unsigned i=0;i<COUNT(mission2Rooms);i++){char allowed[80];snprintf(allowed,sizeof allowed,"missions/2/%s.gpk",mission2Rooms[i]);if(!strcmp(name,allowed)){if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;FILE *f=fopen(path,"rb");if(!f)return GAME_RESOURCE_FAILED;fclose(f);return GAME_RESOURCE_READY;}}
 #ifdef GP_NINJA_GAMES
 #ifdef GP_DEBUG_GAMES
  if(!strcmp(name,"games/beans.gpk"))name="games/debug-beans.gpk";
@@ -1385,22 +1389,24 @@ static void game_transition(void){
  pnet_manual_room(queuedGame.online&&!queuedGame.table);
  // Texture releases and loading happen after the previous GPU frame has finished.
  release_room_textures();wear_free();gp_audio_scene(queuedGame.key);gp_audio_game(queuedGame.key);modal.open=false;igloo.editing=false;demo.actors[0].walking=false;if(!queuedGame.table)demo.count=1;
- const GameHost host={.notice=game_notice,.coins=game_coins,.resource=game_resource,.send=game_send,.leave=game_leave,.sound=game_sound,.stop_sounds=game_stop_sounds,.text=game_text,.rect=game_rect,.button=game_button};
+ const GameHost host={.notice=game_notice,.coins=game_coins,.resource=game_resource,.send=game_send,.leave=game_leave,.sound=game_sound,.stop_sounds=game_stop_sounds,.text=game_text,.rect=game_rect,.button=game_button,.edit_text=game_edit_text};
  game=game_port_open(&queuedGame,&host);gameQueued=false;
  if(!game){gameReturnRoom=queuedGame.returnRoom;gameReturnX=queuedGame.returnX;gameReturnY=queuedGame.returnY;game_restore();message("Could not open this game.");}
 }
+static bool game_listed(unsigned i){return game_port_supported(gameKeys[i])&&(!missionMenu||!strncmp(gameKeys[i],"mission",7));}
 static void games_draw(void){
- text(12,33,12,0x003366,"Games");unsigned count=0;
- for(unsigned i=0;i<COUNT(gameKeys);i++)if(game_port_supported(gameKeys[i])){unsigned n=count++;if(n>=gamePage*6&&n<gamePage*6+6)button(9,60+(n-gamePage*6)*21,302,20,gameNames[i],-1);}
+ text(12,33,12,0x003366,missionMenu?"PSA missions":"Games");unsigned count=0;
+ for(unsigned i=0;i<COUNT(gameKeys);i++)if(game_listed(i)){unsigned n=count++;if(n>=gamePage*6&&n<gamePage*6+6)button(9,60+(n-gamePage*6)*(missionMenu?52:21),302,missionMenu?44:20,gameNames[i],-1);}
  if(!count)center(160,105,11,0x003366,"No games are available.");
- button(9,187,75,18,"Previous",-1);button(236,187,75,18,"Next",-1);
+ if(missionMenu)center(160,190,11,0x003366,"Progress is saved on the server.");
+ else{button(9,187,75,18,"Previous",-1);button(236,187,75,18,"Next",-1);}
 }
 static void games_touch(int x,int y){
- unsigned count=0;for(unsigned i=0;i<COUNT(gameKeys);i++)if(game_port_supported(gameKeys[i]))count++;
- if(y>=187){if(x<85&&gamePage)gamePage--;else if(x>=236&&(gamePage+1)*6<count)gamePage++;return;}
+ unsigned count=0;for(unsigned i=0;i<COUNT(gameKeys);i++)if(game_listed(i))count++;
+ if(y>=187){if(missionMenu)return;if(x<85&&gamePage)gamePage--;else if(x>=236&&(gamePage+1)*6<count)gamePage++;return;}
  if(y<60||y>=186)return;
- unsigned target=gamePage*6+(unsigned)(y-60)/21,n=0;
- for(unsigned i=0;i<COUNT(gameKeys);i++)if(game_port_supported(gameKeys[i])&&n++==target){game_start(gameKeys[i]);return;}
+ unsigned target=gamePage*6+(unsigned)(y-60)/(missionMenu?52:21),n=0;
+ for(unsigned i=0;i<COUNT(gameKeys);i++)if(game_listed(i)&&n++==target){game_start(gameKeys[i]);return;}
 }
 /** Lower-screen header: the room in Room, otherwise the open section. */
 static const char *section_title(void){
@@ -1592,7 +1598,7 @@ static void touch(int x,int y){
  else if(demo.tab==4){
   if(y>=32&&y<56){
    if(x<160){if(pnet_state()!=PNET_ONLINE){modal_message("Connect to GoPenguin to manage puffles.");return;}demo.tab=12;petPage=0;puffles_request(&puffles,pnet_id());}
-   else{demo.tab=16;gamePage=0;}
+   else{demo.tab=16;gamePage=0;missionMenu=false;}
   }
   else if(y>=62&&y<118)penguin_open();
   else if(y>=130&&y<158){if(x<160)toggle_audio();else demo.tab=23;}

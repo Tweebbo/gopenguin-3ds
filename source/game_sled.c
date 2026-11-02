@@ -145,7 +145,7 @@ static void tick(void *game){
    game_port_send(s->port,'z',"zm",4,(const char *[]){me,code,y,time});
   }
  }
- m->sendCount=0;swl_tick(s->scene);sync(s);
+ m->sendCount=0;swl_tick_deferred(s->scene);sync(s);
  // gameOver -> SHELL.sendGameOver(place), then back to the room.
  if(m->over)finish(s);
 }

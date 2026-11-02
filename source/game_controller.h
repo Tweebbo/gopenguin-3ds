@@ -83,7 +83,7 @@ bool game_port_send(GamePort *port,char extension,const char *command,unsigned c
 void game_port_leave(GamePort *port);
 void game_port_sound(GamePort *port,const char *name,unsigned volume,bool loop);
 void game_port_stop_sounds(GamePort *port);
-/** Lower-screen helpers: a button rectangle with hit testing kept in the port. */
+/** Lower-screen helpers: IDs 13/14 belong to the host's retry/back controls. */
 bool game_port_button(GamePort *port,unsigned id,float x,float y,float w,float h,const char *label,bool enabled);
 bool game_port_hotspot(GamePort *port,unsigned id,float x,float y,float w,float h,bool enabled);
 /** A held movement pad: controller touch/held events own its input. */

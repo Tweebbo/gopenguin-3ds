@@ -112,7 +112,7 @@ static void tick(void *game){
   if(r->model.pets[i].captured&&!captured[i])game_port_sound(r->port,random01(r)<.5?"capture1":"capture2",100,false);
   if(r->model.pets[i].escaped&&!escaped[i])game_port_sound(r->port,"escape",100,false);
  }
- swl_tick(r->scene);
+ swl_tick_deferred(r->scene);
  sync_pets(r);update_score(r);
 #ifdef GP_LAN_ONLY
  pet_trace(r);

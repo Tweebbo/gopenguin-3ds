@@ -12,10 +12,11 @@ extern const GameController GAME_HYDRO_CONTROLLER,GAME_ROUNDUP_CONTROLLER,GAME_B
 #ifdef GP_NINJA_GAMES
 extern const GameController GAME_CARD_CONTROLLER,GAME_FIRE_CONTROLLER;
 extern const GameController GAME_AGENT_CONTROLLER;
+extern const GameController GAME_AGENT2_CONTROLLER;
 #endif
 static const GameController *const CONTROLLERS[]={&GAME_HYDRO_CONTROLLER,&GAME_ROUNDUP_CONTROLLER,&GAME_BEANS_CONTROLLER,&GAME_CART_CONTROLLER,&GAME_FOUR_CONTROLLER,&GAME_MANCALA_CONTROLLER,&GAME_SLED_CONTROLLER,&GAME_PIZZATRON_CONTROLLER,&GAME_FISH_CONTROLLER,
 #ifdef GP_NINJA_GAMES
- &GAME_CARD_CONTROLLER,&GAME_FIRE_CONTROLLER,&GAME_AGENT_CONTROLLER,
+ &GAME_CARD_CONTROLLER,&GAME_FIRE_CONTROLLER,&GAME_AGENT_CONTROLLER,&GAME_AGENT2_CONTROLLER,
 #endif
 // Thin Ice's 285-cell board needs the SWL override table proposed in build/games/swl-override-hash.patch.
 #ifdef GAME_THINICE_READY
@@ -24,7 +25,7 @@ static const GameController *const CONTROLLERS[]={&GAME_HYDRO_CONTROLLER,&GAME_R
 };
 static const char *const KEYS[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron"
 #ifdef GP_NINJA_GAMES
- ,"card","fire","mission1"
+ ,"card","fire","mission1","mission2"
 #endif
 };
 

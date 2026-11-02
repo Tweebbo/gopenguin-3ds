@@ -37,6 +37,18 @@ BUILD := obj-dance-gpu-test
 SOURCES := source tests
 ROMFS := build/dance-gpu-romfs
 endif
+ifeq ($(SHARPNESS_GPU_TEST),1)
+TARGET := gopenguin-sharpness-gpu-test
+BUILD := obj-sharpness-gpu-test
+SOURCES := source tests
+ROMFS := build/sharpness/gpu-romfs
+endif
+ifeq ($(REVIEW_GPU_TEST),1)
+TARGET := gopenguin-review-gpu-test
+BUILD := obj-review-gpu-test
+SOURCES := source tests
+ROMFS := build/native-review/romfs
+endif
 ifeq ($(DEBUG_GAMES),1)
 TARGET := gopenguin-debug
 BUILD := obj-debug
@@ -97,6 +109,12 @@ endif
 ifeq ($(DANCE_GPU_TEST),1)
 export OFILES := dance_gpu_test.o swl.o swl_gpu.o swl_shader.shbin.o
 endif
+ifeq ($(SHARPNESS_GPU_TEST),1)
+export OFILES := sharpness_gpu_test.o swl.o swl_gpu.o swl_shader.shbin.o
+endif
+ifeq ($(REVIEW_GPU_TEST),1)
+export OFILES := review_gpu_test.o game_port.o game_gpu.o game_agent2.o game_cart.o game_cart_model.o game_pizzatron.o game_pizzatron_model.o game-controller-stubs.o movie_bank.o movie_meta.o package.o hash.o swl.o swl_gpu.o swl_shader.shbin.o ui_theme.o
+endif
 export INCLUDE := -I$(CURDIR)/source -I$(CURDIR)/vendor/qrcodegen $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export APP_ICON := $(TOPDIR)/assets/icon.png
@@ -109,8 +127,10 @@ endif
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/games/card-preview/*.gpk)
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/npcs/*.nav)
 export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/missions/1/*.gpk) $(wildcard $(CURDIR)/$(ROMFS)/clothing/*.gpa) $(wildcard $(CURDIR)/$(ROMFS)/outfits/*.gpa) $(wildcard $(CURDIR)/$(ROMFS)/avatars/*.gpa)
-.PHONY: all atlas-profile seasonal-profile
-all: $(BUILD) atlas-profile seasonal-profile
+export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/missions/2/*.gpk)
+export _3DSXDEPS += $(wildcard $(CURDIR)/$(ROMFS)/cases.json)
+.PHONY: all atlas-profile seasonal-profile agent-profile sharpness-profile
+all: $(BUILD) atlas-profile seasonal-profile agent-profile sharpness-profile
 	@printf '%s\n' '$(LIBCTRU_BUILD_ID)' > $(BUILD)/libctru.next
 	@cmp -s $(BUILD)/libctru.next $(BUILD)/libctru.stamp || mv $(BUILD)/libctru.next $(BUILD)/libctru.stamp
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
@@ -118,6 +138,15 @@ atlas-profile:
 	@python3 tools/compact-atlas.py --romfs "$(ROMFS)" --skip-missing
 seasonal-profile:
 	@python3 tools/restore-seasonal-assets.py --romfs "$(ROMFS)" --skip-missing
+agent-profile:
+ifeq ($(filter 1,$(GPU_TEST) $(DANCE_GPU_TEST) $(SHARPNESS_GPU_TEST) $(REVIEW_GPU_TEST)),)
+	@python3 tools/restore-agent-assets.py --romfs "$(ROMFS)"
+	@python3 tools/check-agent-assets.py --romfs "$(ROMFS)"
+endif
+sharpness-profile:
+ifeq ($(filter 1,$(GPU_TEST) $(DANCE_GPU_TEST) $(SHARPNESS_GPU_TEST) $(REVIEW_GPU_TEST)),)
+	@python3 tools/restore-sharpness-assets.py --romfs "$(ROMFS)"
+endif
 $(BUILD):
 	@mkdir -p $(BUILD) out
 else

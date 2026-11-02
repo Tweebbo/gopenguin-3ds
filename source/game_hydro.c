@@ -143,12 +143,12 @@ static void sync_hazards(Hydro *h){
 static void tick(void *game){
  Hydro *h=game;if(!h->scene)return;
  if(h->screen!=SCREEN_GAME||game_port_session(h->port)!=GAME_SESSION_PLAYING){swl_tick(h->scene);return;}
- swl_tick(h->under);
+ swl_tick_deferred(h->under);
  HydroModel *m=&h->model;
  hydro_model_mouse(m,h->mouseX);
  if(h->tap){h->tap=false;hydro_model_jump(m);}
  hydro_model_step(m);
- swl_tick(h->scene);
+ swl_tick_deferred(h->scene);
  for(unsigned i=0;i<m->soundCount;i++)game_port_sound(h->port,SOUNDS[m->sounds[i]],100,false);
  for(unsigned i=0;i<m->boatCount;i++)goto_frame(h,"root.game.boat",0,m->boat[i]==HYDRO_BOAT_SCORE?"Score":"Bump",true);
  m->soundCount=m->boatCount=0;

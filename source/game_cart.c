@@ -85,7 +85,7 @@ static void tick(void *game){
  Cart *c=game;if(!c->scene)return;
  if(c->screen!=SCREEN_GAME||game_port_session(c->port)!=GAME_SESSION_PLAYING){swl_tick(c->scene);return;}
  if(c->model.phase==CART_WON||c->model.phase==CART_LOST)return;
- swl_tick(c->scene);cart_model_step(&c->model);sync(c);
+ swl_tick_deferred(c->scene);cart_model_step(&c->model);sync(c);
 }
 
 static void frame(void *game,float seconds,const GameInput *input){

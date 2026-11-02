@@ -90,7 +90,7 @@ static bool ready(void *game){
 
 static void tick(void *game){
  ThinIce *t=game;if(!t->scene)return;
- swl_tick(t->scene);
+ swl_tick_deferred(t->scene);
  if(t->screen!=SCREEN_GAME||game_port_session(t->port)!=GAME_SESSION_PLAYING||t->model.phase==ICE_WON)return;
  thinice_model_step(&t->model);play_sounds(t);sync(t,0);
 }

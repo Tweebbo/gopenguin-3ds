@@ -66,6 +66,8 @@ typedef struct {
  void (*text)(void *user,float x,float y,float size,uint32_t rgb,GameAlign align,const char *text);
  void (*rect)(void *user,float x,float y,float w,float h,uint32_t rgb);
  void (*button)(void *user,float x,float y,float w,float h,const char *label,bool pressed,bool enabled);
+ /** Edit a local field with the platform keyboard. False preserves its previous value. */
+ bool (*edit_text)(void *user,char *value,size_t capacity,const char *hint);
 } GameHost;
 
 /** Immediate-mode drawing the game requests between bank layers (device: citro2d; tests: recorded). */

@@ -8,11 +8,14 @@ import {encodeNavigation} from './navigation-format.mjs';
 
 export async function exportScene(args=process.argv,shared){
 const root=path.resolve(import.meta.dirname,'..'),web=path.resolve(process.env.GOPENGUIN_WEB??root+'/../../GoPenguin-Gameplay-PC-20261101/web');
-const name=args[2]??'town';if(!/^[a-z][a-z0-9-]*$/.test(name))throw Error('Invalid room name');
-const igloo=args.includes('--igloo'),library=!igloo&&args[3]!==undefined,pack=args[3]??name,clip=args[4]??'root',initial=Number(args[5]??1);
+const positional=args.slice(2).filter(arg=>!arg.startsWith('--'));
+const name=positional[0]??'town';if(!/^[a-z][a-z0-9-]*$/.test(name))throw Error('Invalid room name');
+const igloo=args.includes('--igloo'),library=!igloo&&positional[1]!==undefined,pack=positional[1]??name,clip=positional[2]??'root',initial=Number(positional[3]??1);
 const pageOnly=args.includes('--page'),external=args.includes('--external');
 const referenceTicks=args.includes('--single-reference')?[0]:[0,1,12,24,48,96];
 const newspaper=args.includes('--newspaper');
+const roomBakeScale=Number(process.env.SWL_ROOM_BAKE_SCALE??.5);
+if(!Number.isFinite(roomBakeScale)||roomBakeScale<.5||roomBakeScale>1)throw Error('Room bake scale must be between 0.5 and 1.');
 const catalogue=args.find(value=>value.startsWith('--catalogue='))?.slice(12)??'';
 if(!/^[A-Za-z0-9_/-]+$/.test(pack)||pack.includes('..')||!/^\w+$/.test(clip)||!Number.isInteger(initial)||initial<1)throw Error('Invalid movie export arguments');
 const require=createRequire(web+'/package.json'),{chromium}=require('playwright'),{build}=require('esbuild');
@@ -33,7 +36,7 @@ try{
  await page.goto('http://assets.test/');await page.addScriptTag({content:bundle});
  if(shared)shared.page=page;
  }
- const data=await page.evaluate(async({name,library,pack,clip,initial,pageOnly,catalogue,igloo,newspaper,reuse,referenceTicks})=>{
+ const data=await page.evaluate(async({name,library,pack,clip,initial,pageOnly,catalogue,igloo,newspaper,reuse,referenceTicks,roomBakeScale})=>{
   const {Movie,Room,roomScript}=Native;let movie,news;const newsTextIds=new Set();
   if(newspaper){
    const paper=await Native.Newspaper.open({show:()=>{},close:()=>{},notice:()=>{}});movie=paper.movie;movie.muted=true;
@@ -58,6 +61,7 @@ try{
    for(const timeline of Object.values(movie.data.sprites))for(const action of Object.values(timeline.actions??{}))if(!Array.isArray(action)&&action.targets)action.targets=action.targets.map(([target,command,arg])=>[target,command,arg==='_root.myGame.myLangCode'?'en':arg]);
    for(const timeline of Object.values(movie.data.sprites))for(const [frame,action] of Object.entries(timeline.actions??{}))if(Array.isArray(action))timeline.actions[frame]=action.map(([command,arg])=>[command,arg==='_root.myGame.myLangCode'?(timeline.labels.en??1):arg]);
   }
+  movie.rasterize=false;
   const script=library?{start:[380,340]}:roomScript(igloo?'igloo':name,movie);script.setup?.(movie,'english');if(library&&!newspaper)movie.goto(clip,initial);
   // Catalogue language comes from the Flash shell; these native resources use English.
   if(catalogue)for(const timeline of Object.values(movie.data.sprites))for(const action of Object.values(timeline.actions??{})){
@@ -91,7 +95,7 @@ try{
    // Keep the SVG image's native pixel phase; drawing its fractional origin into
    // another surface first would resample every outline twice.
    const limit=newspaper&&!newsTextIds.has(id)&&source.naturalWidth>512?.85:1;
-   const scale=library?Math.max(.01,Math.min(limit,c.nativeRasterScale??rasterScales.get(id)??1)):1,iw=Math.max(1,Math.ceil(source.naturalWidth*scale)),ih=Math.max(1,Math.ceil(source.naturalHeight*scale));
+   const density=library?Math.max(.01,Math.min(limit,c.nativeRasterScale??(rasterScales.get(id)??1)*(c.nativeRasterFactor??1))):1,iw=Math.max(1,source.naturalWidth),ih=Math.max(1,source.naturalHeight);
    const w=iw+2,h=ih+2,image=canvas(w,h),ctx=image.getContext('2d');
    ctx.drawImage(source,1,1,iw,ih);
    const ux=a.size[0]/iw,uy=a.size[1]/ih;
@@ -100,7 +104,7 @@ try{
     image.width=Math.max(3,Math.ceil(a.size[0])+2);image.height=Math.max(3,Math.ceil(a.size[1])+2);
     ctx.setTransform(1,0,0,1,-left,-top);movie.drawCharacter(ctx,id,'export-art');
     art.push({id,w:image.width,h:image.height,left,top,width:image.width,height:image.height,png:image.toDataURL()});
-   }else art.push({id,w,h,left:-a.origin[0]-ux,top:-a.origin[1]-uy,width:w*ux,height:h*uy,png:image.toDataURL()});
+   }else art.push({id,w,h,left:-a.origin[0]-ux,top:-a.origin[1]-uy,width:w*ux,height:h*uy,png:image.toDataURL(),density});
   };
   // Hidden hit masks stay in the collision data, not in the visual atlas.
   timelines[0].frames=timelines[0].frames.map(f=>f.filter(e=>!['block_mc','triggers_mc'].includes(e.name)).map(e=>({...e,renderDepth:room.depthOf(e)})).sort((a,b)=>a.renderDepth-b.renderDepth));
@@ -108,6 +112,7 @@ try{
   const metadata=library||igloo?Native.inspectMovie(movie,seen,catalogue):null;
   const warm=canvas(380,240),warmctx=warm.getContext('2d');warmctx.scale(.5,.5);room.draw(warmctx);await movie.ready();room.draw(warmctx);
   const protectedPaths=['foreground_mc',...Object.entries(script.buttons??{}).flatMap(([path,button])=>[path,...(button.hover??[]).map(h=>h.path)]),...Object.values(script.triggers??{}).flatMap(t=>t.frames?[t.frames[0]]:[])];
+  if(pack==='assets/missions/2/miniGame')protectedPaths.push('root#1.landscape','root#1.sled',...Array.from({length:21},(_,i)=>'root#1.seg'+(i+1)));
   const targetPath=(from,target)=>{let parts=from.match(/[^.#]+|#\d+/g)??[];for(const p of target.split('.')){if(p==='this')continue;if(p==='_parent')parts.pop();else parts.push(p);}return parts.reduce((s,p)=>s+(s&&!p.startsWith('#')?'.':'')+p,'');};
   const scanned=new Set();
   const scan=(id,parent)=>{const key=id+':'+parent;if(scanned.has(key)||parent.length>255)return;scanned.add(key);const t=timelines[id];if(!t)return;for(const a of Object.values(t.actions??{}))for(const [target] of a.targets??[])protectedPaths.push(targetPath(parent,target));for(const f of t.frames)for(const e of f)if(timelines[e.id])scan(e.id,e.name?(parent?parent+'.':'')+e.name:parent+'#'+e.depth);};
@@ -137,15 +142,17 @@ try{
   const bake=(list,parent,world,stable)=>{
    const memoKey=JSON.stringify([stable,stable?world:null,parent,list]);if(bakeMemo.has(memoKey))return structuredClone(bakeMemo.get(memoKey));
    if(!stable&&(localRoots||list.reduce((n,e)=>Math.min(3,n+leaves(e,parent)),0)<3))return null;
-   const rasterScale=library&&stable?1:.5;let originX=0,originY=0,width=760*rasterScale,height=480*rasterScale;
+   const rasterScale=stable?1:.5;let originX=0,originY=0,width=760*rasterScale,height=480*rasterScale;
    if(!stable||library){let boxes=list.map(e=>movie.entryBounds(e,parent)).filter(Boolean);if(!boxes.length)return [];if(stable)boxes=boxes.map(b=>{const points=[[b[0],b[1]],[b[2],b[1]],[b[0],b[3]],[b[2],b[3]]].map(([x,y])=>[world[0]*x+world[2]*y+world[4],world[1]*x+world[3]*y+world[5]]);return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];});originX=Math.floor(Math.min(...boxes.map(b=>b[0]))*rasterScale)-1;originY=Math.floor(Math.min(...boxes.map(b=>b[1]))*rasterScale)-1;width=Math.ceil(Math.max(...boxes.map(b=>b[2]))*rasterScale)-originX+1;height=Math.ceil(Math.max(...boxes.map(b=>b[3]))*rasterScale)-originY+1;if(width<=0||height<=0)return [];if(width>(stable?1024:128)||height>(stable?1024:128))return null;}
    const c=canvas(width,height),ctx=c.getContext('2d');ctx.setTransform(rasterScale,0,0,rasterScale,-originX,-originY);if(stable)ctx.transform(...world);for(const e of list)movie.entry(ctx,e,parent);
    const rgba=ctx.getImageData(0,0,width,height).data;let x0=width,y0=height,x1=0,y1=0;
    for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(rgba[(y*width+x)*4+3]){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x+1);y1=Math.max(y1,y+1);}
    if(x1<=x0||y1<=y0)return [];
    const image=canvas(x1-x0+2,y1-y0+2);image.getContext('2d').drawImage(c,x0,y0,x1-x0,y1-y0,1,1,x1-x0,y1-y0);
-   const png=image.toDataURL(),left=(originX+x0-1)/rasterScale,top=(originY+y0-1)/rasterScale,key=JSON.stringify([png,image.width,image.height]);let id=bakeImages.get(key);
-   if(!id){id=nextId++;bakeImages.set(key,id);art.push({id,w:image.width,h:image.height,left:0,top:0,width:image.width/rasterScale,height:image.height/rasterScale,png,baked:true});baked++;}
+   const worldWidth=image.width/rasterScale,worldHeight=image.height/rasterScale;let packed=image;
+   if(stable&&!library&&roomBakeScale<1){packed=canvas(Math.max(1,Math.ceil(image.width*roomBakeScale)),Math.max(1,Math.ceil(image.height*roomBakeScale)));const reduced=packed.getContext('2d');reduced.imageSmoothingQuality='high';reduced.drawImage(image,0,0,packed.width,packed.height);}
+   const png=packed.toDataURL(),left=(originX+x0-1)/rasterScale,top=(originY+y0-1)/rasterScale,key=JSON.stringify([png,packed.width,packed.height,worldWidth,worldHeight]);let id=bakeImages.get(key);
+   if(!id){id=nextId++;bakeImages.set(key,id);art.push({id,w:packed.width,h:packed.height,left:0,top:0,width:worldWidth,height:worldHeight,png,baked:true});baked++;}
    const output=[{id,depth:list[0].depth,renderDepth:list[0].renderDepth,name:list.length===1?list[0].name:undefined,matrix:multiply(stable?inverse(world):[1,0,0,1,0,0],[1,0,0,1,left,top])}];bakeMemo.set(memoKey,output);return structuredClone(output);
   };
   const optimize=(id,parent,world,stable)=>{
@@ -218,7 +225,7 @@ try{
   const navigation=library?null:{room:name,name:Native.ROOM_NAMES[name],id:Native.ROOM_IDS[name],start:script.start,block:bits(room.block),triggers:room.triggers.map(t=>({...script.triggers[t.name],name:t.name,mask:bits(t.mask)})),buttons:room.buttons.map(b=>({path:b.path,...script.buttons[b.path],mask:bits(b.mask)})).map(({action,...b})=>b)};
   const details=metadata?.result();if(details){const root=igloo?movie.data.main:newspaper?movie.data.sprites[movie.find('news#1').entry.id]:movie.data.sprites[movie.data.main.frames[0][0].id];details.clip=newspaper?'news#1':clip;details.frames=root.frames.length;details.labels=root.labels??{};details.nativeFonts=nativeFonts;if(newspaper){details.newspaper=news;for(const control of details.controls){const source=movie.data.buttonActions?.[control.id]?.release??'';if(/showWindow\("News Form"\)|getURL\(/.test(source))control.commands=[{op:24}];}}if(igloo){const main=movie.data.main.actions?.[1],source=main&&!Array.isArray(main)?main.source??'':'';details.igloo={floorFrame:Number(/\bfloor_frame\s*=\s*(\d+)/.exec(source)?.[1]??1),start:script.start,block:bits(room.block)};for(const key of ['room_area','wall_area','trash_area'])details.igloo[key]=bits(new Native.StageMask(movie,key,760,480));}}
   return {width:760,height:480,fps:movie.data.stage.frameRate,timelines:optimized,art,states,refs,dynamicRefs,baked,navigation,metadata:details,ignoredClipOutlines};
- },{name,library,pack,clip,initial,pageOnly,catalogue,igloo,newspaper,reuse:!!shared,referenceTicks});
+ },{name,library,pack,clip,initial,pageOnly,catalogue,igloo,newspaper,reuse:!!shared,referenceTicks,roomBakeScale});
  if(data.metadata?.igloo){const source=await readFile(web+'/src/rooms/index.ts','utf8'),ids=Object.fromEntries([...source.split('ROOM_IDS')[1].split('};')[0].matchAll(/(\w+)\s*:\s*(\d+)/g)].map(m=>[m[1],Number(m[2])]));data.metadata.igloo.navigation=encodeNavigation(data.navigation,ids).toString('base64');}
  if(data.metadata?.igloo)for(const key of ['block','room_area','wall_area','trash_area'])data.metadata.igloo[key]=Buffer.from(data.metadata.igloo[key]).toString('base64');
  await writeFile(root+'/build/scenes/'+name+'/art-profile.json',JSON.stringify(data.art.map(({id,w,h,baked})=>({id,w,h,baked:!!baked})).sort((a,b)=>b.w*b.h-a.w*a.h),null,2)+'\n');
@@ -227,9 +234,9 @@ try{
  // below that, 16-bit pages with ordered dithering keep more resolution in the same budget.
  // Each candidate is resampled once from the full-size raster with high-quality filtering.
  let pages,dynamicScale=1,textureFormat='rgba8888';const fullArt=data.art,sourceTimelines=data.timelines;
- const scaled=s=>s===1?Promise.resolve(fullArt):page.evaluate(async({art,s,scaleBaked})=>{
+ const scaled=s=>page.evaluate(async({art,s,scaleBaked})=>{
   const out=[];
-  for(const a of art){if(a.baked&&!scaleBaked){out.push(a);continue;}const image=new Image();image.src=a.png;await image.decode();const c=document.createElement('canvas');c.width=Math.max(1,Math.ceil(a.w*s));c.height=Math.max(1,Math.ceil(a.h*s));const g=c.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.drawImage(image,0,0,c.width,c.height);out.push({...a,w:c.width,h:c.height,png:c.toDataURL()});}
+  for(const a of art){const factor=s*(a.density??1);if((a.baked&&!scaleBaked)||factor===1){out.push(a);continue;}const image=new Image();image.src=a.png;await image.decode();const c=document.createElement('canvas');c.width=Math.max(1,Math.ceil(a.w*factor));c.height=Math.max(1,Math.ceil(a.h*factor));const g=c.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';g.drawImage(image,0,0,c.width,c.height);out.push({...a,w:c.width,h:c.height,png:c.toDataURL()});}
   return out;
  },{art:fullArt,s,scaleBaked:pack.startsWith('assets/missions/')});
  const tile=async(art,timelines)=>{
@@ -288,7 +295,7 @@ try{
   const index=file.slice(prefix.length,-suffix.length);if(/^\d+$/.test(index)&&Number(index)>=pages)await rm(`${root}/${folder}/${file}`);
  }
  const sha=file=>createHash('sha256').update(file).digest('hex');
- const manifest={format:'SWL2',room:name,source:sha(await readFile(`${web}/public/swf/${pack}/timelines.json`)),runtimeSource:sha(await readFile(`${web}/src/swf/movie.ts`)),binary:sha(binary),atlasHashes,art:data.art.length,bakedGroups:data.baked,dynamicScale,textureFormat,timelines:Object.keys(data.timelines).length,pages,atlasWidth:1024,atlasHeight:512,textureBytes:pages*1024*512*(textureFormat==='rgba4444'?2:4),textureBudget:limits.texture,binaryBytes:binary.length,referenceTicks:data.refs.map(r=>r.tick),ignoredClipOutlines:data.ignoredClipOutlines,unsupported:['dynamic text updates','native audio playback']};
+ const manifest={format:'SWL2',room:name,source:sha(await readFile(`${web}/public/swf/${pack}/timelines.json`)),runtimeSource:sha(await readFile(`${web}/src/swf/movie.ts`)),binary:sha(binary),atlasHashes,art:data.art.length,bakedGroups:data.baked,roomBakeScale:library?null:roomBakeScale,dynamicScale,textureFormat,timelines:Object.keys(data.timelines).length,pages,atlasWidth:1024,atlasHeight:512,textureBytes:pages*1024*512*(textureFormat==='rgba4444'?2:4),textureBudget:limits.texture,binaryBytes:binary.length,referenceTicks:data.refs.map(r=>r.tick),ignoredClipOutlines:data.ignoredClipOutlines,unsupported:['dynamic text updates','native audio playback']};
  await writeFile(`${root}/build/scenes/${name}/manifest.json`,JSON.stringify(manifest,null,2)+'\n');
  console.log(JSON.stringify(manifest,null,2));
 }finally{if(!shared)await browser.close();}
