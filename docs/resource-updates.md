@@ -1,7 +1,8 @@
 # SD resource updates
 
-These changes are local candidates. No tag, push, release, workflow dispatch,
-production configuration change or announcement is part of this work.
+The complete 1.3.8 release introduces the resource-aware updater. The following
+1.3.9 release stores game resources separately on SD. Host and emulator checks
+passed; physical-console migration and installation remain unverified.
 
 The background-preparation follow-up lets the current complete application keep
 running while migration, downloads and verification prepare the next version.
@@ -11,11 +12,11 @@ review](background-updates.md) for the player flow and measured scope.
 
 ## Migration order
 
-1. Build the full 1.3.8 bridge with `RESOURCE_LAYOUT` set to `bridge`. It retains
-   the existing resources and includes the new updater. Publish it to both
-   manifest channels only after approval and console validation.
-2. Build a subsequent release, currently staged locally as 1.3.9, with
-   `RESOURCE_LAYOUT` set to `split`. Publish it only to `latest-v2.json`. Keep the
+1. The full 1.3.8 bridge uses `RESOURCE_LAYOUT` set to `bridge`. It retains
+   the existing resources and includes the new updater. Publish the complete
+   bridge to both manifest channels before offering a split release.
+2. The subsequent 1.3.9 release uses `RESOURCE_LAYOUT` set to `split`.
+   Publish it only to `latest-v2.json`. Keep the
    full bridge on `latest.json` for older clients.
 3. Before installing the small application, the bridge verifies the target index,
    copies matching resources from its own RomFS to SD, and verifies those copies.
@@ -61,9 +62,9 @@ up to four exact-base deltas. It does not publish anything.
 validates both formats, the resource index and any required bundles. The bridge
 index is checked against every indexed file in the packaged RomFS snapshot.
 
-The pipeline changes and `3ds/native-update-routes.caddy` in the private pipeline
-worktree remain local. The v2 route must be installed during a future approved
-deployment. Existing production serves the legacy manifest only.
+The private pipeline includes `3ds/native-update-routes.caddy`. Both manifest
+routes must be installed before offering a split release. The legacy manifest
+retains the complete bridge for clients that cannot prepare SD resources yet.
 
 ## Performance evidence
 

@@ -1,1 +1,1 @@
-Optional update: improves igloo entry and lets future updates prepare while you play. Install this complete update first, then close and reopen GoPenguin before preparing the smaller application update. Your saved penguin is retained. See gopenguin.lol/changelog/.
+Optional update: smaller future application downloads reuse unchanged game resources on SD. The complete 1.3.8 update is required first. Preparation can continue while playing; choose Install now when ready. Your saved penguin is retained. See gopenguin.lol/changelog/.
