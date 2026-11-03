@@ -259,6 +259,10 @@ const games={
    }},
   },
  },
+ mixmaster:{
+  code:700017,
+  banks:{main:{pack:'mixmaster',artScale:.5,textureBudget:6*1024*1024}},
+ },
  jetpack:{
   code:700016,
   banks:{main:{pack:'jetpack-1-1',artScale:.5,textureBudget:6*1024*1024,
