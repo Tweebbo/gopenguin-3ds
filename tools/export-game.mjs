@@ -278,6 +278,31 @@ const games={
    volcanoe:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,2,'volcanoe','tilevolcanoe','partsvolcanoe')},
   },
  },
+ dance:{
+  code:700019,
+  banks:{main:{pack:'dance',artScale:.35,textureBudget:6*1024*1024,
+   transform(data){
+    const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
+    const gameMC=data.main.frames[2].find(entry=>entry.name==='gameMC');
+    if(!gameMC)throw Error('Missing Dance gameMC');
+    const parts=data.sprites[gameMC.id].frames[0];
+    const background=parts.find(entry=>entry.name==='background'),arrows=parts.find(entry=>entry.name==='arrows');
+    if(!background||!arrows)throw Error('Missing Dance stage');
+    const frame=[{...background,depth:1},{...arrows,depth:2}];
+    const names={up:'noteBaseUp',down:'noteBaseDown',left:'noteBaseLeft',right:'noteBaseRight'};
+    for(const [dir,exportName] of Object.entries(names)){
+      const source=symbol(exportName),id=nextId(data);
+      data.sprites[id]={frames:[data.sprites[source].frames[0]],labels:{},scriptFrames:[],sounds:[],actions:{1:[['stop',null]]}};
+      for(let i=0;i<8;i++)frame.push({depth:900+i,id,name:dir+'Note'+i,matrix:[1,0,0,1,0,-10000]});
+    }
+    for(const timeline of [data.main,...Object.values(data.sprites)]){
+      timeline.labels={...timeline.labels,en:1,english:1};
+      for(const action of Object.values(timeline.actions??{}))if(Array.isArray(action))for(const command of action)if(command.length>1&&typeof command[1]==='string'&&command[1].startsWith('_root.myGame'))command[1]=1;
+    }
+    data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+    return data;
+   }}},
+ },
  mixmaster:{
   code:700017,
   banks:{main:{pack:'mixmaster',artScale:.5,textureBudget:6*1024*1024}},
