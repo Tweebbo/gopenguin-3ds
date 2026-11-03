@@ -37,7 +37,7 @@ const server=http.createServer((req,res)=>{
 });
 await new Promise(resolve=>server.listen(18891,'127.0.0.1',resolve));
 try{
- execFileSync('cc',[...common,'-DGP_LAN_ONLY','-DGOPENGUIN_VERSION="1.0.0"','-DGP_UPDATE_URL="http://127.0.0.1:18891/latest.json"','tests/update-worker.c','source/gp_update.c','source/update_manifest.c','source/incremental.c','source/hash.c','source/common.c','source/transport/conn.c','source/transport/ws.c','source/transport/download.c','-lz','-lcrypto','-l:libjansson.so.4','-pthread','-o',folder+'/worker'],{cwd:root});
+ execFileSync('cc',[...common,'-DGP_LAN_ONLY','-DGOPENGUIN_VERSION="1.0.0"','-DGP_UPDATE_URL="http://127.0.0.1:18891/latest.json"','tests/update-worker.c','source/gp_update.c','source/update_manifest.c','source/incremental.c','source/hash.c','source/resource_store.c','source/common.c','source/transport/conn.c','source/transport/ws.c','source/transport/download.c','-lz','-lcrypto','-l:libjansson.so.4','-pthread','-o',folder+'/worker'],{cwd:root});
  const child=spawn(folder+'/worker',[launch],{stdio:['ignore','pipe','pipe']});let output='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);const code=await new Promise(resolve=>child.once('exit',resolve));assert.equal(code,0,output);
  assert.equal(requests,2);assert.ok(resumed);assert.deepEqual(await readFile(launch),payload);checks+=4;
 }finally{await new Promise(resolve=>server.close(resolve));}

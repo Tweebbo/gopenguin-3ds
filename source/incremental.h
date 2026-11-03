@@ -18,6 +18,7 @@ typedef struct {
     bool (*cancel)(void *);
     void (*progress)(unsigned, void *);
     void *user;
+    void (*cooperate)(unsigned bytes, void *);
 } IncrementalHooks;
 typedef enum {
     INCREMENTAL_OK, INCREMENTAL_INVALID, INCREMENTAL_BASE_MISMATCH,

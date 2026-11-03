@@ -1,4 +1,5 @@
 #include "package.h"
+#include "resource_stdio.h"
 #include "hash.h"
 #include <stdlib.h>
 #include <string.h>

@@ -1,4 +1,5 @@
 #include "client_data.h"
+#include "resource_stdio.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

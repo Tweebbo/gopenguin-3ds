@@ -5,6 +5,11 @@
 #include <string.h>
 
 #define GAME_BUTTONS 12
+#ifdef GP_LAN_ONLY
+static int testTracing=1;
+void game_port_test_tracing(int enabled){testTracing=enabled;}
+int game_port_test_trace_enabled(void){return testTracing;}
+#endif
 #define GAME_JOIN_TIMEOUT 10.0f
 #define GAME_PAY_TIMEOUT 15.0f
 

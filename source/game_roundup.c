@@ -94,6 +94,7 @@ static bool ready(void *game){
 // LAN test builds only: puffle positions for the emulator autopilot that steers the stylus.
 // Scores and results are still read from the screen and the payout from the server.
 static void pet_trace(const Roundup *r){
+ if(!game_port_test_trace_enabled())return;
  static unsigned ticks;if(ticks++%2)return;
  FILE *log=fopen("sdmc:/3ds/gopenguin/roundup-pets.log","a");if(!log)return;
  fprintf(log,"tick=%u done=%u",ticks,r->model.done?1u:0u);

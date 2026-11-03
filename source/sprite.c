@@ -1,4 +1,5 @@
 #include "sprite.h"
+#include "resource_stdio.h"
 #include "hash.h"
 #include <stdio.h>
 #include <stdlib.h>

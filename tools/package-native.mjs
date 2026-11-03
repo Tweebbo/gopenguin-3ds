@@ -4,11 +4,11 @@ import {spawn} from 'node:child_process';
 import path from 'node:path';
 
 const root=path.resolve(import.meta.dirname,'..');
-const version=(await readFile(root+'/VERSION','utf8')).trim();
+const version=(process.env.GOPENGUIN_VERSION??await readFile(root+'/VERSION','utf8')).trim();
 if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('VERSION must contain a semantic release version.');
 const [major,minor,micro]=version.split('.').map(Number);
 if(major>63||minor>63||micro>15)throw Error('CIA versions support major/minor up to 63 and micro up to 15.');
-const options={elf:root+'/out/gopenguin-3ds-demo.elf',romfs:root+'/romfs',output:root+'/build/package-candidate',tools:path.resolve(root,'../Tweebbo-3DS/build/ctrtools'),'unique-id':'0x7e901',release:false};
+const options={elf:root+'/out/gopenguin-3ds-demo.elf',romfs:root+'/romfs',output:root+'/build/package-candidate',tools:path.resolve(root,'../Tweebbo-3DS/build/ctrtools'),resources:'','resource-index':'','unique-id':'0x7e901',release:false};
 for(let i=2;i<process.argv.length;i++){
  const name=process.argv[i];if(name==='--help'){console.log('node tools/package-native.mjs [--elf FILE] [--romfs DIRECTORY] [--output build/DIRECTORY] [--tools DIRECTORY] [--unique-id HEX] [--release]');process.exit(0);}
  if(name==='--release'){options.release=true;continue;}
@@ -31,7 +31,7 @@ async function run(command,args){const child=spawn(command,args,{cwd:root,stdio:
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const started=new Date(),folder=options.output,inputs=folder+'/inputs-'+started.toISOString().replace(/[:.]/g,'-');await mkdir(inputs+'/romfs',{recursive:true});
 const elf=await readFile(options.elf);if(elf.toString('ascii',0,4)!=='\x7fELF'||elf[4]!==1||elf.readUInt16LE(18)!==40)throw Error('Expected a 32-bit ARM ELF input.');
-if(options.release&&(!elf.includes(Buffer.from('GOPENGUIN_RELEASE:'+version))||elf.includes(Buffer.from('http://10.0.2.2:18891/latest.json'))))throw Error('Release packaging requires the matching versioned public ELF, rebuilt with its updater.');
+if(options.release&&(!elf.includes(Buffer.from('GOPENGUIN_RELEASE:'+version))||elf.includes(Buffer.from('http://10.0.2.2:18891/latest.json'))||elf.includes(Buffer.from('http://127.0.0.1:18891/latest.json'))||elf.includes(Buffer.from('background-update-auto'))))throw Error('Release packaging requires the matching versioned public ELF without LAN endpoints or automatic test controls.');
 await writeFile(inputs+'/application.elf',elf);await copyFile(brand.icon,inputs+'/icon.png');
 if(brand.banner){await copyFile(brand.banner,inputs+'/banner.png');await copyFile(brand.wav,inputs+'/banner.wav');}
 const inventory=[],excluded=[];
@@ -193,6 +193,27 @@ const relative=p=>path.relative(root,p);
 await run('podman',['run','--rm','--network','none','--cpus','2','--memory','1g','-v',root+':/work:z','-w','/work',process.env.DEVKITARM_IMAGE??'localhost/native-3ds-libctru-fixed:latest','3dsxtool',relative(inputs+'/application.elf'),relative(base+'.3dsx'),'--smdh='+relative(base+'.smdh'),'--romfs='+relative(inputs+'/romfs')]);
 const manifest={createdAt:new Date().toISOString(),status:brand.status,titleId,uniqueId:'0x'+uniqueId.toString(16),title:brand.short,internalTitle:'GoPengui',productCode:'CTR-P-GPPD',snapshot:relative(inputs),sourceElf:relative(options.elf),elfSha256:sha(elf),romfsBytes:inventory.reduce((sum,f)=>sum+f.bytes,0),romfsFiles:inventory.length,excludedBuildMetadata:excluded,old3ds:{systemMode:'64MB',systemModeExt:'Legacy',idealProcessor:0,affinityMask:1},new3ds:{cpu:'804MHz',l2Cache:true,core2:false},packagingTools:{makerom:sha(await readFile(makerom)),bannertool:sha(await readFile(bannertool))},artifacts:{},limits:['Games and other port work may still be incomplete; packaging is not complete-port acceptance.','DSP playback remains unverified where firmware is unavailable.','No CIA installation, console test, upload, publication or auto-update has been performed.','Title ID is a development convention, not a registered public allocation.']};
 manifest.version=version;manifest.titleVersion=(major<<10)|(minor<<4)|micro;
+if(options['resource-index']){
+ const bytes=await readFile(path.resolve(options['resource-index']));
+ if(bytes.toString('ascii',0,8)!=='GPRIDX1\0'||bytes.length<16||bytes.length!==16+bytes.readUInt32LE(8)*164)throw Error('Invalid bridge resource index.');
+ const files=new Map(inventory.map(file=>[file.file,file]));let total=0,previous='';
+ for(let offset=16;offset<bytes.length;offset+=164){
+  const raw=bytes.subarray(offset,offset+128),end=raw.indexOf(0);if(end<1)throw Error('Invalid bridge resource path.');
+  const name=raw.toString('ascii',0,end),file=files.get(name),size=bytes.readUInt32LE(offset+160);
+  if(name<=previous||!file||file.bytes!==size||file.sha256!==bytes.subarray(offset+128,offset+160).toString('hex'))throw Error('Bridge resource index differs from packaged RomFS: '+name);
+  previous=name;total+=size;
+ }
+ if(total!==bytes.readUInt32LE(12))throw Error('Bridge resource index total differs.');
+ const file='gopenguin-resources.idx';await writeFile(folder+'/'+file,bytes);manifest.resourceIndex={url:`https://github.com/Tweebbo/gopenguin-3ds/releases/download/v${version}/${file}`,sha256:sha(bytes),bytes:bytes.length};
+}
+if(options.resources){
+ const staged=path.resolve(options.resources),offer=JSON.parse(await readFile(staged+'/resource-offer.json','utf8'));
+ if(JSON.stringify(offer)!==JSON.stringify(JSON.parse(await readFile(inputs+'/romfs/data/resource-offer.json','utf8'))))throw Error('Embedded resource offer differs from the staged assets.');
+ const entries=[offer.index,offer.bundle,...offer.deltas.map(entry=>entry.bundle)];
+ for(const artifact of entries){const file=path.basename(new URL(artifact.url).pathname),bytes=await readFile(staged+'/'+file);if(artifact.url!==`https://github.com/Tweebbo/gopenguin-3ds/releases/download/v${version}/${file}`||bytes.length!==artifact.bytes||sha(bytes)!==artifact.sha256)throw Error('Staged resource artifact differs: '+file);await writeFile(folder+'/'+file,bytes);}
+ if(sha(await readFile(inputs+'/romfs/data/resources.idx'))!==offer.index.sha256)throw Error('Embedded resource index differs.');
+ manifest.resources=offer;
+}else if(inventory.some(file=>file.file==='data/resources.idx'))throw Error('A split package requires --resources with its verified publication assets.');
 for(const extension of ['cia','3dsx','smdh','bnr']){const file=base+'.'+extension,bytes=await readFile(file);manifest.artifacts[extension]={file:path.basename(file),bytes:bytes.length,sha256:sha(bytes)};}
 await writeFile(folder+'/manifest.json',JSON.stringify(manifest,null,2)+'\n');
 await run(process.execPath,[root+'/tests/package-native.mjs',folder]);

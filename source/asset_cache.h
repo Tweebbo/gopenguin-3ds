@@ -10,7 +10,10 @@ void asset_cache_stop(void);
 /** Exit path: waits at most `ms` for the download worker; false leaves it running. */
 bool asset_cache_stop_within(unsigned ms);
 void asset_cache_request_stop(void);
+void asset_cache_pause(bool paused);
 bool asset_cache_request(unsigned clothingId,char *path,size_t capacity);
+/* A room dependency can interrupt a decorative download and use one reserved queue slot. */
+bool asset_cache_request_urgent(unsigned key,char *path,size_t capacity);
 unsigned asset_cache_pending(void);
 enum {ASSET_DISABLED,ASSET_QUEUED,ASSET_READY,ASSET_RETRY,ASSET_UNAVAILABLE};
 unsigned asset_cache_status(unsigned key);

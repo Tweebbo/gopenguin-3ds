@@ -9,7 +9,7 @@ const flags=['-O2','-std=c11','-D_POSIX_C_SOURCE=200809L','-DNO_TLS','-Wall','-W
 const armFlags=['-D__3DS__','-Itests/stubs/updater-3ds'];
 execFileSync('cc',[...flags,...armFlags,'-DGOPENGUIN_VERSION="1.1.4"','-c','source/gp_update.c','-o',folder+'/gp_update.o'],{cwd:root});
 execFileSync('cc',[...flags,...armFlags,'-c','tests/update-cia-worker.c','-o',folder+'/worker.o'],{cwd:root});
-execFileSync('cc',[...flags,folder+'/gp_update.o',folder+'/worker.o','source/update_manifest.c','source/incremental.c','source/hash.c','source/common.c','-lz','-lcrypto','-l:libjansson.so.4','-pthread','-o',folder+'/worker'],{cwd:root});
+execFileSync('cc',[...flags,folder+'/gp_update.o',folder+'/worker.o','source/update_manifest.c','source/incremental.c','source/hash.c','source/resource_store.c','source/common.c','-lz','-lcrypto','-l:libjansson.so.4','-pthread','-o',folder+'/worker'],{cwd:root});
 const bytes=Buffer.alloc(512*1024,0x5a);bytes.fill(0,0,32);bytes.writeUInt32LE(32,0);const tmd=64;bytes.writeUInt32BE(0x10004,tmd);bytes.writeBigUInt64BE(0x0004000007E90200n,tmd+0x140+0x4c);bytes.writeUInt16BE(1045,tmd+0x140+0x9c);
 const artifact={url:'https://gopenguin.lol/3ds/test.cia',bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
 const manifest={schema:1,titleId:'0004000007E90200',version:'1.1.5',cia:artifact,'3dsx':artifact};

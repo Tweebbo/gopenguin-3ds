@@ -19,8 +19,12 @@ static bool digest_end(Digest *d, unsigned char out[32]) { return EVP_DigestFina
 static void digest_free(Digest *d) { EVP_MD_CTX_free(*d); }
 #endif
 
-enum { BUFFER_BYTES = 32768, MAX_OPERATIONS = 65536, MAX_PATH = 240 };
-typedef struct { FILE *file; z_stream stream; unsigned char input[BUFFER_BYTES]; bool ended, failed; } Reader;
+#ifndef GP_UPDATE_IO_BYTES
+#define GP_UPDATE_IO_BYTES 131072
+#endif
+enum { BUFFER_BYTES = GP_UPDATE_IO_BYTES, MAX_OPERATIONS = 65536, MAX_PATH = 240 };
+_Static_assert(BUFFER_BYTES>=32768&&BUFFER_BYTES<=262144,"Update I/O buffers must remain bounded");
+typedef struct { FILE *file; z_stream stream; unsigned char input[32768]; bool ended, failed; } Reader;
 static bool cancelled(const IncrementalHooks *h) { return h && h->cancel && h->cancel(h->user); }
 static void progress(const IncrementalHooks *h, unsigned n) { if (h && h->progress) h->progress(n, h->user); }
 static uint32_t le32(const unsigned char *p) { return p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
@@ -63,23 +67,27 @@ bool incremental_offer(json_t *manifest, const char *from, bool homebrew,
 }
 
 bool incremental_verify(const char *path, const char *sha256, unsigned bytes, const IncrementalHooks *hooks) {
-    unsigned char expected[32], result[32], buffer[8192];
+    unsigned char expected[32], result[32], fallback[8192];
     if (!bytes || bytes > INCREMENTAL_MAX_BYTES || !hex(sha256, expected)) return false;
     FILE *f = fopen(path, "rb");
     if (!f) return false;
+    unsigned char *allocated=malloc(BUFFER_BYTES),*buffer=allocated?allocated:fallback;
+    size_t capacity=allocated?BUFFER_BYTES:sizeof fallback;
     bool ok = !fseek(f, 0, SEEK_END) && ftell(f) == (long)bytes && !fseek(f, 0, SEEK_SET);
     Digest d = {0};
     bool started = digest_start(&d);
     ok = ok && started;
     while (ok) {
         if (cancelled(hooks)) { ok = false; break; }
-        size_t n = fread(buffer, 1, sizeof buffer, f);
+        size_t n = fread(buffer, 1, capacity, f);
         if (!n) { ok = !ferror(f); break; }
         ok = digest_add(&d, buffer, n);
+        if (hooks && hooks->cooperate) hooks->cooperate((unsigned)n, hooks->user);
     }
     if (ok) ok = digest_end(&d, result) && !memcmp(result, expected, 32);
     digest_free(&d);
     if (fclose(f)) ok = false;
+    free(allocated);
     return ok;
 }
 
@@ -131,7 +139,9 @@ IncrementalResult incremental_apply(const char *patch, const char *output, const
         !strcmp(patch, output) || strlen(source_root) > 400 || !hex(target->sha256, expected)) goto finish;
     if (!incremental_verify(patch, offer->sha256, offer->bytes, hooks)) goto finish;
     reader = calloc(1, sizeof *reader);
-    buffer = malloc(BUFFER_BYTES);
+    unsigned buffer_bytes=BUFFER_BYTES;
+    buffer = malloc(buffer_bytes);
+    if(!buffer&&buffer_bytes>32768){buffer_bytes=32768;buffer=malloc(buffer_bytes);}
     if (!reader || !buffer) { result = INCREMENTAL_IO_ERROR; message = "Not enough memory to prepare the small update."; goto finish; }
     reader->file = fopen(patch, "rb");
     if (!reader->file || inflateInit(&reader->stream) != Z_OK) goto finish;
@@ -178,12 +188,12 @@ IncrementalResult incremental_apply(const char *patch, const char *output, const
         }
         while (ok && left) {
             if (cancelled(hooks)) { ok = false; break; }
-            unsigned take = left < BUFFER_BYTES ? left : BUFFER_BYTES;
+            unsigned take = left < buffer_bytes ? left : buffer_bytes;
             if (source) ok = fread(buffer, 1, take, source) == take && digest_add(&source_hash, buffer, take);
             else ok = exact(reader, buffer, take);
             if (ok && fwrite(buffer, 1, take, file) != take) { ok = false; result = INCREMENTAL_IO_ERROR; message = "Could not save the update. Check the SD card's free space."; }
             if (ok) ok = digest_add(&output_hash, buffer, take);
-            if (ok) { left -= take; done += take; progress(hooks, done); }
+            if (ok) { left -= take; done += take; progress(hooks, done); if(hooks&&hooks->cooperate)hooks->cooperate(take,hooks->user); }
         }
         if (source) {
             if (ok) ok = digest_end(&source_hash, digest) && !memcmp(digest, source_expected, 32);

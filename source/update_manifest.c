@@ -21,11 +21,28 @@ static bool url_valid(const char *url){
 #endif
  return false;
 }
-static bool artifact(json_t *j,GPUpdateArtifact *out){
+static bool artifact_min(json_t *j,GPUpdateArtifact *out,unsigned minimum){
  const char *url=json_string_value(json_object_get(j,"url")),*sha=json_string_value(json_object_get(j,"sha256"));json_int_t bytes=json_integer_value(json_object_get(j,"bytes"));
- if(!url_valid(url)||strlen(url)>=sizeof out->url||!sha||strlen(sha)!=64||bytes<32||bytes>GP_UPDATE_MAX_BYTES)return false;
+ if(!url_valid(url)||strlen(url)>=sizeof out->url||!sha||strlen(sha)!=64||!json_is_integer(json_object_get(j,"bytes"))||bytes<minimum||bytes>GP_UPDATE_MAX_BYTES)return false;
  for(unsigned i=0;i<64;i++)if(!strchr("0123456789abcdef",sha[i]))return false;
  strcpy(out->url,url);strcpy(out->sha,sha);out->bytes=(unsigned)bytes;return true;
+}
+static bool artifact(json_t *j,GPUpdateArtifact *out){return artifact_min(j,out,32);}
+static bool resource_offer(json_t *j,GPResourceOffer *out){
+ memset(out,0,sizeof *out);
+ if(!json_is_object(j)||json_integer_value(json_object_get(j,"schema"))!=1||!artifact(json_object_get(j,"index"),&out->index)||out->index.bytes>16+4096*164||!artifact_min(json_object_get(j,"bundle"),&out->bundle,12))return false;
+ json_t *deltas=json_object_get(j,"deltas");
+ if(deltas&&(!json_is_array(deltas)||json_array_size(deltas)>4))return false;
+ for(size_t n=0;deltas&&n<json_array_size(deltas);n++){
+  json_t *d=json_array_get(deltas,n);const char *from=json_string_value(json_object_get(d,"from"));
+  if(!gp_version_valid(from)||strlen(from)>=sizeof out->deltas[n].from||!artifact_min(json_object_get(d,"bundle"),&out->deltas[n].bundle,12))return false;
+  for(size_t prior=0;prior<n;prior++)if(!strcmp(out->deltas[prior].from,from))return false;
+  strcpy(out->deltas[n].from,from);out->count++;
+ }out->present=true;return true;
+}
+bool gp_resource_offer(const char *data,size_t bytes,GPResourceOffer *out){
+ memset(out,0,sizeof *out);if(!data||!bytes||bytes>16384)return false;
+ json_t *j=json_loadb(data,bytes,JSON_REJECT_DUPLICATES,NULL);bool ok=j&&resource_offer(j,out);json_decref(j);if(!ok)memset(out,0,sizeof *out);return ok;
 }
 bool gp_update_manifest_for_version(const char *data,size_t bytes,const char *current,GPUpdateManifest *out){
  memset(out,0,sizeof *out);if(!data||!bytes||bytes>16384)return false;
@@ -35,7 +52,8 @@ bool gp_update_manifest_for_version(const char *data,size_t bytes,const char *cu
  unsigned parts[3];if(ok&&(!version(v,parts)||parts[0]>63||parts[1]>63||parts[2]>15))ok=false;
  if(ok){strcpy(out->version,v);snprintf(out->notes,sizeof out->notes,"%s",notes?notes:"");out->cia.titleVersion=(parts[0]<<10)|(parts[1]<<4)|parts[2];out->cia.checkTitleVersion=true;
   if(current){incremental_offer(j,current,false,url_valid,&out->smallCia);incremental_offer(j,current,true,url_valid,&out->smallHomebrew);}
- }json_decref(j);if(!ok)memset(out,0,sizeof *out);return ok;
+ }if(ok&&json_object_get(j,"resources"))ok=resource_offer(json_object_get(j,"resources"),&out->resources);
+ json_decref(j);if(!ok)memset(out,0,sizeof *out);return ok;
 }
 bool gp_update_manifest(const char *data,size_t bytes,GPUpdateManifest *out){return gp_update_manifest_for_version(data,bytes,NULL,out);}
 static uint32_t le32(const unsigned char *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}

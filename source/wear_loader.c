@@ -1,4 +1,5 @@
 #include "wear_loader.h"
+#include "resource_stdio.h"
 #include "asset_cache.h"
 #include "package.h"
 #include "jobthread.h"

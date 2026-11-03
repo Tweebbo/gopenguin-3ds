@@ -53,6 +53,10 @@
 #include "social.h"
 #include "postcards.h"
 #include "igloo.h"
+#include "igloo_visit.h"
+#include "resource_store.h"
+#include "resource_stdio.h"
+#include "frame_metrics.h"
 #include "igloo_geometry.h"
 #include "gp_audio.h"
 #include "puffles.h"
@@ -83,6 +87,7 @@ static const IslandRoom *currentRoom;
 static const IslandRoom iglooRoomInfo={.key="igloo",.title="Igloo"};
 static unsigned currentRoomId=100,wantedIglooOwner;
 static bool waitingIgloo,wantedIgloo;
+static IglooVisit iglooVisit;
 static Igloo igloo;
 static struct {unsigned page,type;bool preparing;u64 started;} styles;
 static Puffles puffles;
@@ -399,17 +404,26 @@ static void floor_update(void){
 static bool enter_pending_igloo(void){
  if(!lobby_before_room()){wantedIgloo=false;return false;}
  char path[256];unsigned type=igloo.layout.type?igloo.layout.type:1;Product product;
+ bool reuse=roomBank&&iglooGeometry&&sceneOK&&renderedIglooType==type;
  if(type!=1&&!client_product(clientData,2,type,&product)){wantedIgloo=false;message("This igloo style is not available.");return false;}
- if(type==1)snprintf(path,sizeof path,"romfs:/data/basic-igloo.gpk");else{unsigned key=asset_key(ASSET_MOVIE,200000+type);if(!asset_cache_request(key,path,sizeof path)){if(asset_cache_status(key)==ASSET_UNAVAILABLE){wantedIgloo=false;message("This igloo is not available on the resources server.");}return false;}}
+ if(!reuse){
+ if(type==1)snprintf(path,sizeof path,"romfs:/data/basic-igloo.gpk");else{unsigned key=asset_key(ASSET_MOVIE,200000+type);if(!asset_cache_request_urgent(key,path,sizeof path)){unsigned status=asset_cache_status(key);if(status==ASSET_UNAVAILABLE||status==ASSET_DISABLED){wantedIgloo=false;message(status==ASSET_DISABLED?"Resource downloads are unavailable. Check your connection and SD card.":"This igloo is not available on the resources server.");}return false;}}
  release_room_textures();const char *error=NULL;MovieBank *bank=movie_bank_load(path,6u*1024u*1024u,&error);IglooGeometry *geometry=bank?igloo_geometry_load(movie_bank_meta(bank),&error):NULL;
  if(!bank||!geometry){movie_bank_free(bank);igloo_geometry_free(geometry);sceneOK=room_textures(currentRoom);wantedIgloo=false;message(error?error:"Could not load the igloo.");return false;}
- if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);roomBank=bank;scene=movie_bank_scene(bank);iglooGeometry=geometry;movie_bank_content(bank,floor_content,NULL);floorPresent=false;memset(furnitureTime,0,sizeof furnitureTime);navigation=geometry->navigation;geometry->navigation=NULL;
+ if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);roomBank=bank;scene=movie_bank_scene(bank);iglooGeometry=geometry;movie_bank_content(bank,floor_content,NULL);navigation=geometry->navigation;geometry->navigation=NULL;
+ }
+ floorPresent=false;memset(furnitureTime,0,sizeof furnitureTime);
  currentRoom=&iglooRoomInfo;currentRoomId=igloo.layout.owner+2000;island_set_id(navigation,currentRoomId);sceneOK=true;demo.blocked=island_blocked;demo.room=navigation;demo.mask=NULL;float x,y;island_start(navigation,&x,&y);Actor *me=&demo.actors[0];me->x=me->tx=x;me->y=me->ty=y;me->walking=false;me->action=me->direction=1;me->clock=0;triggerDelay=1;activeTrigger=hoveredIndex=~0u;hoverCount=0;memset(&overlay,0,sizeof overlay);
- if(!serverRoom){demo.count=1;if(pnet_state()==PNET_ONLINE)pnet_join(currentRoomId,(int)x,(int)y);}serverRoom=false;wantedIgloo=false;demo.tab=0;renderedIglooType=type;
+ if(!serverRoom){demo.count=1;if(pnet_state()==PNET_ONLINE)pnet_join(currentRoomId,(int)x,(int)y);}serverRoom=false;wantedIgloo=false;igloo.wantedOwner=0;demo.tab=0;renderedIglooType=type;
+ if(!strcmp(notice,"Loading igloo...")){notice[0]=0;noticeTime=0;}
 #ifdef GP_NINJA_GAMES
  room_npc_free(&roomNpc);
 #endif
- room_tube_enter(&roomTube,currentRoomId);pets_enter(igloo.layout.owner);gp_audio_scene(type==1?"igloo1":"");gp_audio_music(igloo.layout.music);swl_sound_handler(scene,gp_audio_sound,NULL);swl_restart(scene);epf_access_enter(&epfAccess,navigation,currentRoomId,x,y,profile.epfReady,profile.epfAgent,&epfHooks);room_latch_entry(x,y);room_inventory();lobby_room_enter(currentRoomId);return true;
+ room_tube_enter(&roomTube,currentRoomId);pets_enter(igloo.layout.owner);gp_audio_scene(type==1?"igloo1":"");gp_audio_music(igloo.layout.music);swl_sound_handler(scene,gp_audio_sound,NULL);swl_restart(scene);epf_access_enter(&epfAccess,navigation,currentRoomId,x,y,profile.epfReady,profile.epfAgent,&epfHooks);room_latch_entry(x,y);room_inventory();lobby_room_enter(currentRoomId);
+#ifdef GP_LAN_ONLY
+ FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"igloo entered owner=%u type=%u reused=%u load_ms=%llu total_ms=%llu\n",igloo.layout.owner,type,reuse,(unsigned long long)(now_ms()-iglooVisit.started),(unsigned long long)(now_ms()-iglooVisit.requested));fclose(trace);}
+#endif
+ return true;
 }
 // Offline preview economy (offline_shop.c): without a session, purchases and the owner's igloo use
 // a local store on SD; its replies are queued as server packets for the normal handlers.
@@ -434,16 +448,25 @@ static bool offline_igloo_apply(void){
 }
 static void open_igloo(unsigned owner){
  if(!lobby_before_room())return;
+ if(iglooVisit.active&&iglooVisit.owner==owner&&(iglooVisit.deferred||waitingIgloo||wantedIgloo))return;
+ if(game||gameQueued){
+  if(igloo.dirty||igloo.awaitingSave||igloo.awaitingStyle||igloo.awaitingMusic){message("Save your igloo changes before leaving.");return;}
+  igloo_visit_begin(&iglooVisit,owner,now_ms(),true);waitingIgloo=wantedIgloo=false;
+  if(game)game_port_close(game);else gameQueued=false;
+  message("Leaving the game before opening the igloo...");return;
+ }
  if(pnet_state()==PNET_OFFLINE&&!owner){igloo.wantedOwner=0;if(!offline_active()||!offline_igloo_apply()){igloo.layout=(IglooLayout){.type=1};igloo.ready=true;}wantedIgloo=true;wantedIglooOwner=0;return;}
  if(pnet_state()!=PNET_ONLINE){message("Connect to GoPenguin to visit an igloo.");return;}
  if(!igloo_request(&igloo,owner)){message("Save your igloo changes before leaving.");return;}
- char id[20];snprintf(id,sizeof id,"%u",owner);if(!pnet_send_to('r',"gm",1,(const char *[]){id})){message("Could not request the igloo.");return;}wantedRoom=0;wantedIglooOwner=owner;waitingIgloo=true;message("Loading igloo...");
+ char id[20];snprintf(id,sizeof id,"%u",owner);if(!pnet_send_to('r',"gm",1,(const char *[]){id})){waitingIgloo=wantedIgloo=false;igloo.wantedOwner=0;igloo_visit_finish(&iglooVisit);message("Could not request the igloo.");return;}wantedRoom=0;wantedIgloo=false;wantedIglooOwner=owner;waitingIgloo=true;igloo_visit_begin(&iglooVisit,owner,now_ms(),false);if(book.open)book.close=true;message("Loading igloo...");
 }
 static SWLMatrix book_view(unsigned width,unsigned height,float y,bool zoom){
  if(book.resourceId&&book.bank&&book.boundsReady){const float *b=book.bounds;if(b[2]>b[0]&&b[3]>b[1]){float scale=fminf((width-16)/(b[2]-b[0]),(height-16)/(b[3]-b[1]));if(zoom&&book.zoom)scale*=1.6f;return (SWLMatrix){.a=scale,.d=scale,.x=width/2.0f-(zoom&&book.zoom?book.camera.x:(b[0]+b[2])/2)*scale,.y=y+height/2.0f-(zoom&&book.zoom?book.camera.y:(b[1]+b[3])/2)*scale};}}
  float scale=fminf(width/760.0f,height/480.0f);if(zoom&&book.zoom)scale*=1.6f;return (SWLMatrix){.a=scale,.d=scale,.x=width/2.0f-(zoom&&book.zoom?book.camera.x:380)*scale,.y=y+height/2.0f-(zoom&&book.zoom?book.camera.y:240)*scale};
 }
+static void wrapped(float x,float y,unsigned size,unsigned colour,const char *source,unsigned width,unsigned lines);
 static void top(void){
+ GPUpdateView updating=gp_update_view();if(gp_update_blocks_game(updating)){rect(0,0,400,240,0xffffff);center(200,80,16,0x003366,"Updating GoPenguin");wrapped(28,116,14,0x003366,updating.message,344,5);return;}
  if(game){game_port_draw_top(game,sceneTop);return;}
  if(book.open&&book.poster){rect(0,0,400,240,0x000000);if(book.bank){movie_bank_draw(book.bank,sceneTop,400,240,(SWLMatrix){.a=1.48f,.d=1.48f,.x=200-380*1.48f,.y=-35*1.48f},0);C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);}return;}
  if(book.open){rect(0,0,400,240,0xffffff);if(book.bank){movie_bank_draw(book.bank,sceneTop,400,240,book_view(400,240,0,true),book.clock*swl_rate(movie_bank_scene(book.bank)));C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);}return;}
@@ -834,25 +857,42 @@ static void transfer_touch(int x,int y){
  else if(y>=133&&y<182)device_open();
  else if(y>=188&&y<204)demo.tab=18;
 }
+static bool updateInstallShown;
 static void update_draw(void){
  GPUpdateView view=gp_update_view();char line[96];
+ updateInstallShown=view.state==GP_UPD_READY;
  static u64 speedAt,speedDone;static unsigned speedKB;u64 now=now_ms();
  if(view.state!=GP_UPD_DOWNLOADING||!speedAt||view.done<speedDone||now-speedAt>(u64)view.elapsed*1000+2000){speedAt=view.state==GP_UPD_DOWNLOADING?now:0;speedDone=view.done;speedKB=0;}
  else if(now-speedAt>=1000)speedKB=(unsigned)((u64)(view.done-speedDone)*1000/(now-speedAt)/1024);
  text(12,34,13,0x003366,"GoPenguin updates");snprintf(line,sizeof line,"Running: %s",GOPENGUIN_VERSION);text(12,58,11,0x003366,line);
  if(view.version[0]){snprintf(line,sizeof line,"%s: %s",view.state==GP_UPD_INSTALLED?"Installed":"Update",view.version);text(12,78,11,0x003366,line);}
- wrapped(12,102,10,0x003366,view.message[0]?view.message:"Check for a new GoPenguin version.",294,4);
+ wrapped(12,102,10,0x003366,view.paused?"Preparation paused. Resume whenever you want; downloaded data is kept.":view.message[0]?view.message:"Check for a new GoPenguin version.",294,4);
  if(view.total&&(view.state==GP_UPD_DOWNLOADING||view.state==GP_UPD_VERIFYING||view.state==GP_UPD_RECONSTRUCTING||view.state==GP_UPD_INSTALLING)){snprintf(line,sizeof line,"%u%%  %u / %u MB",(unsigned)((u64)view.done*100/view.total),view.done/1048576,view.total/1048576);size_t used=strlen(line);if(view.state==GP_UPD_DOWNLOADING&&speedKB){if(speedKB<1024)snprintf(line+used,sizeof line-used,"  %u KB/s",speedKB);else snprintf(line+used,sizeof line-used,"  %.1f MB/s",speedKB/1024.0);}text(12,153,11,0x003366,line);}
- if(!gp_update_busy(view.state)&&view.downloadBytes){if(view.small&&!view.fullFallback&&view.fullBytes)snprintf(line,sizeof line,"Download: %.1f MB (full: %.1f MB)",view.downloadBytes/1000000.0,view.fullBytes/1000000.0);else snprintf(line,sizeof line,"Download: %.1f MB",view.downloadBytes/1000000.0);text(12,153,10,0x003366,line);}
+ if(!gp_update_busy(view.state)&&view.state!=GP_UPD_READY&&view.downloadBytes){if(view.small&&!view.fullFallback&&view.fullBytes)snprintf(line,sizeof line,"Download: %.1f MB (full: %.1f MB)",view.downloadBytes/1000000.0,view.fullBytes/1000000.0);else snprintf(line,sizeof line,"Download: %.1f MB",view.downloadBytes/1000000.0);text(12,153,10,0x003366,line);}
  if(view.state==GP_UPD_FINALIZING){snprintf(line,sizeof line,"%us elapsed. Keep the console awake.",view.elapsed);text(12,153,10,0x003366,line);}
- bool busy=gp_update_busy(view.state);const char *label=view.state==GP_UPD_CHECKING?"Checking...":view.state==GP_UPD_DOWNLOADING?"Downloading...":view.state==GP_UPD_VERIFYING?"Verifying...":view.state==GP_UPD_RECONSTRUCTING?"Preparing...":view.state==GP_UPD_INSTALLING?"Installing...":view.state==GP_UPD_FINALIZING?"Finishing...":view.state==GP_UPD_INSTALLED?"Installed":view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0])?(view.fullFallback?"Full download":view.small?"Small update":"Install / resume"):"Check again";
- button_state(8,174,148,26,label,-1,!busy&&view.state!=GP_UPD_INSTALLED);
- button(164,174,148,26,"Account",-1);
+ bool busy=gp_update_busy(view.state);const char *label=view.state==GP_UPD_CHECKING?"Checking...":view.state==GP_UPD_DOWNLOADING?"Downloading...":view.state==GP_UPD_VERIFYING?"Verifying...":view.state==GP_UPD_RECONSTRUCTING?"Preparing...":view.state==GP_UPD_INSTALLING?"Installing...":view.state==GP_UPD_FINALIZING?"Finishing...":view.state==GP_UPD_INSTALLED?"Installed":view.state==GP_UPD_READY?"Install now":view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0])?(view.fullFallback?"Full download":"Prepare / resume"):"Check again";
+ if(view.state==GP_UPD_RESOURCES)label="Resources...";
+ else if(view.resourceFullFallback&&view.state==GP_UPD_ERROR)label="Full repair";
+ else if(view.resourcesOnly&&view.state==GP_UPD_INSTALLED)label="Ready";
+ if(busy&&view.background)label=view.paused?"Resume":"Pause";
+ button_state(8,174,148,26,label,-1,(!busy||view.background)&&view.state!=GP_UPD_INSTALLED);
+ if(view.state==GP_UPD_RESOURCES&&view.total){snprintf(line,sizeof line,"%u%%  %u / %u MB",(unsigned)((u64)view.done*100/view.total),view.done/1048576,view.total/1048576);text(12,153,10,0x003366,line);}
+ button_state(164,174,148,26,view.background?"Keep playing":"Account",-1,!busy||view.background);
+ if(!busy&&(view.state==GP_UPD_IDLE||view.state==GP_UPD_CURRENT||view.resourcesOnly)&&view.state!=GP_UPD_INSTALLED&&gp_update_resource_bytes()){snprintf(line,sizeof line,"%s resources (%.1f MB)",resource_store_complete()?"Repair":"Prepare",gp_update_resource_bytes()/1000000.0);button(8,148,304,22,line,-1);}
 }
 static void update_touch(int x,int y){
+ GPUpdateView current=gp_update_view();
+ if(gp_update_busy(current.state)){
+  if(current.background&&y>=174&&y<200&&x>=8&&x<312){if(x>=160)demo.tab=0;else gp_update_pause(!current.paused);}
+  return;
+ }
+ if(y>=148&&y<170&&x>=8&&x<312){GPUpdateView view=gp_update_view();if(!gp_update_busy(view.state)&&(view.state==GP_UPD_IDLE||view.state==GP_UPD_CURRENT||view.resourcesOnly)&&view.state!=GP_UPD_INSTALLED&&gp_update_resource_bytes())gp_update_repair_resources();return;}
  if(y<174||y>=200)return;
- if(x>=160){demo.tab=18;return;}
- GPUpdateView view=gp_update_view();if(view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0]))gp_update_start();else if(!gp_update_busy(view.state)&&view.state!=GP_UPD_INSTALLED)gp_update_check();
+ if(x>=160){demo.tab=current.background?0:18;return;}
+ GPUpdateView view=gp_update_view();
+ // Finishing between drawing Pause and handling its touch must not start installation.
+ if(view.state==GP_UPD_READY){if(updateInstallShown)gp_update_start();}
+ else if(view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0]))gp_update_prepare();else if(!gp_update_busy(view.state)&&view.state!=GP_UPD_INSTALLED)gp_update_check();
 }
 /** B5/B9: the same one-time support story as the web M panel, paid by phone via QR. */
 static void membership_open(void){
@@ -1084,8 +1124,8 @@ static void audio_focus(APT_HookType type,void *unused){
  (void)unused;
  switch(type){
   case APTHOOK_ONEXIT:pnet_request_stop();asset_cache_request_stop();gp_update_request_stop();break;
-  case APTHOOK_ONSUSPEND:case APTHOOK_ONSLEEP:gameSuspended=true;room_tube_cancel(&roomTube,&tubeHooks);gp_audio_pause(true);break;
-  case APTHOOK_ONRESTORE:case APTHOOK_ONWAKEUP:gameSuspended=false;gp_audio_pause(false);break;
+  case APTHOOK_ONSUSPEND:case APTHOOK_ONSLEEP:gameSuspended=true;gp_update_activity(0,false,true,settings.batterySaver,isNew3DS);room_tube_cancel(&roomTube,&tubeHooks);gp_audio_pause(true);break;
+  case APTHOOK_ONRESTORE:case APTHOOK_ONWAKEUP:gameSuspended=false;gp_update_activity(0,false,false,settings.batterySaver,isNew3DS);gp_audio_pause(false);break;
   default:break;
  }
 }
@@ -1112,9 +1152,15 @@ static void music_touch(int x,int y){
  char track[20],owner[20];snprintf(track,sizeof track,"%u",id);snprintf(owner,sizeof owner,"%u",pnet_id());
  if(!pnet_send("g#um",1,(const char *[]){track})||!pnet_send_to('r',"gm",1,(const char *[]){owner})){igloo.awaitingMusic=false;modal_message("Could not send the music change. Please try again.");return;}musicStarted=osGetTime();
 }
+#ifdef GP_LAN_ONLY
+static bool performanceEnabled;
+#endif
 static void game_notice(void *unused,const char *value){(void)unused;message(value);}
 static void game_coins(void *unused,unsigned value){(void)unused;profile.coins=value;profile.revision++;}
 static bool game_send(void *unused,char extension,const char *command,unsigned count,const char *const *args){
+#ifdef GP_LAN_ONLY
+ if(performanceEnabled)return true;
+#endif
  (void)unused;bool sent=pnet_state()==PNET_ONLINE&&pnet_send_to(extension,command,count,args);
 #ifdef GP_LAN_ONLY
  if(sent){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"game send=%s first=%lu\n",command,count?strtoul(args[0],NULL,10):0);fclose(trace);}}
@@ -1348,11 +1394,63 @@ static void game_start(const char *key){
 }
 #ifdef GP_LAN_ONLY
 static unsigned gameplayStep;
+static unsigned performanceStartFrames;
+static void performance_flush(void);
 static void gameplay_test_step(void){
+ static bool backgroundChecked,backgroundAutomatic,backgroundUI;static unsigned backgroundUiStep;static u64 backgroundUiAt;
+ if(!backgroundChecked){FILE *flag=fopen(DATA_DIR "/background-update-auto","r");backgroundAutomatic=flag!=NULL;if(flag)fclose(flag);flag=fopen(DATA_DIR "/background-ui-auto","r");backgroundUI=flag!=NULL;if(flag)fclose(flag);backgroundAutomatic|=backgroundUI;backgroundChecked=true;}
+ if(backgroundAutomatic){GPUpdateView update=gp_update_view();if(update.state==GP_UPD_IDLE)gp_update_check();else if(update.state==GP_UPD_AVAILABLE){modal.open=false;gp_update_prepare();}}
+ if(backgroundUI){
+  GPUpdateView update=gp_update_view();unsigned next=backgroundUiStep;
+  if(!backgroundUiAt&&update.background&&gp_update_busy(update.state))backgroundUiAt=now_ms();
+  if(!backgroundUiStep&&backgroundUiAt&&now_ms()-backgroundUiAt>2000){modal.open=false;demo.tab=20;update_touch(32,180);backgroundUiAt=now_ms();next=1;}
+  else if(backgroundUiStep==1&&now_ms()-backgroundUiAt>1500){update_touch(32,180);update_touch(200,180);next=2;}
+  else if(backgroundUiStep==2&&update.state==GP_UPD_READY){update_touch(32,180);FILE *proof=fopen(DATA_DIR "/background-ui-ready-race","w");if(proof){fputs(gp_update_view().state==GP_UPD_READY?"ignored\n":"failed\n",proof);fclose(proof);}modal.open=false;demo.tab=20;next=3;}
+  if(next!=backgroundUiStep){backgroundUiStep=next;GPUpdateView shown=gp_update_view();FILE *proof=fopen(DATA_DIR "/background-ui-assertions.csv","a");if(proof){fprintf(proof,"%u,%u,%u,%u,%u\n",next,demo.tab,shown.state,shown.paused,gp_update_blocks_game(shown));fclose(proof);}FILE *marker=fopen(DATA_DIR "/background-ui-case","w");if(marker){fprintf(marker,"%u\n",next);fclose(marker);}}
+ }
+ static unsigned performanceStep,sampledStep;static bool performanceSnapshot;static char caseResults[8192];static size_t caseUsed;
+ static bool autoChecked,automatic,autoDone;static unsigned autoStep=1;static u64 autoStarted,autoReady;
+ static const unsigned rooms[]={100,110,111,120,220,230,300,320,321};
+ static const char *keys[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron","card","fire","mission1","mission2"};
+ if(!autoChecked){FILE *flag=fopen(DATA_DIR "/performance-auto","r");automatic=flag!=NULL;if(flag)fclose(flag);autoChecked=true;autoStarted=now_ms();}
+ static u64 performancePoll;if(now_ms()-performancePoll<250)return;performancePoll=now_ms();
+ FILE *performance=automatic?NULL:fopen(DATA_DIR "/performance-step","r");
+ if(performance||automatic){
+  unsigned step=automatic?autoStep:0;int read=automatic?1:fscanf(performance,"%u",&step);if(performance)fclose(performance);
+  if(automatic&&step>24){if(!autoDone){performance_flush();FILE *cases=fopen(DATA_DIR "/performance-cases.csv","w");if(cases){fputs("step,ready,session,textures\n",cases);fwrite(caseResults,1,caseUsed,cases);fclose(cases);}FILE *done=fopen(DATA_DIR "/performance-done","w");if(done){fputs("done\n",done);fclose(done);}autoDone=true;}return;}
+  if(read!=1||!step)return;
+  if(step!=performanceStep){
+   if(game){game_port_close(game);return;}if(gameQueued||gameLeaving)return;
+   chat_keyboard_cancel(&chatKeyboard);chatHistory.open=false;modal.open=false;
+   if(step<=COUNT(rooms)){wantedRoom=rooms[step-1];wantedX=wantedY=-1;}
+   else if(step==10){igloo.layout=(IglooLayout){.type=1,.owner=OFFLINE_OWNER};igloo.ready=true;wantedIgloo=true;waitingIgloo=false;}
+   else if(step>=11&&step<11+COUNT(keys)){game_snapshot(keys[step-11]);queuedGame.online=step==17||step==18;performanceSnapshot=step>=23;performanceStartFrames=step<=20?1:0;}
+   performanceStep=step;
+   autoStarted=now_ms();autoReady=0;
+  }
+  if(performanceSnapshot&&game){
+   char snapshotPath[160];snprintf(snapshotPath,sizeof snapshotPath,DATA_DIR "/performance-snapshot-%s.json",queuedGame.key);FILE *input=fopen(snapshotPath,"rb");
+   if(input){json_t *snapshot=json_loadf(input,JSON_REJECT_DUPLICATES,NULL);fclose(input);if(snapshot){char *text=json_dumps(snapshot,JSON_COMPACT);if(text){game_port_packet(game,"psa",1,&text);free(text);}json_decref(snapshot);}}
+   performanceSnapshot=false;
+  }
+  if(automatic){
+   bool ready=step<=9?sceneOK&&!wantedRoom&&currentRoomId==rooms[step-1]:step==10?sceneOK&&roomBank&&!wantedIgloo:game&&!gameQueued&&game_port_session(game)==GAME_SESSION_PLAYING&&game_port_texture_bytes(game)>0;
+   if(!autoReady&&(ready||now_ms()-autoStarted>=30000)){autoReady=now_ms();FILE *marker=fopen(DATA_DIR "/performance-case","w");if(marker){fprintf(marker,"%u\n",step);fclose(marker);}}
+   if(autoReady&&sampledStep!=step&&now_ms()-autoReady>=3000){int n=snprintf(caseResults+caseUsed,sizeof caseResults-caseUsed,"%u,%u,%u,%u\n",step,ready,game?(unsigned)game_port_session(game):0,game?(unsigned)game_port_texture_bytes(game):0);if(n>0&&(size_t)n<sizeof caseResults-caseUsed)caseUsed+=(size_t)n;sampledStep=step;autoStep++;autoReady=0;}
+  }
+  return;
+ }
  if(pnet_state()!=PNET_ONLINE)return;
  FILE *file=fopen(DATA_DIR "/gameplay-step","r");if(!file)return;
  unsigned step=0;int read=fscanf(file,"%u",&step);fclose(file);if(read!=1||!step||step==gameplayStep)return;
  gameplayStep=step;if(step==1)demo.zoom=true;Actor *me=&demo.actors[0];
+ if(step>=20&&step<40){open_igloo(pnet_id());return;}
+ if(step==12){wantedRoom=100;wantedX=wantedY=-1;return;}
+ if(step==13){open_igloo(pnet_id());return;}
+ if(step==14){char path[256];asset_cache_pause(true);for(unsigned i=1;i<=32;i++)asset_cache_request(asset_key(ASSET_BOOK,900000+i),path,sizeof path);asset_cache_pause(false);return;}
+ if(step==15){book_open("sport");return;}
+ if(step==10){game_start("mission2");return;}
+ if(step==11){open_igloo(pnet_id());return;}
  if(step==7){book_open("clothing");book_page(NULL,6);return;}
  if(step==8){pnet_account_rename(&settings.network,settings.session,"SaveFixture");return;}
  if(step==9){buy(429);return;}
@@ -1606,10 +1704,33 @@ static void touch(int x,int y){
  }
  else if(demo.tab==5){if(y>=33&&y<55){if(x<100)emoteMenu=false;else if(x<195)emoteMenu=true;else if(safeParent){SafeMessage parent;if(client_safe(clientData,safeParent,&parent))safeParent=parent.parent;safePage=0;}else if(demo.actors[0].look[0]!=428)modal_message("You need to wear your Tour Guide hat to give a tour.");else{actor_say(&demo.actors[0],client_tour(clientData,currentRoomId));char id[20];snprintf(id,sizeof id,"%u",currentRoomId);pnet_send("u#sl",1,(const char *[]){id});demo.tab=0;}return;}if(emoteMenu&&x>=9&&y>=58&&y<203){unsigned id=(unsigned)(y-58)/29*6+(unsigned)(x-9)/51+1;if(id<=30){demo.actors[0].emote=id;demo.actors[0].chat[0]=0;demo.actors[0].bubbleTime=125.0f/24;char number[12];snprintf(number,sizeof number,"%u",id);pnet_send("u#se",1,(const char *[]){number});demo.tab=0;}}else if(!emoteMenu&&y>=58&&y<190){SafeMessage choices[6];unsigned total=client_safe_children(clientData,safeParent,safePage*6,choices,6),index=(unsigned)(y-58)/22;if(index<6&&safePage*6+index<total){SafeMessage choice=choices[index];if(client_safe_children(clientData,choice.id,0,NULL,0)){safeParent=choice.id;safePage=0;}else{actor_say(&demo.actors[0],choice.name);char id[20];snprintf(id,sizeof id,"%u",choice.id);pnet_send("u#ss",1,(const char *[]){id});demo.tab=0;}}}else if(!emoteMenu&&y>=192){unsigned total=client_safe_children(clientData,safeParent,0,NULL,0);if(x<75&&safePage)safePage--;if(x>=246&&(safePage+1)*6<total)safePage++;}}
 }
+static struct {bool checked,enabled;char *csv;size_t used;u64 last,window;FrameMetrics frames;unsigned drawTotal;char phase[40];} performance;
+static void performance_flush(void){if(performance.csv&&performance.used){FILE *log=fopen(DATA_DIR "/performance.csv","wb");if(log){fwrite(performance.csv,1,performance.used,log);fclose(log);}}}
+static void performance_record(u64 now,unsigned draw_ms,bool updating){
+ if(!performance.checked){FILE *flag=fopen(DATA_DIR "/performance-enabled","r");performance.enabled=flag!=NULL;if(flag)fclose(flag);performance.checked=true;if(performance.enabled){performance.csv=malloc(131072);if(performance.csv)performance.used=(size_t)snprintf(performance.csv,131072,"timestamp_ms,version,family,phase,frames,fps,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,draw_ms,linear_free,cache_pending,gpu_ms,cpu_submit_ms,update_state,update_done,update_total,update_background\n");else performance.enabled=false;}}
+#ifdef GP_LAN_ONLY
+ performanceEnabled=performance.enabled;
+ game_port_test_tracing(!performanceEnabled);
+#endif
+ if(!performance.enabled)return;
+ const char *next=updating?"updater":game?queuedGame.key:roomBank?"igloo":currentRoom?currentRoom->key:"loading";
+ if(!performance.last){performance.last=performance.window=now;snprintf(performance.phase,sizeof performance.phase,"%s",next);return;}
+ if(strcmp(performance.phase,next)){performance.window=now;performance.frames=(FrameMetrics){0};performance.drawTotal=0;snprintf(performance.phase,sizeof performance.phase,"%s",next);}
+ u64 delta=(now-performance.last)*1000;performance.last=now;frame_metrics_add(&performance.frames,delta>UINT32_MAX?UINT32_MAX:(uint32_t)delta);performance.drawTotal+=draw_ms;
+ if(now-performance.window<1000)return;
+ FrameSummary stats=frame_metrics_summary(&performance.frames);
+ if(performance.used<130000){GPUpdateView update=gp_update_view();int n=snprintf(performance.csv+performance.used,131072-performance.used,"%llu,%s,%s,%s,%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%u,%u,%.3f,%.3f,%u,%u,%u,%u\n",(unsigned long long)now,GOPENGUIN_VERSION,isNew3DS?"New3DS-New2DS":"Old3DS-2DS",performance.phase,stats.count,stats.fps,stats.mean_ms,stats.p50_ms,stats.p95_ms,stats.p99_ms,stats.max_ms,stats.count?(double)performance.drawTotal/stats.count:0,(unsigned)linearSpaceFree(),asset_cache_pending(),C3D_GetDrawingTime(),C3D_GetProcessingTime(),(unsigned)update.state,update.done,update.total,update.background);if(n>0&&(size_t)n<131072-performance.used)performance.used+=(size_t)n;}
+ performance.frames=(FrameMetrics){0};performance.drawTotal=0;performance.window=now;
+}
 int main(int argc,char **argv){
  gp_update_init(argc>0?argv[0]:NULL);
  gfxInitDefault();romfsInit();APT_CheckNew3DS(&isNew3DS);C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);C2D_Init(8192);C2D_Prepare();C2D_SetTintMode(C2D_TintMult);
  mkdir("sdmc:/3ds",0777);mkdir(DATA_DIR,0700);settings_load(&settings,SETTINGS_FILE);
+ resource_store_init("romfs:/data/resources.idx",DATA_DIR "/resources");
+#ifdef GP_LAN_ONLY
+ FILE *saverFlag=fopen(DATA_DIR "/battery-saver-test","r");if(saverFlag){settings.batterySaver=true;fclose(saverFlag);}
+ FILE *resourceTrace=fopen(DATA_DIR "/resources-state.txt","w");if(resourceTrace){fprintf(resourceTrace,"enabled=%u complete=%u\n",resource_store_enabled(),resource_store_complete());fclose(resourceTrace);}
+#endif
  if(settings.recoveredFromBackup&&settings_save(&settings,SETTINGS_FILE))settings.recoveredFromBackup=false;
  if(!settings.restoreRequired&&!settings.session[0]&&settings.network.api[0]&&settings.network.world[0]&&!settings_save(&settings,SETTINGS_FILE))settings.restoreRequired=true;
  if(settings.restoreRequired)modal_message("Your saved penguin could not be read or saved on SD. No new penguin has been created. Check the SD card or restore your penguin from Account.");
@@ -1646,9 +1767,12 @@ int main(int argc,char **argv){
  else if(!settings.restoreRequired)offline_begin();
 #endif
  if(settings.assets[0]&&!asset_cache_start(settings.assets,DATA_DIR "/cache"))message("Could not prepare the resource cache. Check your SD card and resource settings.");
+ if(resource_store_enabled()&&!resource_store_complete()){demo.tab=20;modal_message("Game resources need preparation. Open Updates and choose Prepare resources. Your saved penguin is kept.");}
  u64 last=osGetTime(),sample=last,lastMove=0,updateCheckAt=last+10000;char offeredUpdate[24]="";unsigned frames=0;float sceneClock=0,lastX=demo.actors[0].x,lastY=demo.actors[0].y;bool wasMoving=false;PNetState previousState=PNET_OFFLINE;
  while(aptMainLoop()){
-  u64 now=osGetTime();float dt=(now-last)/1000.0f;last=now;if(dt>.1f)dt=.1f;hidScanInput();u32 down=hidKeysDown(),held=hidKeysHeld();
+  u64 now=osGetTime();float dt=(now-last)/1000.0f;
+  gp_update_activity((unsigned)(now-last),asset_cache_pending()||wantedRoom||waitingIgloo||wantedIgloo||gameQueued||book.wanted,gameSuspended,settings.batterySaver,isNew3DS);
+  last=now;if(dt>.1f)dt=.1f;hidScanInput();u32 down=hidKeysDown(),held=hidKeysHeld();
   bool historyInput=chatHistory.open&&!modal.open&&!game&&!book.open;
   if(historyInput){
    unsigned keys=0;if(down&KEY_L)keys|=CHAT_LOG_OLDER;if(down&KEY_R)keys|=CHAT_LOG_NEWER;if(down&KEY_DUP)keys|=CHAT_LOG_UP;if(down&KEY_DDOWN)keys|=CHAT_LOG_DOWN;if(down&KEY_A)keys|=CHAT_LOG_WRITE;if(down&KEY_B)keys|=CHAT_LOG_CLOSE;
@@ -1663,7 +1787,7 @@ int main(int argc,char **argv){
    if((held&KEY_TOUCH)||(hidKeysUp()&KEY_TOUCH)){static touchPosition point;if(held&KEY_TOUCH)hidTouchRead(&point);chat_keyboard_touch(&chatKeyboard,point.px,point.py,down&KEY_TOUCH,hidKeysUp()&KEY_TOUCH);}
    down=held=0;
   }
-  if(down&KEY_START){if(gp_update_busy(gp_update_view().state)){demo.tab=20;message("Wait for the update to finish before closing GoPenguin.");}else if(game)game_port_close(game);else if(lobby_locked())lobby_close();else if(igloo.dirty||igloo.awaitingSave)editor_save();else break;}
+  if(down&KEY_START){if(gp_update_blocks_game(gp_update_view())){demo.tab=20;message("Wait for installation to finish before closing GoPenguin.");}else if(game)game_port_close(game);else if(lobby_locked())lobby_close();else if(igloo.dirty||igloo.awaitingSave)editor_save();else break;}
   if(!keyboardInput){
   if(game){
    if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);gameTouchX=p.px;gameTouchY=p.py;game_port_touch(game,down&KEY_TOUCH?GAME_TOUCH_DOWN:GAME_TOUCH_MOVE,gameTouchX,gameTouchY);}
@@ -1730,7 +1854,11 @@ int main(int argc,char **argv){
   }
   if(membershipPaid){membershipPaid=false;pnet_stop();if(settings.network.api[0]&&settings.network.world[0])pnet_start(&settings.network,settings.session,"","",false);demo.tab=0;message("Donation confirmed. Thank you for supporting GoPenguin!");}
   PNetMessage packet;unsigned updates=0;
-  if(game)game_port_connection(game,networkState==PNET_ONLINE);
+  bool gameConnected=networkState==PNET_ONLINE;
+#ifdef GP_LAN_ONLY
+  if(performanceEnabled)gameConnected=true;
+#endif
+  if(game)game_port_connection(game,gameConnected);
   while(updates++<64&&(pnet_receive(&packet)||local_receive(&packet))){
    if(!strcmp(packet.command,"js")||!strcmp(packet.command,"epfsa")){profile_epf_reset(&profile);epfQuery=true;}
    if(lobby_apply(&packet)){pnet_message_free(&packet);continue;}
@@ -1748,8 +1876,13 @@ int main(int argc,char **argv){
 #endif
     pnet_message_free(&packet);continue;
    }
+   if(iglooVisit.active&&(waitingIgloo||wantedIgloo))igloo.wantedOwner=wantedIglooOwner;
    bool iglooPacket=igloo_apply(&igloo,&packet);
-   if(waitingIgloo&&iglooPacket&&!strcmp(packet.command,"gm")&&igloo.layout.owner==wantedIglooOwner){waitingIgloo=false;wantedIgloo=true;}
+   if(waitingIgloo&&!strcmp(packet.command,"gm")&&packet.count&&(unsigned)strtoul(packet.args[0],NULL,10)==wantedIglooOwner){
+    waitingIgloo=false;
+    if(iglooPacket&&igloo.layout.owner==wantedIglooOwner){wantedIgloo=true;igloo.wantedOwner=wantedIglooOwner;igloo_visit_layout(&iglooVisit,now_ms());}
+    else{igloo_visit_finish(&iglooVisit);igloo.wantedOwner=0;message("The igloo layout could not be read. Try opening it again.");}
+   }
    if(!(iglooPacket&&!strcmp(packet.command,"go")))social_apply(&social,&packet);
    if(!strcmp(packet.command,"mr")){pnet_send("l#mst",0,NULL);pnet_send("l#mg",1,(const char *[]){"0"});}
    if(!strcmp(packet.command,"ms")&&packet.count>=2){modal_message(!strcmp(packet.args[1],"1")?"Your postcard has been sent.":!strcmp(packet.args[1],"2")?"You need more coins.":"This penguin mailbox is full.");if(!strcmp(packet.args[1],"1"))book.close=true;}
@@ -1783,7 +1916,19 @@ int main(int argc,char **argv){
    features_packet(&packet,room);
    if(room&&room!=currentRoomId){serverRoom=true;if(room>2000)open_igloo(room-2000);else{wantedRoom=room;wantedX=demo.actors[0].x;wantedY=demo.actors[0].y;}}pnet_message_free(&packet);}
   GPUpdateView releaseUpdate=gp_update_view();
-  if(networkState==PNET_ONLINE&&now>=updateCheckAt&&!gp_update_busy(releaseUpdate.state)&&releaseUpdate.state!=GP_UPD_INSTALLED){gp_update_check();updateCheckAt=now+300000;}
+  static bool updatingBusy;bool updatingNow=gp_update_blocks_game(releaseUpdate);
+  if(updatingNow!=updatingBusy){updatingBusy=updatingNow;asset_cache_pause(updatingNow);if(updatingNow){C3D_FrameRate(10);gp_audio_stop();}else{power_apply();if(game){gp_audio_scene(queuedGame.key);gp_audio_game(queuedGame.key);}else if(currentRoom){gp_audio_scene(roomBank&&igloo.layout.type==1?"igloo1":currentRoom->key);if(roomBank)gp_audio_music(igloo.layout.music);else gp_audio_room(currentRoom->key);}}}
+  if(updatingNow){u64 updateDraw=now_ms();demo.tab=20;C3D_FrameBegin(C3D_FRAME_SYNCDRAW);if(chatGlyphs)C2D_TextBufClear(chatGlyphs);swl_gpu_frame();C2D_TargetClear(topTarget,rgb(0xffffff));C2D_SceneBegin(topTarget);swl_gpu_screen(topTarget,400,240);top();C2D_TargetClear(bottomTarget,rgb(0xdaf2ff));C2D_SceneBegin(bottomTarget);swl_gpu_screen(bottomTarget,320,240);bottom();swl_gpu_commit();C3D_FrameEnd(0);performance_record(now_ms(),(unsigned)(now_ms()-updateDraw),true);continue;}
+  IglooVisitAction visitAction=igloo_visit_poll(&iglooVisit,now_ms(),pnet_state()==PNET_ONLINE||(!iglooVisit.owner&&pnet_state()==PNET_OFFLINE),game||gameQueued);
+  if(visitAction==IGLOO_VISIT_REQUEST)open_igloo(iglooVisit.owner);
+  else if(visitAction==IGLOO_VISIT_RETRY){char owner[20];snprintf(owner,sizeof owner,"%u",iglooVisit.owner);pnet_send_to('r',"gm",1,(const char *[]){owner});}
+  else if(visitAction==IGLOO_VISIT_TIMEOUT||visitAction==IGLOO_VISIT_DISCONNECTED){waitingIgloo=wantedIgloo=false;igloo.wantedOwner=0;message(visitAction==IGLOO_VISIT_TIMEOUT?"The igloo took too long to load. Try opening it again.":"Connection lost while opening the igloo. Reconnect and try again.");}
+#ifdef GP_LAN_ONLY
+  if(visitAction==IGLOO_VISIT_TIMEOUT||visitAction==IGLOO_VISIT_DISCONNECTED){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"igloo stopped action=%u\n",visitAction);fclose(trace);}}
+#endif
+  if(iglooVisit.active&&!iglooVisit.deferred&&!waitingIgloo&&!wantedIgloo){igloo.wantedOwner=0;igloo_visit_finish(&iglooVisit);}
+  if(networkState==PNET_ONLINE&&now>=updateCheckAt&&!gp_update_busy(releaseUpdate.state)&&releaseUpdate.state!=GP_UPD_INSTALLED&&releaseUpdate.state!=GP_UPD_READY){gp_update_check();updateCheckAt=now+300000;}
+  static char readyUpdate[24];if(releaseUpdate.state==GP_UPD_READY&&strcmp(readyUpdate,releaseUpdate.version)){snprintf(readyUpdate,sizeof readyUpdate,"%s",releaseUpdate.version);message("Update ready. Install later from Account > Updates.");}
   if(releaseUpdate.state==GP_UPD_AVAILABLE&&strcmp(offeredUpdate,releaseUpdate.version)&&!game&&!gameQueued&&!modal.open&&!book.open&&!chatKeyboard.active&&!chatHistory.open&&!igloo.editing){snprintf(offeredUpdate,sizeof offeredUpdate,"%s",releaseUpdate.version);modal_message("A new GoPenguin version is ready. Open Updates? Your penguin is kept.");modal.confirm=true;snprintf(modal.command,sizeof modal.command,"open-update");}
   // Removed by a moderator: stop reconnecting (a kick returns after one minute).
   if(kickStop){kickStop=false;pnet_stop();}
@@ -1843,30 +1988,36 @@ int main(int argc,char **argv){
   }
   C3D_FrameBegin(C3D_FRAME_SYNCDRAW);game_transition();
   if(chatGlyphs)C2D_TextBufClear(chatGlyphs);
-  if(game){GameInput input=game_input(down,held,&pad);game_port_pause(game,gameSuspended||(queuedGame.online&&networkState!=PNET_ONLINE));game_port_update(game,dt,&input);}
+  if(game){GameInput input=game_input(down,held,&pad);
+#ifdef GP_LAN_ONLY
+   if(performanceStartFrames&&game_port_session(game)==GAME_SESSION_PLAYING){if(performanceStartFrames==2||performanceStartFrames==6||performanceStartFrames==10)input.down|=GAME_KEY_A;if(++performanceStartFrames>10)performanceStartFrames=0;}
+#endif
+   game_port_pause(game,gameSuspended||(queuedGame.online&&networkState!=PNET_ONLINE));game_port_update(game,dt,&input);}
   else{
-   if(wantedRoom&&book.open)book.close=true;
+   if((wantedRoom||waitingIgloo||wantedIgloo)&&book.open)book.close=true;
    book_update();styles_update();
-   if(wantedRoom){waitingIgloo=wantedIgloo=false;if(!enter_room(wantedRoom,wantedX,wantedY))room_tube_cancel(&roomTube,&tubeHooks);wantedRoom=0;sceneClock=0;}else if(wantedIgloo&&enter_pending_igloo())sceneClock=0;
+   if(wantedRoom){waitingIgloo=wantedIgloo=false;igloo.wantedOwner=0;igloo_visit_finish(&iglooVisit);if(!enter_room(wantedRoom,wantedX,wantedY))room_tube_cancel(&roomTube,&tubeHooks);wantedRoom=0;sceneClock=0;}else if(wantedIgloo&&enter_pending_igloo())sceneClock=0;
    if(demo.tab==1&&!mapList){if((!islandMap.loaded&&!load(&islandMap,"map-top"))||(!islandMapLow.loaded&&!load(&islandMapLow,"map-bottom")))message("Could not load the island map.");}else{if(islandMap.loaded){C3D_TexDelete(&islandMap.tex);islandMap.loaded=false;}if(islandMapLow.loaded){C3D_TexDelete(&islandMapLow.tex);islandMapLow.loaded=false;}}
    if(!book.open)wear_update();
    floor_update();
   }
   swl_gpu_frame();u64 drawStart=osGetTime();C2D_TargetClear(topTarget,rgb(0x003366));C2D_SceneBegin(topTarget);swl_gpu_screen(topTarget,400,240);top();C2D_TargetClear(bottomTarget,rgb(0xdaf2ff));C2D_SceneBegin(bottomTarget);swl_gpu_screen(bottomTarget,320,240);bottom();swl_gpu_commit();C3D_FrameEnd(0);frameMS=osGetTime()-drawStart;
   if(!sceneOK){message("Scene rendering failed. Please rebuild the scene assets.");ok=false;}
+  performance_record(now_ms(),(unsigned)frameMS,false);
   frames++;if(now-sample>=1000){
    fps=frames*1000.0f/(now-sample);frames=0;sample=now;
 #ifdef GP_LAN_ONLY
-   unsigned visible=0;for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo))visible++;
+   if(!performanceEnabled){unsigned visible=0;for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo))visible++;
    FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){
     if(book.open&&book.bank)fprintf(trace,"camera zoom=%u x=%.3f y=%.3f tracking=%u dragging=%u modal=%u page=%u\n",book.zoom,book.camera.x,book.camera.y,book.camera.tracking,book.camera.dragging,modal.open,book.page);
     FILE *audit=fopen(DATA_DIR "/save-audit","r");if(audit){fclose(audit);fprintf(trace,"savecheck connected=%u saved=%u restore=%u coins=%u head=%u\n",pnet_state()==PNET_ONLINE,settings.session[0]!=0,settings.restoreRequired,profile.coins,demo.actors[0].look[0]);}
     if(gameplayStep)fprintf(trace,"gameplay step=%u room=%u base=%d drawn=%u coins=%u wear=%u\n",gameplayStep,currentRoomId,demo.actors[0].action,actor_action(&demo.actors[0]),profile.coins,(unsigned)wear_bytes());
-    fprintf(trace,"load players=%u puffles=%u fps=%.2f draw=%u linear=%u wear=%u\n",demo.count,visible,fps,(unsigned)frameMS,(unsigned)linearSpaceFree(),(unsigned)wear_bytes());fclose(trace);}
+    fprintf(trace,"load players=%u puffles=%u fps=%.2f draw=%u linear=%u wear=%u\n",demo.count,visible,fps,(unsigned)frameMS,(unsigned)linearSpaceFree(),(unsigned)wear_bytes());fclose(trace);}}
 #endif
   }
  }
  done:;
+ performance_flush();free(performance.csv);performance.csv=NULL;
  pnet_request_stop();asset_cache_request_stop();gp_update_request_stop();wear_request_stop();
  u64 exitBegin=now_ms(),exitPhase=exitBegin;
  FILE *exitTrace=fopen(DATA_DIR "/last-exit.log","w");
@@ -1879,6 +2030,7 @@ int main(int argc,char **argv){
  bool stranded=!pnet_stop_within(1500);EXIT_PHASE(stranded?"network-stranded":"network");
  if(!gp_update_stop_within(1500)){stranded=true;EXIT_PHASE("updater-stranded");}else EXIT_PHASE("updater");
  if(!asset_cache_stop_within(1500)){stranded=true;EXIT_PHASE("downloads-stranded");}else EXIT_PHASE("downloads");
+ if(stranded){if(exitTrace)fclose(exitTrace);svcExitProcess();}
  // No C3D_FrameSync here: after HOME > Close the app no longer owns the GPU and VBlank events
  // stop arriving, so a frame sync can wait forever. The last frame's commands finish well within this.
  svcSleepThread(50*1000000LL);EXIT_PHASE("gpu-idle");
@@ -1886,10 +2038,8 @@ int main(int argc,char **argv){
  client_data_free(clientData);if(shellText)json_decref(shellText);EXIT_PHASE("assets");
  chat_keyboard_cancel(&chatKeyboard);if(chatGlyphs)C2D_TextBufDelete(chatGlyphs);if(chatMeasure)C2D_TextBufDelete(chatMeasure);
  swl_gpu_free();C2D_Fini();C3D_Fini();EXIT_PHASE("gpu");
- romfsExit();gfxExit();EXIT_PHASE("client-cleanup-complete");
+ resource_store_exit();romfsExit();gfxExit();EXIT_PHASE("client-cleanup-complete");
  if(exitTrace)fclose(exitTrace);
  #undef EXIT_PHASE
- // A stranded worker still holds system sessions; end the process (and every thread) directly.
- if(stranded)svcExitProcess();
  return ok?0:1;
 }

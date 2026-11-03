@@ -1,4 +1,5 @@
 #include "gp_audio.h"
+#include "resource_stdio.h"
 #include "pcm_stream.h"
 #include <jansson.h>
 #include <stdlib.h>

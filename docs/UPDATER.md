@@ -4,9 +4,16 @@ Starting with 1.2.2, the updater supports optional smaller downloads. See
 [Incremental updates](INCREMENTAL-UPDATES.md) for the bridge-update requirement,
 SD space, validation and full-download fallback.
 
-Open **Help > Account > Updates** and choose **Install / resume**.
+Open **Help > Account > Updates** and choose **Prepare / resume**. Choose
+**Keep playing** to return to the island while the update downloads and verifies.
+**Pause** retains preparation progress, and closing the application retains
+resumable files. Sleep suspends background work.
+
+When **Update ready** appears, open Updates and choose **Install now** when you
+are ready to stop playing. Installation remains a protected foreground phase.
 Keep GoPenguin open until it confirms that installation finished, then press
 START to close and reopen it. Your penguin stays in `3ds/gopenguin` on the SD card.
+See [Background preparation](background-updates.md) for scheduling and validation.
 
 Starting in 1.1.5, the screen distinguishes download, checksum verification,
 installation and finalization. Verification and installation have their own byte
@@ -31,8 +38,9 @@ claiming a download speed improvement.
 
 The installed CIA's Title ID and title version are read back from AM after commit
 and must match the verified manifest before success is shown. Background release
-checks cannot replace the completion message. START cannot close an active
-update, and HOME is disabled during CIA installation/finalization.
+checks cannot replace the completion message. START can close background
+preparation and retain its downloads. Closing is blocked during foreground
+installation, and HOME is disabled during CIA installation/finalization.
 
 `3ds/gopenguin/last-update.log` records running/target versions, phase changes and
 installer errors without account credentials. Failed installs retain the verified

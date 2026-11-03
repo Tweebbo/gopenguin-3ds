@@ -106,7 +106,7 @@ static void tick(void *game){
  sync(p);
 #ifdef GP_LAN_ONLY
  p->sceneMS+=sceneAt-before;p->modelMS+=modelAt-sceneAt;p->syncMS+=now_ms()-modelAt;
- if(++p->profileTicks==24){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"pizzatron ticks=24 scene_ms=%llu model_ms=%llu sync_ms=%llu heads=%u preparations=%llu\n",(unsigned long long)p->sceneMS,(unsigned long long)p->modelMS,(unsigned long long)p->syncMS,swl_stats(p->scene).heads,(unsigned long long)swl_stats(p->scene).preparations);fclose(trace);}p->profileTicks=0;p->sceneMS=p->modelMS=p->syncMS=0;}
+ if(++p->profileTicks==24){FILE *trace=game_port_test_trace_enabled()?fopen(DATA_DIR "/test-state.log","a"):NULL;if(trace){fprintf(trace,"pizzatron ticks=24 scene_ms=%llu model_ms=%llu sync_ms=%llu heads=%u preparations=%llu\n",(unsigned long long)p->sceneMS,(unsigned long long)p->modelMS,(unsigned long long)p->syncMS,swl_stats(p->scene).heads,(unsigned long long)swl_stats(p->scene).preparations);fclose(trace);}p->profileTicks=0;p->sceneMS=p->modelMS=p->syncMS=0;}
 #endif
 }
 static void pointer(Pizzatron *p){

@@ -193,6 +193,7 @@ static bool ready(void *game){
 static void finish(Fishing *f){if(f->finished)return;f->finished=true;game_port_finish(f->port,f->started?fish_model_coins(&f->model):0);}
 #ifdef GP_LAN_ONLY
 static void input_trace(Fishing *f){
+ if(!game_port_test_trace_enabled())return;
  if(f->model.ticks%6)return;
  FILE *log=fopen("sdmc:/3ds/gopenguin/fish-input.log","a");if(!log)return;
  fprintf(log,"tick=%u hook=%u caught=%u hit=%u",f->model.ticks,frame(f,"hook"),f->model.fishCaught,f->model.isHit);

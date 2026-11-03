@@ -1,4 +1,5 @@
 #include "pcm_stream.h"
+#include "resource_stdio.h"
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>

@@ -11,6 +11,11 @@
 typedef s32 Result;
 typedef u32 Handle;
 typedef pthread_mutex_t LightLock;
+typedef struct {pthread_mutex_t mutex;pthread_cond_t cond;bool signalled;} LightEvent;
+#define RESET_ONESHOT 0
+static inline void LightEvent_Init(LightEvent *e,int reset){(void)reset;pthread_mutex_init(&e->mutex,NULL);pthread_cond_init(&e->cond,NULL);e->signalled=false;}
+static inline void LightEvent_Signal(LightEvent *e){pthread_mutex_lock(&e->mutex);e->signalled=true;pthread_cond_signal(&e->cond);pthread_mutex_unlock(&e->mutex);}
+static inline void LightEvent_Wait(LightEvent *e){pthread_mutex_lock(&e->mutex);while(!e->signalled)pthread_cond_wait(&e->cond,&e->mutex);e->signalled=false;pthread_mutex_unlock(&e->mutex);}
 typedef struct TestThread *Thread;
 typedef struct {u64 titleID,size;u16 version;u32 titleType;} AM_TitleInfo;
 static inline void LightLock_Init(LightLock *m){pthread_mutex_init(m,NULL);}

@@ -1,4 +1,8 @@
 #pragma once
+#ifdef GP_LAN_ONLY
+void game_port_test_tracing(int enabled);
+int game_port_test_trace_enabled(void);
+#endif
 #include "game_features.h"
 // Native minigame adapter. main.c owns one GamePort while a game is open.
 // The port, its controllers and models are independent of libctru so they run in

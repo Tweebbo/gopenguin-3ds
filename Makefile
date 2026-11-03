@@ -13,6 +13,10 @@ BUILD := obj
 SOURCES := source source/transport vendor/qrcodegen
 INCLUDES := source
 ROMFS := romfs
+ifeq ($(RESOURCE_SPLIT),1)
+TARGET := gopenguin-split-candidate
+BUILD := obj-split
+endif
 ifeq ($(CORE1_TEST),1)
 LAN_TEST := 1
 endif
@@ -24,6 +28,10 @@ endif
 ifeq ($(CORE1_TEST),1)
 TARGET := gopenguin-core1-test
 BUILD := obj-core1-test
+endif
+ifeq ($(LAN_TEST)$(RESOURCE_SPLIT),11)
+TARGET := gopenguin-lan-split-test
+BUILD := obj-lan-split
 endif
 ifeq ($(GPU_TEST),1)
 TARGET := gopenguin-gpu-test
@@ -66,7 +74,8 @@ GOPENGUIN_VERSION ?= $(shell cat $(if $(TOPDIR),$(TOPDIR),$(CURDIR))/VERSION)
 CFLAGS := -g -Wall -Wextra -Werror -O2 -D__3DS__ -DGAME_THINICE_READY -DGOPENGUIN_VERSION=\"$(GOPENGUIN_VERSION)\" -mword-relocations -ffunction-sections -std=gnu11 $(ARCH) $(INCLUDE)
 ifeq ($(LAN_TEST),1)
 CFLAGS += -DGP_LAN_ONLY
-CFLAGS += -DGP_UPDATE_URL=\"http://10.0.2.2:18891/latest.json\"
+GP_UPDATE_TEST_URL ?= http://10.0.2.2:18891/latest.json
+CFLAGS += -DGP_UPDATE_URL=\"$(GP_UPDATE_TEST_URL)\"
 endif
 ifeq ($(CORE1_TEST),1)
 CFLAGS += -DGP_WEAR_AUX_CORE
@@ -94,6 +103,7 @@ export OFILES += room_tube.o
 export OFILES += cave_mine.o
 export OFILES += room_npc.o
 export OFILES += epf_access.o
+export OFILES += igloo_visit.o
 export OFILES += pcm_stream.o
 export OFILES += offline_shop.o
 export OFILES += gp_update.o update_manifest.o download.o
@@ -102,6 +112,8 @@ export OFILES += wear_index.o
 export OFILES += wear_loader.o wear_texture.o
 export OFILES += actor_index.o render_order.o name_tag.o
 export OFILES += incremental.o
+export OFILES += resource_store.o
+export OFILES += frame_metrics.o
 export OFILES += frame_hacks.o mining.o book_camera.o
 ifeq ($(GPU_TEST),1)
 export OFILES := gpu_test.o swl.o swl_gpu.o swl_shader.shbin.o
@@ -135,17 +147,25 @@ all: $(BUILD) atlas-profile seasonal-profile agent-profile sharpness-profile
 	@cmp -s $(BUILD)/libctru.next $(BUILD)/libctru.stamp || mv $(BUILD)/libctru.next $(BUILD)/libctru.stamp
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 atlas-profile:
+ifneq ($(RESOURCE_SPLIT),1)
 	@python3 tools/compact-atlas.py --romfs "$(ROMFS)" --skip-missing
+endif
 seasonal-profile:
+ifneq ($(RESOURCE_SPLIT),1)
 	@python3 tools/restore-seasonal-assets.py --romfs "$(ROMFS)" --skip-missing
+endif
 agent-profile:
+ifneq ($(RESOURCE_SPLIT),1)
 ifeq ($(filter 1,$(GPU_TEST) $(DANCE_GPU_TEST) $(SHARPNESS_GPU_TEST) $(REVIEW_GPU_TEST)),)
 	@python3 tools/restore-agent-assets.py --romfs "$(ROMFS)"
 	@python3 tools/check-agent-assets.py --romfs "$(ROMFS)"
 endif
+endif
 sharpness-profile:
+ifneq ($(RESOURCE_SPLIT),1)
 ifeq ($(filter 1,$(GPU_TEST) $(DANCE_GPU_TEST) $(SHARPNESS_GPU_TEST) $(REVIEW_GPU_TEST)),)
 	@python3 tools/restore-sharpness-assets.py --romfs "$(ROMFS)"
+endif
 endif
 $(BUILD):
 	@mkdir -p $(BUILD) out

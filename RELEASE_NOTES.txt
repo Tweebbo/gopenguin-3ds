@@ -1,1 +1,1 @@
-Mission 2, G's Secret Mission, is now available on PC and 3DS. Includes readable dialogue and survival guide, sharper 3DS art and less repeated graphics work in five minigames. Optional 3DS update: Help > Account > Updates. PC players: reload to play. gopenguin.lol/changelog/
+Optional update: improves igloo entry and lets future updates prepare while you play. Install this complete update first, then close and reopen GoPenguin before preparing the smaller application update. Your saved penguin is retained. See gopenguin.lol/changelog/.

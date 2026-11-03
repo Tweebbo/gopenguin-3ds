@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
     snprintf(offer.sha256, sizeof offer.sha256, "%s", argv[11]); offer.bytes = (unsigned)strtoul(argv[12], NULL, 10);
     IncrementalTarget target = {argv[5], argv[6], argv[7], argv[8], (unsigned)strtoul(argv[9], NULL, 10), atoi(argv[10]) != 0};
     if (argc > 13) stop = (unsigned)strtoul(argv[13], NULL, 10);
-    IncrementalHooks hooks = {cancel, progress, NULL}; char error[200];
+    IncrementalHooks hooks = {.cancel=cancel, .progress=progress}; char error[200];
     IncrementalResult result = incremental_apply(argv[2], argv[3], argv[4], &offer, &target, &hooks, error, sizeof error);
     printf("%u %u %s\n", (unsigned)result, done, error);
     return result;
