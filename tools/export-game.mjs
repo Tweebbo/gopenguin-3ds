@@ -278,6 +278,21 @@ const games={
    volcanoe:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,2,'volcanoe','tilevolcanoe','partsvolcanoe')},
   },
  },
+ waves:{
+  code:700020,
+  banks:{main:{pack:'games/waves/CatchinWaves',artScale:.5,textureBudget:4*1024*1024,
+   transform(data){
+    const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
+    const frame=[
+     {id:1596,depth:1,name:'bg',matrix:[1,0,0,1,380,240]},
+     {id:symbol('watersurface4'),depth:2,name:'water',matrix:[1,0,0,1,380,300]},
+     {id:symbol('player'),depth:3,name:'player',matrix:[1,0,0,1,380,300]},
+     {id:symbol('shark'),depth:4,name:'shark',matrix:[1,0,0,1,380,300]},
+    ];
+    data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+    return data;
+   }}},
+ },
  dance:{
   code:700019,
   banks:{main:{pack:'dance',artScale:.35,textureBudget:6*1024*1024,
