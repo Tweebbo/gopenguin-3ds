@@ -259,6 +259,19 @@ const games={
    }},
   },
  },
+ jetpack:{
+  code:700016,
+  banks:{main:{pack:'jetpack-1-1',artScale:.5,textureBudget:6*1024*1024,
+   transform(data){
+    const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
+    const tile=symbol('tile'),player=symbol('player');
+    const frame=[];
+    for(let i=0;i<96;i++)frame.push({depth:1+i,id:tile,name:'tile'+i,matrix:[1,0,0,1,0,-10000]});
+    frame.push({depth:120,id:player,name:'player',matrix:[1,0,0,1,0,-10000]});
+    data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+    return data;
+   }}},
+ },
  astro:{
   code:700015,
   banks:{main:{pack:'games/astro/AstroBarrier',artScale:.5,
