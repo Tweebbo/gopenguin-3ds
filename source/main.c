@@ -111,11 +111,13 @@ static const char *gameKeys[]={"hydro","roundup","beans","cart","thinice","fish"
 #ifdef GP_NINJA_GAMES
  ,"card","fire","mission1","mission2"
 #endif
+ ,"astro"
 };
 static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters","Cart Surfer","Thin Ice","Ice Fishing","Find Four","Mancala","Sled Racing","Pizzatron 3000"
 #ifdef GP_NINJA_GAMES
  ,"Card-Jitsu","Card-Jitsu Fire","PSA: Missing Puffles","PSA: G's Secret Mission"
 #endif
+ ,"Astro Barrier"
 };
 static IglooGeometry *iglooGeometry;
 static MovieBank *roomBank;

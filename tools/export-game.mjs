@@ -259,6 +259,17 @@ const games={
    }},
   },
  },
+ astro:{
+  code:700015,
+  banks:{main:{pack:'games/astro/AstroBarrier',artScale:.5,
+   fonts:{fields:[68,69,74,75,76,77],chars:'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ '},
+   transform(data){
+    // The cabinet and the game live on main frame 3 of the original timeline.
+    const frame=data.main.frames[2];
+    data.main={frames:[[...frame]],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+    return data;
+   }}},
+ },
 };
 
 games['debug-beans']={...games.beans,code:703003,banks:{main:games.beans.banks.main}};
