@@ -19,7 +19,7 @@ static unsigned names(const char *text,char out[4][40]){
  char buffer[160];strcpy(buffer,text);char *part=buffer;unsigned count=0;
  while(part){if(count==4)return 0;char *end=strchr(part,',');if(end)*end=0;if(!*part||strlen(part)>=40)return 0;strcpy(out[count++],part);part=end?end+1:NULL;}return count;
 }
-void fire_model_init(FireModel *m){memset(m,0,sizeof *m);m->phase=FIRE_MENU;m->seat=-1;m->trump='b';snprintf(m->message,sizeof m->message,"Choose a Card-Jitsu Fire match.");}
+void fire_model_init(FireModel *m){memset(m,0,sizeof *m);m->phase=FIRE_MENU;m->seat=-1;m->trump='b';for(unsigned i=0;i<4;i++){m->colour[i]=1;m->standing[i]=1;}snprintf(m->message,sizeof m->message,"Choose a Card-Jitsu Fire match.");}
 void fire_model_begin(FireModel *m,bool sensei){bool ready=m->menuReady;unsigned rank=m->rank,percentage=m->percentage;fire_model_init(m);m->menuReady=ready;m->rank=rank;m->percentage=percentage;m->mode=sensei?1:0;m->phase=sensei?FIRE_HANDSHAKE:FIRE_QUEUE;snprintf(m->message,sizeof m->message,sensei?"Challenging Fire Sensei...":"Finding Fire opponents...");}
 static void board(FireModel *m){m->phase=m->seat==(int)m->active?FIRE_BOARD:FIRE_WAIT;m->inputPending=false;m->elapsed=0;memset(m->participants,0,sizeof m->participants);memset(m->played,0,sizeof m->played);snprintf(m->message,sizeof m->message,m->phase==FIRE_BOARD?"Your turn. Spin the stone.":"Waiting for the active player...");}
 static bool snapshot(FireModel *m,unsigned count,char *const *a){

@@ -136,6 +136,11 @@ static bool ready(void *game){
 static void drain_sounds(Astro *a){
  for(unsigned i=0;i<a->model.soundCount;i++)game_port_sound(a->port,a->model.sounds[i],100,false);
  a->model.soundCount=0;
+ for(unsigned i=0;i<a->model.stampCount;i++){
+  char value[8];snprintf(value,sizeof value,"%u",a->model.stamps[i]);
+  const char *args[]={value};game_port_send(a->port,'s',"st#sse",1,args);
+ }
+ a->model.stampCount=0;
 }
 
 static void tick(void *game){

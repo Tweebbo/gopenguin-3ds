@@ -23,7 +23,7 @@ void astro_model_init(AstroModel *model){
 }
 
 void astro_model_start(AstroModel *model){
- model->level=0;model->score=0;model->lives=2;astro_model_load(model);
+ model->level=0;model->score=0;model->lives=2;model->totalShots=0;model->oneUps=0;model->restarted=false;model->stampCount=0;astro_model_load(model);
 }
 
 void astro_model_load(AstroModel *model){
@@ -42,7 +42,7 @@ void astro_model_release(AstroModel *model){model->velocity=0;}
 
 bool astro_model_fire(AstroModel *model){
  if(model->phase!=ASTRO_PLAYING||model->bullet||!model->shots)return false;
- model->bullet=true;model->bulletY=GUN_Y;model->shots--;sound(model,"sound_shoot");
+ model->bullet=true;model->bulletY=GUN_Y;model->shots--;model->totalShots++;sound(model,"sound_shoot");
  return true;
 }
 
@@ -50,6 +50,18 @@ static void destroy(AstroModel *model,AstroObject *object,unsigned points,const 
  object->hit=true;object->frame=2;model->hits++;model->score+=points;model->bullet=false;sound(model,name);
 }
 
+static void award(AstroModel *model);
+static void award(AstroModel *model){
+ unsigned level=model->level+1;
+ #define STAMP(id) do{if(model->stampCount<8)model->stamps[model->stampCount++]=(id);}while(0)
+ if(level==5)STAMP(51);
+ if(level==5&&model->totalShots<=15&&!model->restarted)STAMP(52);
+ if(level==10&&model->totalShots<=32&&!model->restarted)STAMP(57);
+ if(level==20&&model->totalShots<=71&&!model->restarted)STAMP(58);
+ if(level==30&&model->totalShots<=112&&!model->restarted)STAMP(60);
+ if(level==40)STAMP(53);
+ #undef STAMP
+}
 static void resolve(AstroModel *model){
  double bullet[4]={model->gunX-1.7,model->bulletY-3.6,model->gunX+2.3,model->bulletY+0.4};
  for(unsigned i=0;i<model->objectCount;i++){
@@ -62,7 +74,7 @@ static void resolve(AstroModel *model){
   if(object->data->kind!=ASTRO_ONEUP||object->hit)continue;
   if(!overlap(bullet,object->data->box))continue;
   object->hit=true;object->frame=model->hits==0?3:2;model->hits++;
-  if(object->frame==3){model->lives++;model->score+=100;sound(model,"sound_oneup");}
+  if(object->frame==3){model->lives++;model->oneUps++;model->score+=100;sound(model,"sound_oneup");if(model->oneUps==8&&model->stampCount<8)model->stamps[model->stampCount++]=61;}
   else{model->score+=25;sound(model,"sound_barrierHit");}
   model->bullet=false;return;
  }
@@ -130,7 +142,7 @@ void astro_model_step(AstroModel *model){
  if(!model->bullet){
   const AstroLevelData *level=&ASTRO_LEVEL_DATA[model->level];
   if(model->hits>=level->hits){
-   model->score+=model->shots*10;model->phase=ASTRO_DONE;sound(model,"sound_levelDone");
+   model->score+=model->shots*10;model->phase=ASTRO_DONE;sound(model,"sound_levelDone");award(model);
   }else if(!model->shots){
    model->lives--;model->phase=model->lives<=0?ASTRO_OVER:ASTRO_LOST;
    sound(model,model->phase==ASTRO_OVER?"sound_gameOver":"sound_barrierHit");
@@ -146,7 +158,7 @@ void astro_model_next(AstroModel *model){
 }
 
 void astro_model_restart(AstroModel *model){
- if(model->phase==ASTRO_LOST)astro_model_load(model);
+ if(model->phase==ASTRO_LOST){model->restarted=true;astro_model_load(model);}
 }
 
 const AstroLevelData *astro_model_level(const AstroModel *model){return &ASTRO_LEVEL_DATA[model->level];}

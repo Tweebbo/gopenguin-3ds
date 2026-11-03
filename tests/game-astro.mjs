@@ -18,7 +18,7 @@ const phases=['ready','playing','done','lost','over','won'];
 
 const snapshot=model=>{
   const level=model.levels[model.level];
-  const values=[model.level,model.score,model.lives,model.shots,model.hits,phases.indexOf(model.phase),model.gunX,model.bulletY,model.bullet?1:0,level.frame];
+  const values=[model.level,model.score,model.lives,model.shots,model.hits,phases.indexOf(model.phase),model.gunX,model.bulletY,model.bullet?1:0,level.frame,model.totalShots,model.oneUps,model.restarted?1:0,model.stamps.length,...model.stamps];
   for(const object of model.objects)values.push(object.frame,object.hit?1:0);
   return values;
 };

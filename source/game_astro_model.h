@@ -15,7 +15,8 @@ typedef struct {
 
 typedef struct {
  AstroPhase phase;
- unsigned level,score,shots,hits;
+ unsigned level,score,shots,hits,totalShots,oneUps;
+ bool restarted;
  int lives;
  double gunX,bulletY,velocity;
  bool bullet;
@@ -23,6 +24,8 @@ typedef struct {
  unsigned objectCount;
  const char *sounds[ASTRO_MAX_SOUNDS];
  unsigned soundCount;
+ unsigned stamps[8];
+ unsigned stampCount;
 } AstroModel;
 
 void astro_model_init(AstroModel *model);
