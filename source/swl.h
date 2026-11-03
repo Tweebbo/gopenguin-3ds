@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define SWL_MAX_FILE (16u*1024u*1024u)
-#define SWL_MAX_HEADS 1024
+#define SWL_MAX_HEADS 8192
 #define SWL_MAX_DEPTH 24
 #define SWL_PATH 256
 #define SWL_ATLAS_WIDTH 1024

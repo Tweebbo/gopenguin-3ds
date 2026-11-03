@@ -62,6 +62,17 @@ export function cartTint(data,tints=cartConfig.tints){
  walk(cart.id,'root.game_mc.cart_mc',0);
  return [...paths].sort();
 }
+function rescueBank(data,theme,key,tile,parts){
+ const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
+ const frame=[];
+ const tileId=symbol(tile),partId=symbol(parts);
+ for(let i=0;i<96;i++)frame.push({depth:1+i,id:tileId,name:'tile'+i,matrix:[1,0,0,1,0,-10000]});
+ for(let i=0;i<16;i++)frame.push({depth:200+i,id:partId,name:'part'+i,matrix:[1,0,0,1,0,-10000]});
+ frame.push({depth:300,id:symbol('bg'),name:'bg',matrix:[1,0,0,1,0,0]});
+ frame.push({depth:310,id:symbol('player'),name:'player',matrix:[1,0,0,1,0,-10000]});
+ data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+ return data;
+}
 const games={
  'debug-fire':{code:703002,banks:{main:{pack:'games/fire/fire',artScale:.5,textureBudget:8*1024*1024,fonts:{fields:[34],chars:'0123456789?'} ,virtualAssets:cardArt?.assets,transform:data=>fireStage(data,cardArt.icons)}}},
  'debug-card':{code:703001,banks:{
@@ -257,6 +268,14 @@ const games={
     for(const id of new Set(data.sprites[wake.id].frames[0].map(e=>e.id)))addressable(data,id);
     return data;
    }},
+  },
+ },
+ rescue:{
+  code:700018,
+  banks:{
+   snow:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,0,'snow','tilesnow','partssnow')},
+   temple:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,1,'temple','tiletemple','partstemple')},
+   volcanoe:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,2,'volcanoe','tilevolcanoe','partsvolcanoe')},
   },
  },
  mixmaster:{
