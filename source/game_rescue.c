@@ -43,6 +43,8 @@ static void sync(Rescue *r){
  for(unsigned i=slot;i<96;i++){snprintf(path,sizeof path,"root.tile%u",i);hide(r,path);}
  for(unsigned i=0;i<m->platformCount;i++){unsigned x=0,y=0,frame=0;if(rescue_model_platform_cell(m,i,&x,&y,&frame))place_part(r,&partSlot,frame,(double)x*80-camX,(double)y*80-camY);}
  unsigned snowSlot=0,batSlot=0,secretSlot=0;
+ for(unsigned i=0;i<m->turretCount;i++)place_part(r,&partSlot,25,(double)m->turrets[i].x*80-camX,(double)m->turrets[i].y*80-camY);
+ for(unsigned i=0;i<m->shotCount;i++){if(snowSlot<4){snprintf(path,sizeof path,"root.snowball%u",snowSlot++);target(r,path,1,(double)m->shots[i].x*80-camX,(double)m->shots[i].y*80-camY);}}
  for(unsigned i=0;i<m->hazardCount;i++){unsigned x=0,y=0;if(!rescue_model_hazard_cell(m,i,&x,&y))continue;
   if(m->hazards[i].kind==0)place_part(r,&partSlot,2,(double)x*80-camX,(double)y*80-camY);
   else if(m->hazards[i].kind==1&&snowSlot<4){snprintf(path,sizeof path,"root.snowball%u",snowSlot++);target(r,path,1,(double)x*80-camX,(double)y*80-camY);}

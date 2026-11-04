@@ -53,13 +53,13 @@ void rescue_model_load(RescueModel *m){
  memcpy(m->parts,l->parts,(size_t)l->width*l->height);
  memcpy(m->parts2,l->parts2,(size_t)l->width*l->height);
  m->x=l->homeX;m->y=l->homeY;m->carried=0;m->rescued=0;m->moves=0;m->time=0;m->riding=-1;
- m->platformCount=m->hazardCount=0;memset(m->collected,0,sizeof m->collected);memset(m->broken,0,sizeof m->broken);memset(m->crackMs,0,sizeof m->crackMs);m->phase=RESCUE_PLAYING;
+ m->platformCount=m->hazardCount=0;m->turretCount=m->shotCount=0;memset(m->collected,0,sizeof m->collected);memset(m->broken,0,sizeof m->broken);memset(m->crackMs,0,sizeof m->crackMs);m->phase=RESCUE_PLAYING;
  for(unsigned y=0;y<m->height;y++)for(unsigned x=0;x<m->width;x++){
   unsigned at=y*m->width+x;unsigned part=m->parts[at];
   if((part==7||part==8)&&m->platformCount<RESCUE_PLATFORMS){RescueMover *p=&m->platforms[m->platformCount++];*p=(RescueMover){.x=(uint8_t)x,.y=(uint8_t)y,.value=(uint8_t)part,.phase=(uint8_t)((x*7+y*13)%16),.range=2};p->offset=mover_offset(p,0);}
   if(l->theme==2&&m->parts2[at]==2&&m->hazardCount<RESCUE_HAZARDS){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)x,.y=(uint8_t)y,.value=2,.phase=(uint8_t)((x*5+y*11)%16),.range=3,.kind=0};p->offset=mover_offset(p,0);}
   if(l->theme==1&&m->map[at]==59&&m->hazardCount<RESCUE_HAZARDS){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)x,.y=(uint8_t)(y>3?y-3:1),.value=4,.phase=(uint8_t)((x*3+y*5)%16),.range=3,.kind=2};p->offset=mover_offset(p,0);}
-  if(l->theme==1&&part==25&&m->hazardCount<RESCUE_HAZARDS){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)x,.y=(uint8_t)y,.value=3,.phase=(uint8_t)((x*3+y*5)%16),.range=1,.kind=1};p->offset=mover_offset(p,0);}
+  if(l->theme==1&&part==25&&m->turretCount<16)m->turrets[m->turretCount++]=(RescueTurret){.x=(uint8_t)x,.y=(uint8_t)y,.charge=0};
  }
  if(l->theme==1&&m->hazardCount==0&&m->hazardCount<RESCUE_HAZARDS){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)(m->width/2),.y=6,.value=4,.phase=5,.range=3,.kind=2};p->offset=mover_offset(p,0);}
  if(l->theme==2&&m->level==6&&m->hazardCount<RESCUE_HAZARDS){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=14,.y=16,.value=5,.phase=7,.range=4,.kind=3};p->offset=mover_offset(p,0);}
@@ -102,6 +102,8 @@ void rescue_model_tick(RescueModel *m,double milliseconds){
   p->offset=next;(void)old;
  }
  for(unsigned i=0;i<m->hazardCount;i++)m->hazards[i].offset=mover_offset(&m->hazards[i],m->time);
+ for(unsigned i=0;i<m->turretCount;i++){RescueTurret *t=&m->turrets[i];double dx=t->x*80.0+40-m->x*80.0-40,dy=t->y*80.0+40-m->y*80.0-40;double distance=hypot(dx,dy);if(distance<=200)t->charge=(uint16_t)(t->charge+step);else t->charge=0;if(t->charge>=1200){int sx=(m->x>t->x)-(m->x<t->x),sy=(m->y>t->y)-(m->y<t->y);if((sx||sy)&&m->shotCount<16)m->shots[m->shotCount++]=(RescueShot){.x=t->x,.y=t->y,.dx=(int8_t)sx,.dy=(int8_t)sy,.elapsed=0};t->charge=0;}}
+ for(unsigned i=0;i<m->shotCount;){RescueShot *shot=&m->shots[i];shot->elapsed=(uint16_t)(shot->elapsed+step);if(shot->elapsed<150){i++;continue;}shot->elapsed-=150;shot->x=(uint8_t)((int)shot->x+shot->dx);shot->y=(uint8_t)((int)shot->y+shot->dy);if(shot->x>=m->width||shot->y>=m->height){m->shots[i]=m->shots[--m->shotCount];continue;}if(shot->x==m->x&&shot->y==m->y){m->shots[i]=m->shots[--m->shotCount];hazard_touch(m);continue;}i++;}
  hazard_touch(m);
  if(m->riding>=0&&platform_at(m,m->x,m->y)<0)m->riding=-1;
 }

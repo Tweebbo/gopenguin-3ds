@@ -7,6 +7,8 @@ typedef enum {RESCUE_PLAYING,RESCUE_DONE,RESCUE_WON} RescuePhase;
 #define RESCUE_HAZARDS 16
 
 typedef struct {uint8_t x,y,value,phase,range,kind;int offset;} RescueMover;
+typedef struct {uint8_t x,y;uint16_t charge;} RescueTurret;
+typedef struct {uint8_t x,y;int8_t dx,dy;uint16_t elapsed;} RescueShot;
 
 typedef struct {
  RescuePhase phase;
@@ -16,6 +18,8 @@ typedef struct {
  unsigned platformCount,hazardCount;
  int riding;
  RescueMover platforms[RESCUE_PLATFORMS],hazards[RESCUE_HAZARDS];
+ RescueTurret turrets[16];unsigned turretCount;
+ RescueShot shots[16];unsigned shotCount;
  bool collected[RESCUE_PUFFLES];
  uint8_t broken[RESCUE_MAX_W*RESCUE_MAX_H];
  uint16_t crackMs[RESCUE_MAX_W*RESCUE_MAX_H];

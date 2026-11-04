@@ -58,7 +58,7 @@ int main(void){
  unsigned cx=0,cy=0;assert(rescue_model_platform_cell(m,0,&cx,&cy,&frame));
  assert(m->x==cx&&m->y==cy);
  m->level=3;rescue_model_load(m);bool bat=false;for(unsigned i=0;i<m->hazardCount;i++)if(m->hazards[i].kind==2)bat=true;assert(bat);
- m->level=5;rescue_model_load(m);bool snowball=false;for(unsigned i=0;i<m->hazardCount;i++)if(m->hazards[i].kind==1)snowball=true;assert(snowball);
+ m->level=5;rescue_model_load(m);assert(m->turretCount>0);m->x=m->turrets[0].x+1;m->y=m->turrets[0].y;for(unsigned i=0;i<12;i++)rescue_model_tick(m,100);assert(m->shotCount>0);
  m->level=2;rescue_model_load(m);unsigned secrets=0,secretIndex=0;for(unsigned i=0;i<m->hazardCount;i++)if(m->hazards[i].kind==4){secretIndex=i;secrets++;}assert(secrets==3);
  unsigned before=m->score,sx=0,sy=0;assert(rescue_model_hazard_cell(m,secretIndex,&sx,&sy));m->x=sx;m->y=sy;m->carried=1;rescue_model_tick(m,1);assert(m->score==before+25&&m->carried==1);assert(m->hazardCount>0);
  m->level=6;rescue_model_load(m);bool kraken=false;for(unsigned i=0;i<m->hazardCount;i++)if(m->hazards[i].kind==3)kraken=true;assert(kraken);
