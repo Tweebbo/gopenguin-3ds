@@ -31,6 +31,23 @@ int main(void){
   const RescueLevelData *data=rescue_model_level(m);SWLScene *scene=game_bank_scene(game_port_bank(p,data->theme));
   assert(scene);assert(render(scene)>0);
  }
+ m->level=2;rescue_model_load(m);
+ assert(m->platformCount>0);
+ unsigned ax=0,ay=0,frame=0;assert(rescue_model_platform_cell(m,0,&ax,&ay,&frame));
+ unsigned bx=ax,by=ay;
+ for(unsigned i=0;i<8;i++){rescue_model_tick(m,500);unsigned cx=0,cy=0;assert(rescue_model_platform_cell(m,0,&cx,&cy,&frame));if(cx!=bx||cy!=by){bx=cx;by=cy;break;}}
+ assert(ax!=bx||ay!=by);
+ assert(rescue_model_passable(m,bx,by));
+ m->x=bx;m->y=by;m->riding=0;
+ rescue_model_tick(m,1000);
+ unsigned cx=0,cy=0;assert(rescue_model_platform_cell(m,0,&cx,&cy,&frame));
+ assert(m->x==cx&&m->y==cy);
+ m->level=6;rescue_model_load(m);assert(m->hazardCount>0);
+ unsigned hx=0,hy=0;assert(rescue_model_hazard_cell(m,0,&hx,&hy));
+ m->x=hx;m->y=hy;m->carried=1;m->riding=-1;
+ rescue_model_tick(m,1);
+ const RescueLevelData *water=rescue_model_level(m);
+ assert(m->x==water->homeX&&m->y==water->homeY&&m->carried==0);
  m->level=0;rescue_model_load(m);
  const RescueLevelData *home=rescue_model_level(m);assert(rescue_model_passable(m,home->homeX,home->homeY));
  bool moved=false;
@@ -41,6 +58,6 @@ int main(void){
  game_port_close(p);assert(f.zo==1&&f.score==3600);
  char *reply[]={"510"};assert(game_port_packet(p,"zo",1,reply));assert(f.left==1&&f.coins==510);
  game_port_free(p);
- puts("PASS Puffle Rescue native controller: three theme banks render all nine levels, model starts, delivery, authoritative payout");
+ puts("PASS Puffle Rescue native controller: nine levels, moving platforms carry the player, octopus hazards reset to home, delivery and authoritative payout");
  return 0;
 }

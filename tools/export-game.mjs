@@ -67,7 +67,7 @@ function rescueBank(data,theme,key,tile,parts){
  const frame=[];
  const tileId=symbol(tile),partId=symbol(parts);
  for(let i=0;i<96;i++)frame.push({depth:1+i,id:tileId,name:'tile'+i,matrix:[1,0,0,1,0,-10000]});
- for(let i=0;i<16;i++)frame.push({depth:200+i,id:partId,name:'part'+i,matrix:[1,0,0,1,0,-10000]});
+ for(let i=0;i<40;i++)frame.push({depth:200+i,id:partId,name:'part'+i,matrix:[1,0,0,1,0,-10000]});
  frame.push({depth:300,id:symbol('bg'),name:'bg',matrix:[1,0,0,1,0,0]});
  frame.push({depth:310,id:symbol('player'),name:'player',matrix:[1,0,0,1,0,-10000]});
  data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};

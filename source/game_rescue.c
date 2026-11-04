@@ -16,6 +16,11 @@ static const char *STYLES[]={"skier","indy","jet"};
 static bool bank_view(void *game,unsigned bank,SWLMatrix *local){(void)local;Rescue *r=game;return bank==rescue_model_level(&r->model)->theme;}
 static void target(Rescue *r,const char *path,unsigned frame,double x,double y){SWLScene *s=r->scene[rescue_model_level(&r->model)->theme];swl_target(s,path,frame,NULL,false);swl_transform(s,path,(SWLMatrix){1,0,0,1,(float)x,(float)y});swl_visible(s,path,true);}
 static void hide(Rescue *r,const char *path){SWLScene *s=r->scene[rescue_model_level(&r->model)->theme];swl_visible(s,path,false);}
+#define PART_SLOTS 40
+static void place_part(Rescue *r,unsigned *slot,unsigned frame,double x,double y){
+ if(*slot>=PART_SLOTS)return;
+ char path[32];snprintf(path,sizeof path,"root.part%u",(*slot)++);target(r,path,frame,x,y);
+}
 static void sync(Rescue *r){
  RescueModel *m=&r->model;const RescueLevelData *l=rescue_model_level(m);unsigned theme=l->theme;SWLScene *sc=r->scene[theme];
  swl_target(sc,"root.bg",theme+1,NULL,false);swl_goto(sc,"root.player",1,STYLES[theme],false);
@@ -31,13 +36,14 @@ static void sync(Rescue *r){
   unsigned at=y*l->width+x,tile=m->map[at];
   if(tile!=1&&slot<96){snprintf(path,sizeof path,"root.tile%u",slot++);target(r,path,tile,(double)x*80-camX,(double)y*80-camY);}
   unsigned part=m->parts[at],part2=m->parts2[at];
-  if(part!=1&&part>=30&&part<=38&&partSlot<12){snprintf(path,sizeof path,"root.part%u",partSlot++);target(r,path,part,(double)x*80-camX,(double)y*80-camY);}
-  if(part2!=1&&part2>=30&&part2<=38&&partSlot<12){snprintf(path,sizeof path,"root.part%u",partSlot++);target(r,path,part2,(double)x*80-camX,(double)y*80-camY);}
+  if(part>=30&&part<=38)place_part(r,&partSlot,part,(double)x*80-camX,(double)y*80-camY);
+  if(part2>=30&&part2<=38)place_part(r,&partSlot,part2,(double)x*80-camX,(double)y*80-camY);
  }
  for(unsigned i=slot;i<96;i++){snprintf(path,sizeof path,"root.tile%u",i);hide(r,path);}
- for(unsigned i=0;i<3;i++)if(!m->collected[i]){snprintf(path,sizeof path,"root.part%u",12+i);target(r,path,40,(double)l->puffleX[i]*80-camX,(double)l->puffleY[i]*80-camY);}
- for(unsigned i=12+3;i<16;i++){snprintf(path,sizeof path,"root.part%u",i);hide(r,path);}
- if(m->collected[0]){hide(r,"root.part12");}if(m->collected[1]){hide(r,"root.part13");}if(m->collected[2]){hide(r,"root.part14");}
+ for(unsigned i=0;i<m->platformCount;i++){unsigned x=0,y=0,frame=0;if(rescue_model_platform_cell(m,i,&x,&y,&frame))place_part(r,&partSlot,frame,(double)x*80-camX,(double)y*80-camY);}
+ for(unsigned i=0;i<m->hazardCount;i++){unsigned x=0,y=0;if(rescue_model_hazard_cell(m,i,&x,&y))place_part(r,&partSlot,2,(double)x*80-camX,(double)y*80-camY);}
+ for(unsigned i=0;i<3;i++)if(!m->collected[i])place_part(r,&partSlot,40,(double)l->puffleX[i]*80-camX,(double)l->puffleY[i]*80-camY);
+ for(unsigned i=partSlot;i<PART_SLOTS;i++){snprintf(path,sizeof path,"root.part%u",i);hide(r,path);}
  swl_transform(sc,"root.player",(SWLMatrix){1,0,0,1,(float)(m->x*80-camX),(float)(m->y*80-camY)});
  game_port_snap(r->port);
 }
@@ -46,7 +52,7 @@ static void next(Rescue *r){rescue_model_next(&r->model);if(r->model.phase!=RESC
 static void *create(GamePort *port){Rescue *r=calloc(1,sizeof *r);if(!r)return NULL;r->port=port;rescue_model_init(&r->model);return r;}
 static void destroy(void *game){free(game);}
 static bool ready(void *game){Rescue *r=game;for(unsigned i=0;i<3;i++){r->bank[i]=game_port_bank(r->port,i);r->scene[i]=game_bank_scene(r->bank[i]);if(!r->scene[i])return false;}r->screen=SCREEN_TITLE;return true;}
-static void tick(void *game){Rescue *r=game;for(unsigned i=0;i<3;i++)if(r->scene[i])swl_tick_deferred(r->scene[i]);if(r->screen==SCREEN_GAME&&game_port_session(r->port)==GAME_SESSION_PLAYING)sync(r);}
+static void tick(void *game){Rescue *r=game;for(unsigned i=0;i<3;i++)if(r->scene[i])swl_tick_deferred(r->scene[i]);if(r->screen==SCREEN_GAME&&game_port_session(r->port)==GAME_SESSION_PLAYING){rescue_model_tick(&r->model,1000.0/24.0);sync(r);}}
 static void frame(void *game,float seconds,const GameInput *input){
  Rescue *r=game;(void)seconds;unsigned clicked=game_port_clicked(r->port);RescueModel *m=&r->model;
  if(r->screen==SCREEN_TITLE){if(clicked==BUTTON_EXIT){game_port_leave(r->port);return;}if(clicked==BUTTON_PLAY||(input->down&GAME_KEY_A))start(r);return;}
