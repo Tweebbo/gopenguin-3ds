@@ -50,7 +50,7 @@ int main(void){
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
  tick(p,2);
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
- assert(f.soundCount==11&&!strcmp(f.sounds[0],"scene0")&&!strcmp(f.sounds[4],"scene2"));
+ assert(f.soundCount==16&&!strcmp(f.sounds[0],"amb0")&&!strcmp(f.sounds[1],"voice0")&&!strcmp(f.sounds[2],"scene0"));
  assert(f.zo==1);
  char *reply[]={"510"};assert(game_port_packet(p,"zo",1,reply));assert(f.left==1&&f.coins==510);
  assert(f.loads>=8);

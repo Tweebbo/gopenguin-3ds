@@ -63,7 +63,11 @@ static void *create(GamePort *port){
  snprintf(m->resource,sizeof m->resource,"%s",m->data->scenePacks[0]);return m;
 }
 static void destroy(void *game){free(game);}
-static bool ready(void *game){Mission *m=game;request_scene(m,0);return true;}
+static void scene_audio(Mission *m,unsigned scene){
+ char name[16];snprintf(name,sizeof name,"amb%u",scene);game_port_sound(m->port,name,25,true);
+ snprintf(name,sizeof name,"voice%u",scene);game_port_sound(m->port,name,60,false);
+}
+static bool ready(void *game){Mission *m=game;request_scene(m,0);scene_audio(m,0);return true;}
 static void tick(void *game){
  Mission *m=game;
  if(!m->loaded){GameResource state=game_port_require_bank(m->port,0);if(state==GAME_RESOURCE_READY){m->bank=game_port_bank(m->port,0);m->scene=game_bank_scene(m->bank);m->loaded=m->scene!=NULL;if(m->loaded)game_port_snap(m->port);}return;}
@@ -71,11 +75,11 @@ static void tick(void *game){
 }
 static void advance(Mission *m){
  if(!solved(m))return;
- char sound[16];snprintf(sound,sizeof sound,"scene%u",current(m)->scene);
- game_port_sound(m->port,sound,45,false);
+ char sound[16];game_port_stop_sounds(m->port);snprintf(sound,sizeof sound,"scene%u",current(m)->scene);game_port_sound(m->port,sound,45,false);
  if(m->step+1>=m->data->stepCount){m->screen=SCREEN_DONE;return;}
  m->step++;reset_puzzle(m);
- const MissionStep *next=current(m);if(next->scene!=m->sceneIndex)request_scene(m,next->scene);
+ const MissionStep *next=current(m);scene_audio(m,next->scene);
+ if(next->scene!=m->sceneIndex)request_scene(m,next->scene);
 }
 static void frame(void *game,float seconds,const GameInput *input){
  Mission *m=game;(void)seconds;

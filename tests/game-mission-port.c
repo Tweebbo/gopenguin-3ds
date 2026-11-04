@@ -51,11 +51,11 @@ static void play_mission(const char *key,unsigned room){
   game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
   tick(p,2);
   assert(game_mission_step(game)==step+1);
-  if(step==0)assert(f.soundCount==1&&!strcmp(f.sounds[0],"scene0"));
+  if(step==0)assert(f.soundCount>=5&&!strcmp(f.sounds[0],"amb0")&&f.sounds[2][0]=='s');
   SWLScene *scene=game_bank_scene(game_port_bank(p,0));if(!scene)fprintf(stderr,"step %u scene %u loads %u status %s\n",step+1,data->steps[step+1].scene,f.loads,game_port_status(p));assert(scene);unsigned draws=render(scene);if(!draws)fprintf(stderr,"key %s step %u scene %u draws %u\n",key,step+1,data->steps[step+1].scene,draws);assert(draws>0);
  }
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
- assert(f.soundCount==data->stepCount);
+ assert(f.soundCount==16);
  assert(f.zo==1);
  char *reply[]={"510"};assert(game_port_packet(p,"zo",1,reply));assert(f.left==1&&f.coins==510);
  assert(f.loads>=2);

@@ -39,7 +39,11 @@ static void *create(GamePort *port){
  snprintf(m->resource,sizeof m->resource,"%s",MISSION3_SCENE_PACKS[0]);return m;
 }
 static void destroy(void *game){free(game);}
-static bool ready(void *game){Mission3 *m=game;request_scene(m,0);return true;}
+static void scene_audio(Mission3 *m,unsigned scene){
+ char name[16];snprintf(name,sizeof name,"amb%u",scene);game_port_sound(m->port,name,25,true);
+ snprintf(name,sizeof name,"voice%u",scene);game_port_sound(m->port,name,60,false);
+}
+static bool ready(void *game){Mission3 *m=game;request_scene(m,0);scene_audio(m,0);return true;}
 static void tick(void *game){
  Mission3 *m=game;
  if(!m->loaded){GameResource state=game_port_require_bank(m->port,0);if(state==GAME_RESOURCE_READY){m->bank=game_port_bank(m->port,0);m->scene=game_bank_scene(m->bank);m->loaded=m->scene!=NULL;if(m->loaded)game_port_snap(m->port);}return;}
@@ -48,11 +52,11 @@ static void tick(void *game){
 static void advance(Mission3 *m){
  const Mission3Step *step=&MISSION3_STEP_DATA[m->step];
  if(step->fuse&&m->fuses!=step->target)return;
- char sound[16];snprintf(sound,sizeof sound,"scene%u",step->scene);
- game_port_sound(m->port,sound,45,false);
+ char sound[16];game_port_stop_sounds(m->port);snprintf(sound,sizeof sound,"scene%u",step->scene);game_port_sound(m->port,sound,45,false);
  if(m->step+1>=MISSION3_STEPS){m->screen=SCREEN_DONE;return;}
  m->step++;
  const Mission3Step *next=&MISSION3_STEP_DATA[m->step];
+ scene_audio(m,next->scene);
  if(next->scene!=m->sceneIndex)request_scene(m,next->scene);
  if(!next->fuse)m->fuses=0;
 }
