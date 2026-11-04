@@ -7,7 +7,8 @@ typedef enum {AQUA_PLAYING,AQUA_DONE,AQUA_OVER,AQUA_WON} AquaPhase;
 typedef struct {
  AquaPhase phase;
  unsigned level,lives,treasure,cargo,claw,score,time,grace,width,height;
- double x,y,air;
+ double x,y,air,puffleX,puffleY;
+ bool pufflePinched;
  uint16_t map[AQUA_MAX_W*AQUA_MAX_H];
 } AquaModel;
 

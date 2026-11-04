@@ -47,6 +47,9 @@ static void sync(Aqua *a){
  swl_visible(a->levelScene,"root.bg",true);
  swl_transform(a->subScene,"root.sub",(SWLMatrix){1,0,0,1,(float)(m->x-camX),(float)(m->y-camY)});
  swl_visible(a->subScene,"root.sub",true);
+ swl_goto(a->subScene,"root.puffle",1,m->pufflePinched?"pinched":"normal",false);
+ swl_transform(a->subScene,"root.puffle",(SWLMatrix){1,0,0,1,(float)(m->puffleX-camX),(float)(m->puffleY-camY)});
+ swl_visible(a->subScene,"root.puffle",true);
  if(m->claw){swl_target(a->subScene,"root.claw",m->claw+1,NULL,false);swl_transform(a->subScene,"root.claw",(SWLMatrix){1,0,0,1,(float)(m->x-camX),(float)(m->y-camY+34)});swl_visible(a->subScene,"root.claw",true);}else hide_claw(a);
  game_port_snap(a->port);
 }

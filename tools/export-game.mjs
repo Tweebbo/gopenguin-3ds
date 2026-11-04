@@ -443,7 +443,7 @@ const games={
   banks:{main:{pack:'aqua-grabber',artScale:.5,textureBudget:2*1024*1024,
    transform(data){
     const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
-    const frame=[{id:symbol('sub'),depth:1,name:'sub',matrix:[1,0,0,1,0,0]},{id:symbol('claw'),depth:2,name:'claw',matrix:[1,0,0,1,0,-10000]}];
+    const frame=[{id:symbol('sub'),depth:1,name:'sub',matrix:[1,0,0,1,0,0]},{id:symbol('puffle'),depth:2,name:'puffle',matrix:[1,0,0,1,0,-10000]},{id:symbol('claw'),depth:3,name:'claw',matrix:[1,0,0,1,0,-10000]}];
     data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
     return data;
    }}},

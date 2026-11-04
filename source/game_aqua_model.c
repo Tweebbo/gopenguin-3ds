@@ -17,7 +17,7 @@ void aqua_model_start(AquaModel *m){m->level=0;m->score=0;m->lives=AQUA_LIVES;aq
 void aqua_model_load(AquaModel *m){
  const AquaLevelData *l=aqua_model_level(m);m->width=l->width;m->height=l->height;
  memcpy(m->map,l->map,(size_t)l->width*l->height*sizeof(uint16_t));
- m->x=l->startX;m->y=l->startY;m->air=100;m->treasure=0;m->cargo=0;m->claw=0;m->time=l->time;m->grace=20;m->phase=AQUA_PLAYING;
+ m->x=l->startX;m->y=l->startY;m->air=100;m->treasure=0;m->cargo=0;m->claw=0;m->time=l->time;m->grace=20;m->puffleX=m->x-40;m->puffleY=m->y+10;m->pufflePinched=false;m->phase=AQUA_PLAYING;
 }
 static bool collides(const AquaModel *m){
  static const int offsets[4][2]={{-14,0},{14,0},{0,-14},{0,14}};
@@ -36,14 +36,14 @@ static void grab(AquaModel *m){
   double x=m->x+dx,y=m->y+dy;unsigned tile=tile_at(m,x,y);
   int tx=(int)(x/AQUA_TILE),ty=(int)(y/AQUA_TILE);
   if(tx<0||ty<0||(unsigned)tx>=m->width||(unsigned)ty>=m->height)continue;
-  if(collectible(tile)){m->cargo++;m->map[ty*m->width+tx]=1;return;}
+  if(collectible(tile)){m->cargo++;m->map[ty*m->width+tx]=1;if(!m->pufflePinched&&hypot(m->puffleX-m->x,m->puffleY-(m->y+80+m->claw*50))<220)m->pufflePinched=true;return;}
  }
 }
 static void hurt(AquaModel *m,bool dry){
  if(dry||m->air<=0){
   if(m->lives)m->lives--;
   if(m->lives==0)m->phase=AQUA_OVER;
-  else{const AquaLevelData *l=aqua_model_level(m);m->x=l->startX;m->y=l->startY;m->air=100;m->grace=20;}
+  else{const AquaLevelData *l=aqua_model_level(m);m->x=l->startX;m->y=l->startY;m->air=100;m->grace=20;m->pufflePinched=false;m->puffleX=m->x-40;m->puffleY=m->y+10;}
  }else{
   m->air-=25;if(m->air<0)m->air=0;m->x-=10;m->y+=10;m->grace=12;
  }
@@ -57,6 +57,7 @@ void aqua_model_step(AquaModel *m,int dx,int dy,bool action){
  if(m->y>m->height*AQUA_TILE-20)m->y=m->height*AQUA_TILE-20;
  if(action)m->claw=m->claw<3?m->claw+1:3;
  else if(m->claw){grab(m);m->claw=0;}
+ if(m->pufflePinched){m->puffleX=m->x;m->puffleY=m->y-10;}else{double dx=m->x-40-m->puffleX,dy=m->y+10-m->puffleY;if(hypot(dx,dy)>2){m->puffleX+=dx*0.08;m->puffleY+=dy*0.08;}}
  m->air-=0.05;if(m->air<0)m->air=0;
  if(m->y<150||tile_at(m,m->x,m->y)==2){m->air+=1;if(m->air>100)m->air=100;}
  if(m->grace)m->grace--;
