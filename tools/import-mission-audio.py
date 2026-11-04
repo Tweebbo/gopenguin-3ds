@@ -12,6 +12,7 @@ root = Path(__file__).resolve().parents[1]
 web = Path('/home/miguelv/gopenguin-dev/web')
 pack_audio = Path('/home/miguelv/Tweebbo-Penguin-3DS/tools/pack-audio.mjs')
 mission3 = {'vault': 90, 'office': 86, 'hq': 380, 'roof': 72}
+audio_map = json.loads((root / 'tools/mission-audio-map.json').read_text())
 
 def duration(path):
     result = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', str(path)], capture_output=True, text=True, check=True)
@@ -71,19 +72,15 @@ for mission, scenes in missions.items():
     target.mkdir(parents=True, exist_ok=True)
     for gpz in (output / 'sfx' / bank).glob('*.gpz'):
         shutil.copy2(gpz, target / gpz.name)
-    scene_first = []
-    for index, entry in enumerate(scenes):
-        scene, cue = entry[0], entry[1]
-        ids = entry[3] if mission != 3 else [int(v) for v in json.loads((web / f'public/swf/q3-{scene}/timelines.json').read_text()).get('soundFiles', {})]
-        if cue and cue in effect_of:
-            names[f'scene{index}'] = effect_of[cue]
-            scene_first.append(cue)
-        ambient = max((sound for sound in ids if durations.get(sound, 0) >= 5), key=lambda sound: durations[sound], default=0)
-        if ambient:
-            names[f'amb{index}'] = effect_of[ambient]
-        voice = min((sound for sound in ids if sound != cue and 0.4 <= durations.get(sound, 0) <= 3), key=lambda sound: durations[sound], default=0)
-        if voice:
-            names[f'voice{index}'] = effect_of[voice]
+    mapping = audio_map['missions'][str(mission)]
+    for index in range(len(scenes)):
+        entry = mapping.get(str(index), {})
+        for key in ('scene', 'amb', 'voice'):
+            if key in entry:
+                effect_id = entry[key]
+                if effect_id < 1 or effect_id >= effect:
+                    raise SystemExit(f'{bank} scene {index}: effect {effect_id} out of range')
+                names[f'{key}{index}'] = effect_id
     named[bank] = names
     manifest['soundBanks'][bank] = bank
     compression = json.loads((output / 'compression.json').read_text())

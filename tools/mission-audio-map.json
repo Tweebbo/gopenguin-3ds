@@ -1,0 +1,228 @@
+{
+  "description": "Explicit PSA scene audio map: cue=PC scene sound, ambient=looping bed, voice=one-shot line/effect.",
+  "missions": {
+    "3": {
+      "0": {
+        "scene": 7,
+        "voice": 8
+      },
+      "1": {
+        "scene": 6,
+        "amb": 2,
+        "voice": 3
+      },
+      "2": {
+        "scene": 12,
+        "voice": 10
+      },
+      "3": {
+        "scene": 4,
+        "voice": 5
+      }
+    },
+    "4": {
+      "0": {
+        "scene": 16,
+        "voice": 19
+      },
+      "1": {
+        "scene": 11,
+        "voice": 24
+      },
+      "2": {
+        "scene": 5
+      },
+      "3": {
+        "scene": 7,
+        "amb": 3,
+        "voice": 2
+      },
+      "7": {
+        "scene": 6
+      },
+      "8": {
+        "scene": 1,
+        "amb": 1
+      }
+    },
+    "5": {
+      "0": {
+        "scene": 12,
+        "voice": 23
+      },
+      "1": {
+        "scene": 11,
+        "amb": 6,
+        "voice": 14
+      },
+      "3": {
+        "scene": 16,
+        "voice": 8
+      },
+      "4": {
+        "scene": 18,
+        "amb": 1,
+        "voice": 20
+      },
+      "5": {
+        "scene": 18,
+        "amb": 7
+      },
+      "6": {
+        "scene": 13,
+        "amb": 1
+      }
+    },
+    "6": {
+      "0": {
+        "scene": 6,
+        "voice": 37
+      },
+      "1": {
+        "scene": 19,
+        "voice": 20
+      },
+      "2": {
+        "scene": 1,
+        "voice": 2
+      },
+      "3": {
+        "scene": 63,
+        "voice": 24
+      },
+      "4": {
+        "scene": 8,
+        "voice": 4
+      },
+      "5": {
+        "scene": 7,
+        "voice": 12
+      }
+    },
+    "7": {
+      "0": {
+        "scene": 15,
+        "voice": 23
+      },
+      "1": {
+        "scene": 10,
+        "voice": 3
+      },
+      "2": {
+        "scene": 11,
+        "amb": 38,
+        "voice": 23
+      },
+      "3": {
+        "scene": 8,
+        "voice": 9
+      },
+      "6": {
+        "scene": 12,
+        "voice": 13
+      }
+    },
+    "8": {
+      "0": {
+        "scene": 9,
+        "voice": 27
+      },
+      "1": {
+        "scene": 7,
+        "amb": 37,
+        "voice": 15
+      },
+      "2": {
+        "scene": 16,
+        "voice": 40
+      },
+      "3": {
+        "scene": 6,
+        "voice": 13
+      },
+      "7": {
+        "scene": 19,
+        "voice": 26
+      }
+    },
+    "9": {
+      "0": {
+        "scene": 5,
+        "voice": 6
+      },
+      "2": {
+        "scene": 3,
+        "amb": 3
+      },
+      "3": {
+        "scene": 7,
+        "voice": 21
+      },
+      "5": {
+        "scene": 1
+      },
+      "7": {
+        "scene": 4
+      },
+      "8": {
+        "scene": 8,
+        "voice": 17
+      }
+    },
+    "10": {
+      "0": {
+        "scene": 22,
+        "voice": 25
+      },
+      "1": {
+        "scene": 10,
+        "voice": 21
+      },
+      "2": {
+        "scene": 5,
+        "amb": 4,
+        "voice": 6
+      },
+      "4": {
+        "scene": 21,
+        "voice": 2
+      },
+      "5": {
+        "scene": 13,
+        "amb": 15
+      },
+      "6": {
+        "scene": 14,
+        "voice": 25
+      }
+    },
+    "11": {
+      "0": {
+        "scene": 43,
+        "voice": 36
+      },
+      "1": {
+        "scene": 2,
+        "amb": 2,
+        "voice": 3
+      },
+      "2": {
+        "scene": 22,
+        "voice": 4
+      },
+      "3": {
+        "scene": 17,
+        "voice": 26
+      },
+      "4": {
+        "scene": 6,
+        "amb": 1,
+        "voice": 7
+      },
+      "7": {
+        "scene": 5,
+        "voice": 10
+      }
+    }
+  }
+}
