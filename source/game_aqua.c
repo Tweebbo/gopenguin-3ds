@@ -7,7 +7,7 @@
 #include <string.h>
 
 #define AQUA_ROOM 916
-enum {SCREEN_TITLE,SCREEN_GAME,SCREEN_RESULTS};
+enum {SCREEN_TITLE,SCREEN_INTRO,SCREEN_GAME,SCREEN_RESULTS};
 enum {BUTTON_PLAY=1,BUTTON_NEXT,BUTTON_RETRY,BUTTON_PAY,BUTTON_EXIT};
 
 typedef struct {
@@ -15,7 +15,7 @@ typedef struct {
  GameBank *levelBank,*subBank;
  SWLScene *levelScene,*subScene;
  AquaModel model;
- unsigned screen,loadedLevel;
+ unsigned screen,loadedLevel,introTicks;
  bool levelReady,clawTouch,left,right,up,down;
  int pad;
  char resource[32];
@@ -53,7 +53,7 @@ static void sync(Aqua *a){
  if(m->claw){swl_target(a->subScene,"root.claw",m->claw+1,NULL,false);swl_transform(a->subScene,"root.claw",(SWLMatrix){1,0,0,1,(float)(m->x-camX),(float)(m->y-camY+34)});swl_visible(a->subScene,"root.claw",true);}else hide_claw(a);
  game_port_snap(a->port);
 }
-static void start(Aqua *a){a->screen=SCREEN_GAME;aqua_model_start(&a->model);request_level(a,0);sync(a);}
+static void start(Aqua *a){a->screen=SCREEN_INTRO;a->introTicks=48;aqua_model_start(&a->model);request_level(a,0);sync(a);}
 static void *create(GamePort *port){Aqua *a=calloc(1,sizeof *a);if(!a)return NULL;a->port=port;aqua_model_init(&a->model);return a;}
 static void destroy(void *game){free(game);}
 static bool ready(void *game){
@@ -64,6 +64,7 @@ static void tick(void *game){
  Aqua *a=game;if(!a->levelReady){GameResource state=game_port_require_bank(a->port,0);if(state==GAME_RESOURCE_READY)attach_level(a);else return;}
  if(a->levelScene)swl_tick_deferred(a->levelScene);
  if(a->subScene)swl_tick_deferred(a->subScene);
+ if(a->screen==SCREEN_INTRO){if(a->introTicks){a->introTicks--;return;}a->screen=SCREEN_GAME;}
  if(a->screen!=SCREEN_GAME||game_port_session(a->port)!=GAME_SESSION_PLAYING)return;
  int dx=a->left?-1:a->right?1:0,dy=a->up?-1:a->down?1:0;
  aqua_model_step(&a->model,dx,dy,a->clawTouch);
@@ -79,6 +80,7 @@ static void frame(void *game,float seconds,const GameInput *input){
  if(a->pad<0)a->left=true;
  if(a->pad>0)a->right=true;
  a->clawTouch=(input->held&(GAME_KEY_A|GAME_KEY_B))!=0;
+ if(a->screen==SCREEN_INTRO){if(clicked==BUTTON_PLAY||(input->down&GAME_KEY_A))a->introTicks=0;return;}
  if(a->screen==SCREEN_TITLE){
   if(clicked==BUTTON_EXIT){game_port_leave(a->port);return;}
   if((clicked==BUTTON_PLAY||(input->down&GAME_KEY_A))&&game_port_session(a->port)==GAME_SESSION_PLAYING)start(a);
@@ -101,6 +103,7 @@ static void touch(void *game,GameTouch phase,float x,float y){
 static void close_game(void *game){Aqua *a=game;if(a->screen==SCREEN_TITLE)game_port_leave(a->port);else game_port_finish(a->port,aqua_model_total(&a->model));}
 static void draw_bottom(void *game){
  Aqua *a=game;GamePort *p=a->port;AquaModel *m=&a->model;char line[96];
+ if(a->screen==SCREEN_INTRO){game_port_title_band(p);game_port_text(p,160,70,14,0xffffff,GAME_ALIGN_CENTER,a->model.level==0?"Level 1 - The Iceberg":"Level 2 - The Deep");game_port_text(p,160,100,10,0xd6ecff,GAME_ALIGN_CENTER,"Collect five treasures and return to the net.");game_port_text(p,160,140,9,0xffffff,GAME_ALIGN_CENTER,"Tap Play or press A to dive.");game_port_button(p,BUTTON_PLAY,90,180,140,40,"Play",true);return;}
  if(a->screen==SCREEN_TITLE){game_port_title_band(p);game_port_button(p,BUTTON_PLAY,90,197,140,36,"Play",game_port_session(p)==GAME_SESSION_PLAYING);game_port_button(p,BUTTON_EXIT,196,197,84,36,"Exit",true);return;}
  if(a->screen==SCREEN_RESULTS){
   snprintf(line,sizeof line,"Score %u",aqua_model_total(m));game_port_text(p,160,40,16,0xffffff,GAME_ALIGN_CENTER,line);

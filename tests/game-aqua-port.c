@@ -28,6 +28,7 @@ int main(void){
  assert(f.loads>=2&&!strcmp(f.loaded[0],"games/aqua-sub.gpk")&&!strcmp(f.loaded[1],"games/aqua1.gpk"));
  SWLScene *level=game_bank_scene(game_port_bank(p,0)),*sub=game_bank_scene(game_port_bank(p,1));assert(level&&sub);assert(render(level)>0);assert(render(sub)>0);
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
+ tick(p,50,(GameInput){0});
  AquaModel *m=game_aqua_model(game_port_game(p));assert(m&&m->phase==AQUA_PLAYING);
  int tx=-1,ty=-1;for(unsigned y=2;y<m->height&&tx<0;y++)for(unsigned x=0;x<m->width&&tx<0;x++){unsigned t=m->map[y*m->width+x];if((t>=2&&t<=39)||t==1200){tx=(int)x;ty=(int)y;}}
  assert(tx>=0);m->x=tx*80+40;m->y=ty*80-80;m->grace=999;
