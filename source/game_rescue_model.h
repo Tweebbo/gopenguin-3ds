@@ -6,7 +6,7 @@ typedef enum {RESCUE_PLAYING,RESCUE_DONE,RESCUE_WON} RescuePhase;
 #define RESCUE_PLATFORMS 16
 #define RESCUE_HAZARDS 16
 
-typedef struct {uint8_t x,y,value,phase,range;int offset;} RescueMover;
+typedef struct {uint8_t x,y,value,phase,range,kind;int offset;} RescueMover;
 
 typedef struct {
  RescuePhase phase;

@@ -27,6 +27,7 @@ int main(void){
  for(unsigned theme=0;theme<3;theme++){SWLInstance parts;assert(swl_instance(game_bank_scene(game_port_bank(p,theme)),"root.part39",&parts));}
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
  RescueModel *m=game_rescue_model(game_port_game(p));assert(m);assert(m->phase==RESCUE_PLAYING);
+ bool snowball=false;for(unsigned i=0;i<m->hazardCount;i++)if(m->hazards[i].kind==1)snowball=true;assert(snowball);
  for(unsigned level=0;level<RESCUE_LEVELS;level++){
   m->level=level;rescue_model_load(m);tick(p,1);
   const RescueLevelData *data=rescue_model_level(m);SWLScene *scene=game_bank_scene(game_port_bank(p,data->theme));
@@ -55,6 +56,7 @@ int main(void){
  rescue_model_tick(m,1000);
  unsigned cx=0,cy=0;assert(rescue_model_platform_cell(m,0,&cx,&cy,&frame));
  assert(m->x==cx&&m->y==cy);
+ m->level=3;rescue_model_load(m);bool bat=false;for(unsigned i=0;i<m->hazardCount;i++)if(m->hazards[i].kind==2)bat=true;assert(bat);
  m->level=6;rescue_model_load(m);assert(m->hazardCount>0);
  unsigned hx=0,hy=0;assert(rescue_model_hazard_cell(m,0,&hx,&hy));
  m->x=hx;m->y=hy;m->carried=1;m->riding=-1;
