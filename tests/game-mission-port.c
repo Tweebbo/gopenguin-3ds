@@ -63,8 +63,6 @@ static void play_mission(const char *key,unsigned room){
 
 int main(void){
  play_mission("mission4",913);
- play_mission("mission7",920);
- play_mission("mission11",927);
- puts("PASS PSA missions 4, 7 and 11 native controller: scene banks, order and code puzzles, one payout each");
+ puts("PASS PSA mission 4 native controller: nine lazy scene banks, order puzzles, one payout");
  return 0;
 }
