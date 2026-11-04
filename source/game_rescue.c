@@ -7,9 +7,9 @@
 #include <string.h>
 
 #define RESCUE_ROOM 949
-enum {SCREEN_TITLE,SCREEN_GAME,SCREEN_RESULTS};
+enum {SCREEN_TITLE,SCREEN_INTRO,SCREEN_GAME,SCREEN_RESULTS};
 enum {BUTTON_PLAY=1,BUTTON_UP,BUTTON_DOWN,BUTTON_LEFT,BUTTON_RIGHT,BUTTON_NEXT,BUTTON_PAY,BUTTON_EXIT};
-typedef struct {GamePort *port;GameBank *bank[3];SWLScene *scene[3];RescueModel model;unsigned screen;int pad;} Rescue;
+typedef struct {GamePort *port;GameBank *bank[3];SWLScene *scene[3];RescueModel model;unsigned screen,introTicks;int pad;} Rescue;
 RescueModel *game_rescue_model(void *game){return &((Rescue *)game)->model;}
 static const char *STYLES[]={"skier","indy","jet"};
 
@@ -58,14 +58,15 @@ static void sync(Rescue *r){
  swl_transform(sc,"root.player",(SWLMatrix){1,0,0,1,(float)(m->x*80-camX),(float)(m->y*80-camY)});
  game_port_snap(r->port);
 }
-static void start(Rescue *r){r->screen=SCREEN_GAME;rescue_model_start(&r->model);sync(r);}
+static void start(Rescue *r){r->screen=SCREEN_INTRO;r->introTicks=48;rescue_model_start(&r->model);sync(r);}
 static void next(Rescue *r){rescue_model_next(&r->model);if(r->model.phase!=RESCUE_WON){r->screen=SCREEN_GAME;sync(r);}}
 static void *create(GamePort *port){Rescue *r=calloc(1,sizeof *r);if(!r)return NULL;r->port=port;rescue_model_init(&r->model);return r;}
 static void destroy(void *game){free(game);}
 static bool ready(void *game){Rescue *r=game;for(unsigned i=0;i<3;i++){r->bank[i]=game_port_bank(r->port,i);r->scene[i]=game_bank_scene(r->bank[i]);if(!r->scene[i])return false;}r->screen=SCREEN_TITLE;return true;}
-static void tick(void *game){Rescue *r=game;for(unsigned i=0;i<3;i++)if(r->scene[i])swl_tick_deferred(r->scene[i]);if(r->screen==SCREEN_GAME&&game_port_session(r->port)==GAME_SESSION_PLAYING){rescue_model_tick(&r->model,1000.0/24.0);sync(r);}}
+static void tick(void *game){Rescue *r=game;for(unsigned i=0;i<3;i++)if(r->scene[i])swl_tick_deferred(r->scene[i]);if(r->screen==SCREEN_INTRO){if(r->introTicks){r->introTicks--;return;}r->screen=SCREEN_GAME;}if(r->screen==SCREEN_GAME&&game_port_session(r->port)==GAME_SESSION_PLAYING){rescue_model_tick(&r->model,1000.0/24.0);sync(r);}}
 static void frame(void *game,float seconds,const GameInput *input){
  Rescue *r=game;(void)seconds;unsigned clicked=game_port_clicked(r->port);RescueModel *m=&r->model;
+ if(r->screen==SCREEN_INTRO){if(clicked==BUTTON_PLAY||(input->down&GAME_KEY_A))r->introTicks=0;return;}
  if(r->screen==SCREEN_TITLE){if(clicked==BUTTON_EXIT){game_port_leave(r->port);return;}if(clicked==BUTTON_PLAY||(input->down&GAME_KEY_A))start(r);return;}
  if(r->screen==SCREEN_RESULTS){if(m->phase==RESCUE_DONE){if(clicked==BUTTON_NEXT||(input->down&GAME_KEY_A))next(r);}else if(m->phase==RESCUE_WON){if(clicked==BUTTON_PAY||(input->down&GAME_KEY_A))game_port_finish(r->port,rescue_model_total(m));}return;}
  if(clicked==BUTTON_EXIT){game_port_finish(r->port,rescue_model_total(m));return;}
@@ -76,6 +77,7 @@ static void touch(void *game,GameTouch phase,float x,float y){(void)game;(void)p
 static void close_game(void *game){Rescue *r=game;game_port_finish(r->port,rescue_model_total(&r->model));}
 static void draw_bottom(void *game){
  Rescue *r=game;GamePort *p=r->port;RescueModel *m=&r->model;char line[80];
+ if(r->screen==SCREEN_INTRO){game_port_title_band(p);snprintf(line,sizeof line,"%s",rescue_model_level(m)->name);game_port_text(p,160,70,14,0xffffff,GAME_ALIGN_CENTER,line);game_port_text(p,160,100,10,0xd6ecff,GAME_ALIGN_CENTER,"Collect three puffles and bring them home.");game_port_text(p,160,140,9,0xffffff,GAME_ALIGN_CENTER,"Tap Play or press A to start.");game_port_button(p,BUTTON_PLAY,90,180,140,40,"Play",true);return;}
  if(r->screen==SCREEN_TITLE){game_port_title_band(p);game_port_button(p,BUTTON_PLAY,90,197,140,36,"Play",game_port_session(p)==GAME_SESSION_PLAYING);game_port_button(p,BUTTON_EXIT,196,197,84,36,"Exit",true);return;}
  if(r->screen==SCREEN_RESULTS){snprintf(line,sizeof line,"Score %u",m->score);game_port_text(p,160,40,16,0xffffff,GAME_ALIGN_CENTER,line);if(m->phase==RESCUE_DONE){game_port_text(p,160,70,12,0xffffff,GAME_ALIGN_CENTER,"Level complete!");game_port_button(p,BUTTON_NEXT,90,110,140,42,"Next level",true);}else{game_port_text(p,160,70,12,0xffffff,GAME_ALIGN_CENTER,"All nine levels complete!");game_port_button(p,BUTTON_PAY,90,110,140,44,"Get coins",true);}return;}
  game_port_rect(p,0,0,320,28,0x003366);snprintf(line,sizeof line,"%s  Puffles %u/3  Carried %u  Moves %u",rescue_model_level(m)->name,m->rescued,m->carried,m->moves);game_port_text(p,5,8,9,0xffffff,GAME_ALIGN_LEFT,line);game_port_button(p,BUTTON_EXIT,266,2,50,20,"Exit",true);

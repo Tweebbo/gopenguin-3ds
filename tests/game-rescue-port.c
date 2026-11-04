@@ -26,6 +26,7 @@ int main(void){
  char *join[]={"949"};assert(game_port_packet(p,"jg",1,join));assert(f.join==1);assert(game_port_session(p)==GAME_SESSION_PLAYING);
  for(unsigned theme=0;theme<3;theme++){SWLInstance parts;assert(swl_instance(game_bank_scene(game_port_bank(p,theme)),"root.part39",&parts));}
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
+ tick(p,50);
  RescueModel *m=game_rescue_model(game_port_game(p));assert(m);assert(m->phase==RESCUE_PLAYING);
  bool snowball=false;for(unsigned i=0;i<m->hazardCount;i++)if(m->hazards[i].kind==1)snowball=true;assert(snowball);
  for(unsigned level=0;level<RESCUE_LEVELS;level++){
