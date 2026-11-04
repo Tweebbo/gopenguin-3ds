@@ -90,8 +90,9 @@ static void request_theme(Rescue *r,unsigned theme){
  GameResource state=game_port_require_bank(r->port,0);
  if(state==GAME_RESOURCE_READY)attach_theme(r);
 }
-static void start(Rescue *r){r->screen=SCREEN_INTRO;r->introTicks=200;r->introFrame=1;rescue_model_start(&r->model);request_theme(r,rescue_model_level(&r->model)->theme);sync_intro(r);}
-static void next(Rescue *r){rescue_model_next(&r->model);if(r->model.phase!=RESCUE_WON){r->screen=SCREEN_GAME;request_theme(r,rescue_model_level(&r->model)->theme);sync(r);}}
+static void begin_intro(Rescue *r){unsigned theme=rescue_model_level(&r->model)->theme;r->screen=SCREEN_INTRO;r->introTicks=INTRO_FRAMES[theme]*2;r->introFrame=1;}
+static void start(Rescue *r){rescue_model_start(&r->model);begin_intro(r);request_theme(r,rescue_model_level(&r->model)->theme);sync_intro(r);}
+static void next(Rescue *r){unsigned theme=rescue_model_level(&r->model)->theme;rescue_model_next(&r->model);if(r->model.phase!=RESCUE_WON){unsigned nextTheme=rescue_model_level(&r->model)->theme;request_theme(r,nextTheme);if(nextTheme!=theme){begin_intro(r);sync_intro(r);}else{r->screen=SCREEN_GAME;sync(r);}}}
 static void *create(GamePort *port){Rescue *r=calloc(1,sizeof *r);if(!r)return NULL;r->port=port;rescue_model_init(&r->model);return r;}
 static void destroy(void *game){free(game);}
 static bool ready(void *game){
@@ -103,7 +104,7 @@ static void tick(void *game){
  if(!r->themeReady){GameResource state=game_port_require_bank(r->port,0);if(state==GAME_RESOURCE_READY)attach_theme(r);else return;}
  if(r->themeScene)swl_tick_deferred(r->themeScene);
  if(r->introScene)swl_tick_deferred(r->introScene);
- if(r->screen==SCREEN_INTRO){if(!r->introTicks){r->screen=SCREEN_GAME;sync(r);return;}r->introTicks--;if(r->introTicks%2==0&&r->introFrame<INTRO_FRAMES[rescue_model_level(&r->model)->theme])r->introFrame++;sync_intro(r);return;}
+ if(r->screen==SCREEN_INTRO){if(!r->introTicks){r->screen=SCREEN_GAME;sync(r);return;}if(r->introTicks%2==0&&r->introFrame<INTRO_FRAMES[rescue_model_level(&r->model)->theme])r->introFrame++;r->introTicks--;sync_intro(r);return;}
  if(r->screen==SCREEN_GAME&&game_port_session(r->port)==GAME_SESSION_PLAYING){rescue_model_tick(&r->model,1000.0/24.0);sync(r);}
 }
 static void frame(void *game,float seconds,const GameInput *input){
