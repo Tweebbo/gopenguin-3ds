@@ -71,6 +71,8 @@ static void tick(void *game){
 }
 static void advance(Mission *m){
  if(!solved(m))return;
+ char sound[16];snprintf(sound,sizeof sound,"scene%u",current(m)->scene);
+ game_port_sound(m->port,sound,45,false);
  if(m->step+1>=m->data->stepCount){m->screen=SCREEN_DONE;return;}
  m->step++;reset_puzzle(m);
  const MissionStep *next=current(m);if(next->scene!=m->sceneIndex)request_scene(m,next->scene);

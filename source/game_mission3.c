@@ -48,6 +48,8 @@ static void tick(void *game){
 static void advance(Mission3 *m){
  const Mission3Step *step=&MISSION3_STEP_DATA[m->step];
  if(step->fuse&&m->fuses!=step->target)return;
+ char sound[16];snprintf(sound,sizeof sound,"scene%u",step->scene);
+ game_port_sound(m->port,sound,45,false);
  if(m->step+1>=MISSION3_STEPS){m->screen=SCREEN_DONE;return;}
  m->step++;
  const Mission3Step *next=&MISSION3_STEP_DATA[m->step];
