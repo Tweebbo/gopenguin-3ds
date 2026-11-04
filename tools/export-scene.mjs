@@ -256,7 +256,8 @@ try{
   return {art:result,timelines};
  },{art,timelines});
  };
- const attempts=newspaper?[[1,'rgba8888'],[1,'rgba4444']]:[...[1,.9,.8,.75].map(s=>[s,'rgba8888']),...[.9,.8,.75,.7,.65,.6,.55,.5,...(process.env.SWL_RECOVERY_SCALE==='1'?[.45,.4,.35,.3,.25]:[])].map(s=>[s,'rgba4444'])];
+ const forced=Number(process.env.SWL_FORCE_SCALE);
+ const attempts=Number.isFinite(forced)&&forced>0&&forced<=1?[[forced,'rgba4444']]:newspaper?[[1,'rgba8888'],[1,'rgba4444']]:[...[1,.9,.8,.75].map(s=>[s,'rgba8888']),...[.9,.8,.75,.7,.65,.6,.55,.5,...(process.env.SWL_RECOVERY_SCALE==='1'?[.45,.4,.35,.3,.25]:[])].map(s=>[s,'rgba4444'])];
  for(const [index,[s,format]] of attempts.entries()){
   const tiled=await tile(await scaled(s),structuredClone(sourceTimelines));
   try{pages=format==='rgba8888'?packRectangles(tiled.art):packRectangles(tiled.art,1024,512,2);}
