@@ -73,6 +73,33 @@ function rescueBank(data,theme,key,tile,parts){
  data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
  return data;
 }
+function bookBank(data,pages){
+ const frame=[];
+ pages.forEach((page,index)=>{
+  const art=(data.main.frames[page-1]??[]).find(entry=>entry.name==='art');
+  if(!art)throw Error('Missing book page art '+page);
+  const id=nextId(data);
+  data.sprites[id]={frames:[data.sprites[art.id].frames[0]],labels:{},scriptFrames:[],sounds:[],actions:{1:[['stop',null]]}};
+  frame.push({...art,id,depth:1+index,name:'page'+index,matrix:[art.matrix[0],art.matrix[1],art.matrix[2],art.matrix[3],380,240]});
+ });
+ const sprites=new Set(),characters=new Set();
+ const addCharacter=id=>{
+  if(characters.has(id)||!data.characters[id])return;
+  characters.add(id);
+  const character=data.characters[id];
+  if(character.records)for(const list of Object.values(character.records))walk(list);
+ };
+ const walk=entries=>{for(const entry of entries){const id=String(entry.id);if(data.sprites[id]){if(!sprites.has(id)){sprites.add(id);for(const child of data.sprites[id].frames)walk(child);}}else addCharacter(id);}};
+ walk(frame);
+ for(const id of Object.keys(data.sprites))if(!sprites.has(id))delete data.sprites[id];
+ for(const id of Object.keys(data.characters))if(!characters.has(id))delete data.characters[id];
+ for(const timeline of Object.values(data.sprites))for(const action of Object.values(timeline.actions??{})){
+  const lists=Array.isArray(action)?[action]:[action.commands??[]];
+  for(const list of lists)for(const command of list)if(typeof command[1]==='string'&&command[0]?.startsWith('goto')&&!(command[1] in (timeline.labels??{})))command[1]=1;
+ }
+ data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+ return data;
+}
 const games={
  'debug-fire':{code:703002,banks:{main:{pack:'games/fire/fire',artScale:.5,textureBudget:8*1024*1024,fonts:{fields:[34],chars:'0123456789?'} ,virtualAssets:cardArt?.assets,transform:data=>fireStage(data,cardArt.icons)}}},
  'debug-card':{code:703001,banks:{
@@ -277,6 +304,30 @@ const games={
    temple:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,1,'temple','tiletemple','partstemple')},
    volcanoe:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,2,'volcanoe','tilevolcanoe','partsvolcanoe')},
   },
+ },
+ book2a:{
+  code:700021,
+  banks:{main:{pack:'book2',artScale:.5,textureBudget:6*1024*1024,transform:data=>bookBank(data,[4,5,6,7,8])}},
+ },
+ book2b:{
+  code:700021,
+  banks:{main:{pack:'book2',artScale:.5,textureBudget:6*1024*1024,transform:data=>bookBank(data,[9,10,11])}},
+ },
+ book2c:{
+  code:700021,
+  banks:{main:{pack:'book2',artScale:.5,textureBudget:6*1024*1024,transform:data=>bookBank(data,[12,13])}},
+ },
+ book3a:{
+  code:700022,
+  banks:{main:{pack:'book3',artScale:.5,textureBudget:6*1024*1024,transform:data=>bookBank(data,[3,4,5])}},
+ },
+ book3b:{
+  code:700022,
+  banks:{main:{pack:'book3',artScale:.5,textureBudget:6*1024*1024,transform:data=>bookBank(data,[6,7,8])}},
+ },
+ book3c:{
+  code:700022,
+  banks:{main:{pack:'book3',artScale:.5,textureBudget:6*1024*1024,transform:data=>bookBank(data,[9,10,11,12])}},
  },
  waves:{
   code:700020,

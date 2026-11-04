@@ -16,7 +16,7 @@ int game_port_test_trace_enabled(void);
 
 #define GAME_PORT_RATE 24u
 #define GAME_PORT_BANKS 3
-#define GAME_PORT_TEXTURE_LIMIT (8u*1024u*1024u)
+#define GAME_PORT_TEXTURE_LIMIT (20u*1024u*1024u)
 
 /** Physical controls, mapped by the host from hidKeys*(). */
 enum {
