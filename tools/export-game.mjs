@@ -532,7 +532,7 @@ export function exportMovieFonts(movie,usedArt,art,nextId){
  const banks={};let offset=0;
  for(const [part,bank] of Object.entries(game.banks)){
   const suffix=part==='main'?'':'-'+part,name='game-'+key+suffix,destination=output+`/${key}${suffix}.gpk`;
-  await node(['tools/export-scene.mjs',name,bank.pack,game.clip&&part==='main'?game.clip:'root','1','--external'],bank.transform?key+':'+part:undefined,bank.textureBudget);
+  await node(['tools/export-scene.mjs',name,bank.pack,game.clip&&part==='main'?game.clip:'root','1','--external',...(process.env.SWL_BAKE_SCENE==='1'?['--bake']:[])],bank.transform?key+':'+part:undefined,bank.textureBudget);
   await packMovie(name,destination,{resource:game.code+offset,game:key+suffix});offset+=1000;
   banks[part]=path.relative(root,destination);
   for(const file of await readdir(root+'/build/scene-formats').catch(()=>[]))if(file.startsWith(`swl-${name}-`))await rm(root+'/build/scene-formats/'+file);

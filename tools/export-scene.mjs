@@ -11,7 +11,7 @@ const root=path.resolve(import.meta.dirname,'..'),web=path.resolve(process.env.G
 const positional=args.slice(2).filter(arg=>!arg.startsWith('--'));
 const name=positional[0]??'town';if(!/^[a-z][a-z0-9-]*$/.test(name))throw Error('Invalid room name');
 const igloo=args.includes('--igloo'),library=!igloo&&positional[1]!==undefined,pack=positional[1]??name,clip=positional[2]??'root',initial=Number(positional[3]??1);
-const pageOnly=args.includes('--page'),external=args.includes('--external');
+const pageOnly=args.includes('--page'),external=args.includes('--external'),bakeScene=args.includes('--bake');
 const referenceTicks=args.includes('--single-reference')?[0]:[0,1,12,24,48,96];
 const newspaper=args.includes('--newspaper');
 const roomBakeScale=Number(process.env.SWL_ROOM_BAKE_SCALE??.5);
@@ -36,7 +36,7 @@ try{
  await page.goto('http://assets.test/');await page.addScriptTag({content:bundle});
  if(shared)shared.page=page;
  }
- const data=await page.evaluate(async({name,library,pack,clip,initial,pageOnly,catalogue,igloo,newspaper,reuse,referenceTicks,roomBakeScale})=>{
+ const data=await page.evaluate(async({name,library,pack,clip,initial,pageOnly,catalogue,igloo,newspaper,reuse,referenceTicks,roomBakeScale,bakeScene})=>{
   const {Movie,Room,roomScript}=Native;let movie,news;const newsTextIds=new Set();
   if(newspaper){
    const paper=await Native.Newspaper.open({show:()=>{},close:()=>{},notice:()=>{}});movie=paper.movie;movie.muted=true;
@@ -73,7 +73,7 @@ try{
   const canvas=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
   // Resolve language labels after Room applies its original setup script.
   const states=[...movie.state].filter(([path])=>movie.find(path)).map(([path,s])=>{s=Object.fromEntries(Object.entries(s).filter(([key,v])=>v!==undefined&&!['color','matrix','text','textWidth','textHeight','textLeading'].includes(key)));if(s.button==='up')delete s.button;if(typeof s.frame==='string'){const found=movie.find(path),t=movie.data.sprites[found.entry.id];s.frame=t?.labels[s.frame]??1;}return [path,s];});
-  const timelines={0:structuredClone(movie.data.main)},art=[],seen=new Set(),rasterScales=new Map();
+  const timelines={0:structuredClone(movie.data.main)},art=[],seen=new Set(),rasterScales=new Map();let bakedArt=null;
   // Root setup is already captured as instance states; it is not an ActionScript VM.
   timelines[0].actions={};
   const visit=async id=>{
@@ -108,10 +108,20 @@ try{
   };
   // Hidden hit masks stay in the collision data, not in the visual atlas.
   timelines[0].frames=timelines[0].frames.map(f=>f.filter(e=>!['block_mc','triggers_mc'].includes(e.name)).map(e=>({...e,renderDepth:room.depthOf(e)})).sort((a,b)=>a.renderDepth-b.renderDepth));
-  for(const f of timelines[0].frames)for(const e of f)await visit(e.id);
+  if(!bakeScene)for(const f of timelines[0].frames)for(const e of f)await visit(e.id);
   const metadata=library||igloo?Native.inspectMovie(movie,seen,catalogue):null;
+  if(bakeScene){
+   const image=canvas(380,240),ctx=image.getContext('2d');ctx.scale(.5,.5);room.draw(ctx);await movie.ready();room.draw(ctx);
+   const id=1000001;
+   bakedArt={id,w:380,h:240,left:0,top:0,width:760,height:480,png:image.toDataURL()};art.length=0;art.push(bakedArt);
+   for(const key of Object.keys(timelines))if(key!=='0')delete timelines[key];
+   timelines[0].frames=[[{depth:1,renderDepth:1,id,name:'scene',matrix:[1,0,0,1,0,0]}]];
+   timelines[0].actions={1:[['stop',null]]};
+   timelines[0].scriptFrames=[];timelines[0].sounds=[];
+  }
   const warm=canvas(380,240),warmctx=warm.getContext('2d');warmctx.scale(.5,.5);room.draw(warmctx);await movie.ready();room.draw(warmctx);
   const protectedPaths=['foreground_mc',...Object.entries(script.buttons??{}).flatMap(([path,button])=>[path,...(button.hover??[]).map(h=>h.path)]),...Object.values(script.triggers??{}).flatMap(t=>t.frames?[t.frames[0]]:[])];
+  if(bakeScene)protectedPaths.push('scene');
   if(pack==='assets/missions/2/miniGame')protectedPaths.push('root#1.landscape','root#1.sled',...Array.from({length:21},(_,i)=>'root#1.seg'+(i+1)));
   const targetPath=(from,target)=>{let parts=from.match(/[^.#]+|#\d+/g)??[];for(const p of target.split('.')){if(p==='this')continue;if(p==='_parent')parts.pop();else parts.push(p);}return parts.reduce((s,p)=>s+(s&&!p.startsWith('#')?'.':'')+p,'');};
   const scanned=new Set();
@@ -208,6 +218,7 @@ try{
   const usedArt=new Set();for(const t of Object.values(optimized))for(const f of t.frames)for(const e of f)if(!optimized[e.id])usedArt.add(e.id);
   for(const id of usedArt)if(!art.some(a=>a.id===id))await raster(id);
   art.splice(0,art.length,...art.filter(a=>usedArt.has(a.id)));
+  if(bakedArt)art.splice(0,art.length,bakedArt);
   // Newspaper replacements are fixed at export time; runtime glyph alphabets would waste the page budget.
   const nativeFonts=metadata?(newspaper?{styles:[],fields:{}}:Native.exportMovieFonts(movie,usedArt,art,nextId)):null;
   const dynamicRefs=[];
@@ -224,8 +235,8 @@ try{
   const bits=mask=>{const out=new Uint8Array(760*480/8);for(let i=0;i<mask.alpha.length;i++)if(mask.alpha[i])out[i>>3]|=1<<(i&7);return Array.from(out);};
   const navigation=library?null:{room:name,name:Native.ROOM_NAMES[name],id:Native.ROOM_IDS[name],start:script.start,block:bits(room.block),triggers:room.triggers.map(t=>({...script.triggers[t.name],name:t.name,mask:bits(t.mask)})),buttons:room.buttons.map(b=>({path:b.path,...script.buttons[b.path],mask:bits(b.mask)})).map(({action,...b})=>b)};
   const details=metadata?.result();if(details){const root=igloo?movie.data.main:newspaper?movie.data.sprites[movie.find('news#1').entry.id]:movie.data.sprites[movie.data.main.frames[0][0].id];details.clip=newspaper?'news#1':clip;details.frames=root.frames.length;details.labels=root.labels??{};details.nativeFonts=nativeFonts;if(newspaper){details.newspaper=news;for(const control of details.controls){const source=movie.data.buttonActions?.[control.id]?.release??'';if(/showWindow\("News Form"\)|getURL\(/.test(source))control.commands=[{op:24}];}}if(igloo){const main=movie.data.main.actions?.[1],source=main&&!Array.isArray(main)?main.source??'':'';details.igloo={floorFrame:Number(/\bfloor_frame\s*=\s*(\d+)/.exec(source)?.[1]??1),start:script.start,block:bits(room.block)};for(const key of ['room_area','wall_area','trash_area'])details.igloo[key]=bits(new Native.StageMask(movie,key,760,480));}}
-  return {width:760,height:480,fps:movie.data.stage.frameRate,timelines:optimized,art,states,refs,dynamicRefs,baked,navigation,metadata:details,ignoredClipOutlines};
- },{name,library,pack,clip,initial,pageOnly,catalogue,igloo,newspaper,reuse:!!shared,referenceTicks,roomBakeScale});
+  return {width:760,height:480,fps:movie.data.stage.frameRate,timelines:optimized,art,states,refs,dynamicRefs,baked,navigation,metadata:details,ignoredClipOutlines,};
+ },{name,library,pack,clip,initial,pageOnly,catalogue,igloo,newspaper,reuse:!!shared,referenceTicks,roomBakeScale,bakeScene});
  if(data.metadata?.igloo){const source=await readFile(web+'/src/rooms/index.ts','utf8'),ids=Object.fromEntries([...source.split('ROOM_IDS')[1].split('};')[0].matchAll(/(\w+)\s*:\s*(\d+)/g)].map(m=>[m[1],Number(m[2])]));data.metadata.igloo.navigation=encodeNavigation(data.navigation,ids).toString('base64');}
  if(data.metadata?.igloo)for(const key of ['block','room_area','wall_area','trash_area'])data.metadata.igloo[key]=Buffer.from(data.metadata.igloo[key]).toString('base64');
  await writeFile(root+'/build/scenes/'+name+'/art-profile.json',JSON.stringify(data.art.map(({id,w,h,baked})=>({id,w,h,baked:!!baked})).sort((a,b)=>b.w*b.h-a.w*a.h),null,2)+'\n');
