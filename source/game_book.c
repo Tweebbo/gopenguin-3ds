@@ -21,13 +21,18 @@ typedef struct {
 
 const BookData *game_book_data(void *game){return ((Book *)game)->book;}
 unsigned game_book_page(void *game){return ((Book *)game)->page;}
-static const unsigned BOOK2_START[]={0,5,8},BOOK3_START[]={0,3,6};
+static const unsigned BOOK1_START[]={0,2,4},BOOK2_START[]={0,5,8},BOOK3_START[]={0,3,6};
 
 static unsigned page_bank(const Book *b,unsigned page){
  if(b->book->room==918)return page<5?0:page<8?1:2;
- return page<3?0:page<6?1:2;
+ if(b->book->room==919)return page<3?0:page<6?1:2;
+ return page<2?0:page<4?1:2;
 }
-static unsigned bank_start(const Book *b,unsigned bank){return b->book->room==918?BOOK2_START[bank]:BOOK3_START[bank];}
+static unsigned bank_start(const Book *b,unsigned bank){
+ if(b->book->room==918)return BOOK2_START[bank];
+ if(b->book->room==919)return BOOK3_START[bank];
+ return BOOK1_START[bank];
+}
 static void hide_pages(Book *b){
  char path[24];
  for(unsigned bank=0;bank<BOOK_BANKS;bank++)if(b->scene[bank])for(unsigned slot=0;slot<5;slot++){snprintf(path,sizeof path,"root.page%u",slot);swl_visible(b->scene[bank],path,false);}
@@ -41,7 +46,8 @@ static void show_page(Book *b){
 static bool bank_view(void *game,unsigned bank,SWLMatrix *local){(void)local;Book *b=game;return bank==page_bank(b,b->page);}
 static void *create(GamePort *port){
  Book *b=calloc(1,sizeof *b);if(!b)return NULL;b->port=port;
- b->book=&BOOK_DATA[strcmp(game_port_descriptor(port)->key,"book3")==0?1:0];
+ const char *key=game_port_descriptor(port)->key;
+ b->book=&BOOK_DATA[!strcmp(key,"book3")?2:!strcmp(key,"book1")?0:1];
  return b;
 }
 static void destroy(void *game){free(game);}
@@ -121,6 +127,12 @@ static void draw_bottom(void *game){
 }
 static bool packet(void *game,const char *command,unsigned count,char *const *args){(void)game;(void)command;(void)count;(void)args;return false;}
 
+const GameController GAME_BOOK1_CONTROLLER={
+ .key="book1",.kind=GAME_SOLO,.room=917,.rate=24,
+ .banks={"games/book1a.gpk","games/book1b.gpk","games/book1c.gpk"},.order={0,1,2},.backgroundRGB=0xeaeaff,
+ .create=create,.destroy=destroy,.ready=ready,.frame=frame,.tick=tick,.touch=touch,.packet=packet,
+ .close=close_game,.draw_bottom=draw_bottom,.bank_view=bank_view,
+};
 const GameController GAME_BOOK2_CONTROLLER={
  .key="book2",.kind=GAME_SOLO,.room=918,.rate=24,
  .banks={"games/book2a.gpk","games/book2b.gpk","games/book2c.gpk"},.order={0,1,2},.backgroundRGB=0xf6efdc,

@@ -4,9 +4,9 @@ import path from 'node:path';
 const root=path.resolve(import.meta.dirname,'..');
 const web=path.resolve(process.argv[2]??process.env.GOPENGUIN_WEB??root+'/../gopenguin-dev/web');
 const data=JSON.parse(await readFile(web+'/public/data/books.json','utf8'));
-const books=data.books.filter(book=>book.id==='book2'||book.id==='book3');
+const books=data.books.filter(book=>book.id==='book1'||book.id==='book2'||book.id==='book3');
 const escape=value=>value.replaceAll('\\','\\\\').replaceAll('"','\\"').replaceAll('\n','\\n');
-const lines=['#pragma once','','#define BOOK_COUNT 2','','typedef struct { const char *id,*title; unsigned room,pages; const char *const *texts; } BookData;',''];
+const lines=['#pragma once','','#define BOOK_COUNT 3','','typedef struct { const char *id,*title; unsigned room,pages; const char *const *texts; } BookData;',''];
 for(const book of books){
  lines.push(`static const char *const ${book.id.toUpperCase()}_TEXTS[] = {`);
  for(const page of book.pages)lines.push(`  "${escape(page.text)}",`);

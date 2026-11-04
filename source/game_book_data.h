@@ -1,8 +1,17 @@
 #pragma once
 
-#define BOOK_COUNT 2
+#define BOOK_COUNT 3
 
 typedef struct { const char *id,*title; unsigned room,pages; const char *const *texts; } BookData;
+
+static const char *const BOOK1_TEXTS[] = {
+  "My puffle is blue and likes to go for long walks.",
+  "It likes to go to The Dock to look for penguins wearing blue just like me.",
+  "One day when we were walking, my pet found two blue penguins with boots on their heads!",
+  "My blue puffle and I started giggling because it was so silly.",
+  "Then we both put boots on our heads and spent the rest of the day at The Dock giggling and having fun!",
+  "It was the best day at The Dock ever! The End",
+};
 
 static const char *const BOOK2_TEXTS[] = {
   "It was just another night of fun for me and my buddies hanging out at the Ice Rink. Just as I was about to score a goal, all the lights burned out! The rink turned darker than a solar eclipse on Halloween!",
@@ -31,6 +40,7 @@ static const char *const BOOK3_TEXTS[] = {
 };
 
 static const BookData BOOK_DATA[] = {
+  {"book1","My Puffle",917,6,BOOK1_TEXTS},
   {"book2","Burnt Out Bulbs",918,10,BOOK2_TEXTS},
   {"book3","Lime Green Dojo Clean",919,10,BOOK3_TEXTS},
 };

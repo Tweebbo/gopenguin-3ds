@@ -371,6 +371,18 @@ const games={
   code:700037,
   banks:{main:{pack:'q3-nightclub',artScale:.5,textureBudget:6*1024*1024,transform:data=>missionBank(data)}},
  },
+ book1a:{
+  code:700027,
+  banks:{main:{pack:'book1',artScale:.3,textureBudget:3*1024*1024,transform:data=>bookBank(data,[4,5])}},
+ },
+ book1b:{
+  code:700027,
+  banks:{main:{pack:'book1',artScale:.3,textureBudget:3*1024*1024,transform:data=>bookBank(data,[6,7])}},
+ },
+ book1c:{
+  code:700027,
+  banks:{main:{pack:'book1',artScale:.3,textureBudget:3*1024*1024,transform:data=>bookBank(data,[8,9])}},
+ },
  book2a:{
   code:700021,
   banks:{main:{pack:'book2',artScale:.5,textureBudget:6*1024*1024,transform:data=>bookBank(data,[4,5,6,7,8])}},
