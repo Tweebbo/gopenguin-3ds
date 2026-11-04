@@ -109,13 +109,13 @@ static unsigned gamePage;
 static bool missionMenu;
 static const char *gameKeys[]={"hydro","roundup","beans","cart","thinice","fish","four","mancala","sled","pizzatron"
 #ifdef GP_NINJA_GAMES
- ,"card","fire","mission1","mission2"
+ ,"card","fire","mission1","mission2","mission3","mission4","mission5","mission6","mission7","mission8","mission9","mission10","mission11"
 #endif
  ,"astro"
 };
 static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters","Cart Surfer","Thin Ice","Ice Fishing","Find Four","Mancala","Sled Racing","Pizzatron 3000"
 #ifdef GP_NINJA_GAMES
- ,"Card-Jitsu","Card-Jitsu Fire","PSA: Missing Puffles","PSA: G's Secret Mission"
+ ,"Card-Jitsu","Card-Jitsu Fire","PSA: Missing Puffles","PSA: G's Secret Mission","PSA: Case of the Missing Coins","PSA: Avalanche Rescue","PSA: Secret of the Fur","PSA: Questions for a Crab","PSA: Clockwork Repairs","PSA: Mysterious Tremors","PSA: Operation: Spy and Seek","PSA: Waddle Squad","PSA: The Veggie Villain"
 #endif
  ,"Astro Barrier"
 };
@@ -1182,6 +1182,9 @@ static GameResource game_resource(void *unused,const char *name,char *path,size_
  for(unsigned i=0;i<COUNT(missionRooms);i++){char allowed[80];snprintf(allowed,sizeof allowed,"missions/1/%s.gpk",missionRooms[i]);if(!strcmp(name,allowed)){if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;FILE *f=fopen(path,"rb");if(!f)return GAME_RESOURCE_FAILED;fclose(f);return GAME_RESOURCE_READY;}}
  static const char *mission2Rooms[]={"sportShop","mountain","hillSigns","miniGame","crashSite","clearing1","clearing2","puffles","river","outsideCave","cave","guide"};
  for(unsigned i=0;i<COUNT(mission2Rooms);i++){char allowed[80];snprintf(allowed,sizeof allowed,"missions/2/%s.gpk",mission2Rooms[i]);if(!strcmp(name,allowed)){if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;FILE *f=fopen(path,"rb");if(!f)return GAME_RESOURCE_FAILED;fclose(f);return GAME_RESOURCE_READY;}}
+ static const char *mission3Rooms[]={"vault","office","hq","roof","boiler","fusebox","nightclub"};
+ for(unsigned i=0;i<COUNT(mission3Rooms);i++){char allowed[80];snprintf(allowed,sizeof allowed,"missions/3/%s.gpk",mission3Rooms[i]);if(!strcmp(name,allowed)){if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;FILE *f=fopen(path,"rb");if(!f)return GAME_RESOURCE_FAILED;fclose(f);return GAME_RESOURCE_READY;}}
+ if(!strncmp(name,"missions/",9)&&strstr(name,".gpk")&&!strstr(name,"..")){if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;FILE *f=fopen(path,"rb");if(!f)return GAME_RESOURCE_FAILED;fclose(f);return GAME_RESOURCE_READY;}
 #ifdef GP_NINJA_GAMES
 #ifdef GP_DEBUG_GAMES
  if(!strcmp(name,"games/beans.gpk"))name="games/debug-beans.gpk";

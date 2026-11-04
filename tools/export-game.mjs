@@ -100,6 +100,26 @@ function bookBank(data,pages){
  data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
  return data;
 }
+function missionBank(data){
+ const frame=(data.main.frames[0]??[]).filter(entry=>!['screenArea','blocker_mc','dark_mc','instruc'].includes(entry.name));
+ const sprites=new Set(),characters=new Set();
+ const addCharacter=id=>{
+  if(characters.has(id)||!data.characters[id])return;
+  characters.add(id);
+  const character=data.characters[id];
+  if(character.records)for(const list of Object.values(character.records))walk(list);
+ };
+ const walk=entries=>{for(const entry of entries){const id=String(entry.id);if(data.sprites[id]){if(!sprites.has(id)){sprites.add(id);for(const child of data.sprites[id].frames)walk(child);}}else addCharacter(id);}};
+ walk(frame);
+ for(const id of Object.keys(data.sprites))if(!sprites.has(id))delete data.sprites[id];
+ for(const id of Object.keys(data.characters))if(!characters.has(id))delete data.characters[id];
+ for(const timeline of Object.values(data.sprites))for(const action of Object.values(timeline.actions??{})){
+  const lists=Array.isArray(action)?[action]:[action.commands??[]];
+  for(const list of lists)for(const command of list)if(typeof command[1]==='string'&&command[0]?.startsWith('goto')&&!(command[1] in (timeline.labels??{})))command[1]=1;
+ }
+ data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+ return data;
+}
 const games={
  'debug-fire':{code:703002,banks:{main:{pack:'games/fire/fire',artScale:.5,textureBudget:8*1024*1024,fonts:{fields:[34],chars:'0123456789?'} ,virtualAssets:cardArt?.assets,transform:data=>fireStage(data,cardArt.icons)}}},
  'debug-card':{code:703001,banks:{
@@ -305,6 +325,34 @@ const games={
    volcanoe:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,2,'volcanoe','tilevolcanoe','partsvolcanoe')},
   },
  },
+ 'psa3-vault':{
+  code:700031,
+  banks:{main:{pack:'q3-vault',artScale:.5,textureBudget:6*1024*1024,transform:data=>missionBank(data)}},
+ },
+ 'psa3-office':{
+  code:700032,
+  banks:{main:{pack:'q3-office',artScale:.5,textureBudget:6*1024*1024,transform:data=>missionBank(data)}},
+ },
+ 'psa3-hq':{
+  code:700033,
+  banks:{main:{pack:'q3-hq',artScale:.5,textureBudget:6*1024*1024,transform:data=>missionBank(data)}},
+ },
+ 'psa3-roof':{
+  code:700034,
+  banks:{main:{pack:'q3-roof',artScale:.5,textureBudget:6*1024*1024,transform:data=>missionBank(data)}},
+ },
+ 'psa3-boiler':{
+  code:700035,
+  banks:{main:{pack:'q3-boiler',artScale:.5,textureBudget:6*1024*1024,transform:data=>missionBank(data)}},
+ },
+ 'psa3-fusebox':{
+  code:700036,
+  banks:{main:{pack:'q3-fusebox',artScale:.5,textureBudget:6*1024*1024,transform:data=>missionBank(data)}},
+ },
+ 'psa3-nightclub':{
+  code:700037,
+  banks:{main:{pack:'q3-nightclub',artScale:.5,textureBudget:6*1024*1024,transform:data=>missionBank(data)}},
+ },
  book2a:{
   code:700021,
   banks:{main:{pack:'book2',artScale:.5,textureBudget:6*1024*1024,transform:data=>bookBank(data,[4,5,6,7,8])}},
@@ -400,6 +448,14 @@ const games={
 };
 
 games['debug-beans']={...games.beans,code:703003,banks:{main:games.beans.banks.main}};
+for(let mission=4;mission<=11;mission++){
+ const data=JSON.parse(await readFile(`${web}/public/data/mission${mission}.json`,'utf8'));
+ let index=0;
+ for(const [scene,info] of Object.entries(data.scenes)){
+  const pack=String(info.pack).replace(/^\/swf\//,'').replace(/\/$/,'');
+  games[`psa${mission}-${scene}`]={code:704000+mission*100+index++,banks:{main:{pack,artScale:.5,textureBudget:8*1024*1024,transform:data=>missionBank(data)}}};
+ }
+}
 
 // Preload mode: patch fs/promises.readFile for the single timelines.json of the game.
 if(process.env.GAME_EXPORT_PRELOAD){
