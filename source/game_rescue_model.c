@@ -21,6 +21,7 @@ bool rescue_model_passable(const RescueModel *m,unsigned x,unsigned y){
  if(x>=m->width||y>=m->height)return false;
  unsigned at=y*m->width+x;
  unsigned part=m->parts[at];
+ if(part==3&&m->broken[at])return false;
  if(part==7||part==8)return platform_at(m,x,y)>=0;
  if(part!=1||m->parts2[at]!=1)return true;
  return ground(rescue_model_level(m)->theme,m->map[at]);
@@ -52,7 +53,7 @@ void rescue_model_load(RescueModel *m){
  memcpy(m->parts,l->parts,(size_t)l->width*l->height);
  memcpy(m->parts2,l->parts2,(size_t)l->width*l->height);
  m->x=l->homeX;m->y=l->homeY;m->carried=0;m->rescued=0;m->moves=0;m->time=0;m->riding=-1;
- m->platformCount=m->hazardCount=0;memset(m->collected,0,sizeof m->collected);m->phase=RESCUE_PLAYING;
+ m->platformCount=m->hazardCount=0;memset(m->collected,0,sizeof m->collected);memset(m->broken,0,sizeof m->broken);memset(m->crackMs,0,sizeof m->crackMs);m->phase=RESCUE_PLAYING;
  for(unsigned y=0;y<m->height;y++)for(unsigned x=0;x<m->width;x++){
   unsigned at=y*m->width+x;unsigned part=m->parts[at];
   if((part==7||part==8)&&m->platformCount<RESCUE_PLATFORMS){RescueMover *p=&m->platforms[m->platformCount++];*p=(RescueMover){.x=(uint8_t)x,.y=(uint8_t)y,.value=(uint8_t)part,.phase=(uint8_t)((x*7+y*13)%16),.range=2};p->offset=mover_offset(p,0);}
@@ -73,13 +74,17 @@ bool rescue_model_step(RescueModel *m,int dx,int dy){
  if((dx==0)==(dy==0))return false;
  int nx=(int)m->x+dx,ny=(int)m->y+dy;if(nx<0||ny<0)return false;
  if(!rescue_model_passable(m,(unsigned)nx,(unsigned)ny))return false;
- m->x=(unsigned)nx;m->y=(unsigned)ny;m->moves++;m->riding=platform_at(m,m->x,m->y);pickup(m);deliver(m);
+ m->x=(unsigned)nx;m->y=(unsigned)ny;m->moves++;m->riding=platform_at(m,m->x,m->y);
+ if(m->parts[m->y*m->width+m->x]==3&&!m->broken[m->y*m->width+m->x])m->crackMs[m->y*m->width+m->x]=3000;
+ pickup(m);deliver(m);
  if(hazard_at(m,m->x,m->y)>=0){const RescueLevelData *l=rescue_model_level(m);m->x=l->homeX;m->y=l->homeY;m->carried=0;m->riding=-1;}
  return true;
 }
 void rescue_model_tick(RescueModel *m,double milliseconds){
  if(m->phase!=RESCUE_PLAYING)return;
- m->time+=milliseconds>0?milliseconds/1000.0:0;
+ unsigned step=milliseconds>0?(unsigned)milliseconds:0;
+ m->time+=step/1000.0;
+ for(unsigned y=0;y<m->height;y++)for(unsigned x=0;x<m->width;x++){unsigned at=y*m->width+x;if(!m->crackMs[at])continue;if(m->crackMs[at]>step)m->crackMs[at]=(uint16_t)(m->crackMs[at]-step);else{m->crackMs[at]=0;m->broken[at]=1;if(m->x==x&&m->y==y){const RescueLevelData *l=rescue_model_level(m);m->x=l->homeX;m->y=l->homeY;m->carried=0;m->riding=-1;}}}
  for(unsigned i=0;i<m->platformCount;i++){
   RescueMover *p=&m->platforms[i];int old=p->offset,next=mover_offset(p,m->time);
   if(m->riding==(int)i){int nx=(int)p->x+next;if(nx>=0&&(unsigned)nx<m->width){m->x=(unsigned)nx;m->y=p->y;}}

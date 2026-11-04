@@ -36,6 +36,7 @@ static void sync(Rescue *r){
   unsigned at=y*l->width+x,tile=m->map[at];
   if(tile!=1&&slot<96){snprintf(path,sizeof path,"root.tile%u",slot++);target(r,path,tile,(double)x*80-camX,(double)y*80-camY);}
   unsigned part=m->parts[at],part2=m->parts2[at];
+  if(part==3&&!m->broken[at])place_part(r,&partSlot,3,(double)x*80-camX,(double)y*80-camY);
   if(part>=30&&part<=38)place_part(r,&partSlot,part,(double)x*80-camX,(double)y*80-camY);
   if(part2>=30&&part2<=38)place_part(r,&partSlot,part2,(double)x*80-camX,(double)y*80-camY);
  }

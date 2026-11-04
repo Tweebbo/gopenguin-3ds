@@ -17,6 +17,8 @@ typedef struct {
  int riding;
  RescueMover platforms[RESCUE_PLATFORMS],hazards[RESCUE_HAZARDS];
  bool collected[RESCUE_PUFFLES];
+ uint8_t broken[RESCUE_MAX_W*RESCUE_MAX_H];
+ uint16_t crackMs[RESCUE_MAX_W*RESCUE_MAX_H];
  uint16_t map[RESCUE_MAX_W*RESCUE_MAX_H];
  uint8_t parts[RESCUE_MAX_W*RESCUE_MAX_H];
  uint8_t parts2[RESCUE_MAX_W*RESCUE_MAX_H];

@@ -32,6 +32,18 @@ int main(void){
   const RescueLevelData *data=rescue_model_level(m);SWLScene *scene=game_bank_scene(game_port_bank(p,data->theme));
   assert(scene);assert(render(scene)>0);
  }
+ m->level=0;rescue_model_load(m);
+ unsigned crackX=0,crackY=0;bool crackFound=false;
+ for(unsigned y=0;y<m->height&&!crackFound;y++)for(unsigned x=0;x<m->width&&!crackFound;x++)if(m->parts[y*m->width+x]==3){
+  for(int dx=-1;dx<=1&&!crackFound;dx++)for(int dy=-1;dy<=1&&!crackFound;dy++)if((dx==0)!=(dy==0)&&rescue_model_passable(m,(unsigned)((int)x+dx),(unsigned)((int)y+dy))){
+   m->x=(unsigned)((int)x+dx);m->y=(unsigned)((int)y+dy);
+   if(rescue_model_step(m,-dx,-dy)){crackX=x;crackY=y;crackFound=true;}
+  }
+ }
+ assert(crackFound);assert(m->crackMs[crackY*m->width+crackX]>0);
+ rescue_model_tick(m,3000);
+ assert(m->broken[crackY*m->width+crackX]);
+ assert(m->x==rescue_model_level(m)->homeX&&m->y==rescue_model_level(m)->homeY);
  m->level=2;rescue_model_load(m);
  assert(m->platformCount>0);
  unsigned ax=0,ay=0,frame=0;assert(rescue_model_platform_cell(m,0,&ax,&ay,&frame));
