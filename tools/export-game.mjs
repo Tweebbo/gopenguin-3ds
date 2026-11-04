@@ -430,6 +430,24 @@ const games={
   code:700017,
   banks:{main:{pack:'mixmaster',artScale:.5,textureBudget:6*1024*1024}},
  },
+ aqua1:{
+  code:700041,
+  banks:{main:{pack:'aqua-baked1',artScale:1,textureBudget:12*1024*1024}},
+ },
+ aqua2:{
+  code:700042,
+  banks:{main:{pack:'aqua-baked2',artScale:1,textureBudget:12*1024*1024}},
+ },
+ 'aqua-sub':{
+  code:700043,
+  banks:{main:{pack:'aqua-grabber',artScale:.5,textureBudget:2*1024*1024,
+   transform(data){
+    const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
+    const frame=[{id:symbol('sub'),depth:1,name:'sub',matrix:[1,0,0,1,0,0]},{id:symbol('claw'),depth:2,name:'claw',matrix:[1,0,0,1,0,-10000]}];
+    data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+    return data;
+   }}},
+ },
  jetpack:{
   code:700016,
   banks:{main:{pack:'jetpack-1-1',artScale:.5,textureBudget:6*1024*1024,transform:data=>jetpackBank(data)}},

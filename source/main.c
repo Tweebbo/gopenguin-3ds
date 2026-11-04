@@ -111,13 +111,13 @@ static const char *gameKeys[]={"hydro","roundup","beans","cart","thinice","fish"
 #ifdef GP_NINJA_GAMES
  ,"card","fire","mission1","mission2","mission3","mission4","mission5","mission6","mission7","mission8","mission9","mission10","mission11"
 #endif
- ,"astro"
+ ,"astro","aqua"
 };
 static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters","Cart Surfer","Thin Ice","Ice Fishing","Find Four","Mancala","Sled Racing","Pizzatron 3000"
 #ifdef GP_NINJA_GAMES
  ,"Card-Jitsu","Card-Jitsu Fire","PSA: Missing Puffles","PSA: G's Secret Mission","PSA: Case of the Missing Coins","PSA: Avalanche Rescue","PSA: Secret of the Fur","PSA: Questions for a Crab","PSA: Clockwork Repairs","PSA: Mysterious Tremors","PSA: Operation: Spy and Seek","PSA: Waddle Squad","PSA: The Veggie Villain"
 #endif
- ,"Astro Barrier"
+ ,"Astro Barrier","Aqua Grabber"
 };
 static IglooGeometry *iglooGeometry;
 static MovieBank *roomBank;
@@ -1200,6 +1200,9 @@ static GameResource game_resource(void *unused,const char *name,char *path,size_
   snprintf(bank,sizeof bank,"games/%s-under.gpk",gameKeys[n]);if(!strcmp(name,bank))id=702001+n;
  }
  if(!strcmp(name,"games/fish-worms.gpk"))id=702006;
+ if(!strcmp(name,"games/aqua1.gpk"))id=703201;
+ if(!strcmp(name,"games/aqua2.gpk"))id=703202;
+ if(!strcmp(name,"games/aqua-sub.gpk"))id=703203;
  if(!strcmp(name,"games/jetpack2.gpk"))id=703102;
  if(!strcmp(name,"games/jetpack3.gpk"))id=703103;
  if(!strcmp(name,"games/jetpack4.gpk"))id=703104;
