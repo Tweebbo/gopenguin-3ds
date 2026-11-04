@@ -62,7 +62,9 @@ void rescue_model_load(RescueModel *m){
  }
  if(l->theme==0&&m->hazardCount<RESCUE_HAZARDS-1){for(unsigned i=0;i<2;i++){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)(m->width/2+i*4),.y=(uint8_t)(8+i*4),.value=3,.phase=(uint8_t)(3+i*6),.range=3,.kind=1};p->offset=mover_offset(p,0);}}
  if(l->theme==1&&m->hazardCount==0&&m->hazardCount<RESCUE_HAZARDS){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)(m->width/2),.y=6,.value=4,.phase=5,.range=3,.kind=2};p->offset=mover_offset(p,0);}
- if(l->theme==2&&m->hazardCount<RESCUE_HAZARDS-1){if(m->level==6){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=14,.y=16,.value=5,.phase=7,.range=4,.kind=3};p->offset=mover_offset(p,0);}RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)(m->width-6),.y=6,.value=6,.phase=11,.range=2,.kind=4};p->offset=mover_offset(p,0);}
+ if(l->theme==2&&m->level==6&&m->hazardCount<RESCUE_HAZARDS){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=14,.y=16,.value=5,.phase=7,.range=4,.kind=3};p->offset=mover_offset(p,0);}
+ if(l->theme==0&&m->level==1&&m->hazardCount<RESCUE_HAZARDS){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=3,.y=8,.value=6,.phase=11,.range=2,.kind=4};p->offset=mover_offset(p,0);}
+ if(l->theme==0&&m->level==2&&m->hazardCount<RESCUE_HAZARDS-2){const uint8_t sx[]={2,7,12},sy[]={2,4,4};for(unsigned i=0;i<3;i++){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=sx[i],.y=sy[i],.value=6,.phase=(uint8_t)(sx[i]+sy[i]),.range=1,.kind=4};p->offset=mover_offset(p,0);}}
 }
 static void pickup(RescueModel *m){
  const RescueLevelData *l=rescue_model_level(m);
