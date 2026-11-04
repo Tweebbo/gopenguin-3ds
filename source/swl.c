@@ -47,7 +47,7 @@ static SWLColor color_multiply(SWLColor p,SWLColor c){SWLColor out;for(unsigned 
 SWLMatrix swl_matrix_multiply(SWLMatrix p,SWLMatrix q){return (SWLMatrix){p.a*q.a+p.c*q.b,p.b*q.a+p.d*q.b,p.a*q.c+p.c*q.d,p.b*q.c+p.d*q.d,p.a*q.x+p.c*q.y+p.x,p.b*q.x+p.d*q.y+p.y};}
 static bool validate(SWLScene *s){
  if(!isfinite(s->width)||!isfinite(s->height)||s->width<=0||s->height<=0||s->width>4096||s->height>4096||!isfinite(s->rate)||s->rate<=0||s->rate>120)return fail(s,"Invalid stage");
- if(!s->pages||s->pages>SWL_MAX_PAGES||(size_t)s->pages*SWL_ATLAS_WIDTH*SWL_ATLAS_HEIGHT*s->bits/8>8u*1024u*1024u||!symbol(s,TL,s->root)||!s->count[STRING]||s->table[STRING][0]||s->table[STRING][s->count[STRING]-1])return fail(s,"Invalid scene header");
+ if(!s->pages||s->pages>SWL_MAX_PAGES||(size_t)s->pages*SWL_ATLAS_WIDTH*SWL_ATLAS_HEIGHT*s->bits/8>12u*1024u*1024u||!symbol(s,TL,s->root)||!s->count[STRING]||s->table[STRING][0]||s->table[STRING][s->count[STRING]-1])return fail(s,"Invalid scene header");
  for(unsigned t=ART;t<=TL;t++)for(unsigned i=0;i<s->count[t];i++){
   const uint8_t *r=row(s,t,i);if(i&&u32(row(s,t,i-1))>=u32(r))return fail(s,"Duplicate or unsorted symbol");
   if(t==ART){unsigned x=u32(r+8),y=u32(r+12),w=u32(r+16),h=u32(r+20);if(symbol(s,TL,u32(r))||u32(r+4)>=s->pages||!w||!h||!range(x,w,SWL_ATLAS_WIDTH)||!range(y,h,SWL_ATLAS_HEIGHT))return fail(s,"Invalid atlas rectangle");for(unsigned j=24;j<40;j+=4)if(!isfinite(f32(r+j))||fabsf(f32(r+j))>1000000)return fail(s,"Invalid art bounds");if(f32(r+32)<=0||f32(r+36)<=0)return fail(s,"Empty art bounds");}

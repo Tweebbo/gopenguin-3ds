@@ -4,9 +4,9 @@ export const VERSION=2, HEADER=64;
 export const strides=[40,12,16,80,32,12,16,1];
 export const ops={stop:1,play:2,gotoAndStop:3,gotoAndPlay:4,nextFrame:5,prevFrame:6};
 // SWL_TEXTURE_BUDGET (bytes) lowers the texture budget for a bank that shares a game's 8 MiB with others.
-const texturePages=Number(process.env.SWL_TEXTURE_PAGES??8);
-if(!Number.isInteger(texturePages)||texturePages<1||texturePages>8)throw Error('Texture page limit must be an integer from 1 to 8.');
-export const limits={file:16*1024*1024,texture:Math.min(8*1024*1024,Number(process.env.SWL_TEXTURE_BUDGET)||6*1024*1024),pages:texturePages,instances:1024,depth:24};
+const texturePages=Number(process.env.SWL_TEXTURE_PAGES??10);
+if(!Number.isInteger(texturePages)||texturePages<1||texturePages>10)throw Error('Texture page limit must be an integer from 1 to 10.');
+export const limits={file:16*1024*1024,texture:Math.min(12*1024*1024,Number(process.env.SWL_TEXTURE_BUDGET)||6*1024*1024),pages:texturePages,instances:1024,depth:24};
 
 export function encodeScene({width,height,fps,root=0,pages,art,timelines,states=[],textureFormat='rgba8888'}){
  const strings=[Buffer.from([0])],offsets=new Map([['',0]]);let stringBytes=1;

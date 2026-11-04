@@ -50,7 +50,7 @@ static void play_mission(const char *key,unsigned room){
   game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
   tick(p,2);
   assert(game_mission_step(game)==step+1);
-  SWLScene *scene=game_bank_scene(game_port_bank(p,0));assert(scene);assert(render(scene)>0);
+  SWLScene *scene=game_bank_scene(game_port_bank(p,0));if(!scene)fprintf(stderr,"step %u scene %u loads %u status %s\n",step+1,data->steps[step+1].scene,f.loads,game_port_status(p));assert(scene);assert(render(scene)>0);
  }
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
  assert(f.zo==1);
@@ -63,6 +63,7 @@ static void play_mission(const char *key,unsigned room){
 
 int main(void){
  play_mission("mission4",913);
- puts("PASS PSA mission 4 native controller: nine lazy scene banks, order puzzles, one payout");
+ play_mission("mission5",914);
+ puts("PASS PSA missions 4-5 native controller: lazy scene banks, order puzzles, one payout each");
  return 0;
 }

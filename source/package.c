@@ -7,10 +7,10 @@
 static unsigned u32(const unsigned char *p){return p[0]|(unsigned)p[1]<<8|(unsigned)p[2]<<16|(unsigned)p[3]<<24;}
 bool package_open(GPPackage *p,const char *path){
  memset(p,0,sizeof *p);if(strlen(path)>=sizeof p->path)return false;FILE *file=fopen(path,"rb");if(!file)return false;
- unsigned char header[64],table[160];long bytes=0;bool ok=false;
+ unsigned char header[64],table[224];long bytes=0;bool ok=false;
  if(fseek(file,0,SEEK_END)||(bytes=ftell(file))<80||(unsigned long)bytes>GP_PACKAGE_MAX||fseek(file,0,SEEK_SET)||fread(header,1,64,file)!=64)goto done;
  bool packed=!memcmp(header,"GPK2",4);unsigned stride=packed?16:8;
- if((!packed&&memcmp(header,"GPK1",4))||u32(header+4)!=(packed?2u:1u)||u32(header+8)!=(unsigned)bytes||(p->count=u32(header+12))<2||p->count>10||!hash_file(file,header+32))goto done;
+ if((!packed&&memcmp(header,"GPK1",4))||u32(header+4)!=(packed?2u:1u)||u32(header+8)!=(unsigned)bytes||(p->count=u32(header+12))<2||p->count>13||!hash_file(file,header+32))goto done;
  if(fseek(file,64,SEEK_SET)||fread(table,stride,p->count,file)!=p->count)goto done;
  unsigned expected=64+p->count*stride,decoded=0;
  if(expected>(unsigned)bytes)goto done;

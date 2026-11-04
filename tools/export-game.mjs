@@ -453,7 +453,7 @@ for(let mission=4;mission<=11;mission++){
  let index=0;
  for(const [scene,info] of Object.entries(data.scenes)){
   const pack=String(info.pack).replace(/^\/swf\//,'').replace(/\/$/,'');
-  games[`psa${mission}-${scene}`]={code:704000+mission*100+index++,banks:{main:{pack,artScale:.5,textureBudget:8*1024*1024,transform:data=>missionBank(data)}}};
+  games[`psa${mission}-${scene}`]={code:704000+mission*100+index++,banks:{main:{pack,artScale:.5,textureBudget:12*1024*1024,transform:data=>missionBank(data)}}};
  }
 }
 
