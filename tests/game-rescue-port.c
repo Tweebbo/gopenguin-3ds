@@ -58,6 +58,8 @@ int main(void){
  assert(m->x==cx&&m->y==cy);
  m->level=3;rescue_model_load(m);bool bat=false;for(unsigned i=0;i<m->hazardCount;i++)if(m->hazards[i].kind==2)bat=true;assert(bat);
  m->level=6;rescue_model_load(m);assert(m->hazardCount>0);
+ bool kraken=false,secret=false;unsigned secretIndex=0;for(unsigned i=0;i<m->hazardCount;i++){if(m->hazards[i].kind==3)kraken=true;if(m->hazards[i].kind==4){secret=true;secretIndex=i;}}assert(kraken&&secret);
+ unsigned before=m->score,sx=0,sy=0;assert(rescue_model_hazard_cell(m,secretIndex,&sx,&sy));m->x=sx;m->y=sy;m->carried=1;rescue_model_tick(m,1);assert(m->score==before+25&&m->carried==1);
  unsigned hx=0,hy=0;assert(rescue_model_hazard_cell(m,0,&hx,&hy));
  m->x=hx;m->y=hy;m->carried=1;m->riding=-1;
  rescue_model_tick(m,1);

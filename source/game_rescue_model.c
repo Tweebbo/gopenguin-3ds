@@ -62,6 +62,7 @@ void rescue_model_load(RescueModel *m){
  }
  if(l->theme==0&&m->hazardCount<RESCUE_HAZARDS-1){for(unsigned i=0;i<2;i++){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)(m->width/2+i*4),.y=(uint8_t)(8+i*4),.value=3,.phase=(uint8_t)(3+i*6),.range=3,.kind=1};p->offset=mover_offset(p,0);}}
  if(l->theme==1&&m->hazardCount==0&&m->hazardCount<RESCUE_HAZARDS){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)(m->width/2),.y=6,.value=4,.phase=5,.range=3,.kind=2};p->offset=mover_offset(p,0);}
+ if(l->theme==2&&m->hazardCount<RESCUE_HAZARDS-1){RescueMover *p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)(m->width/2),.y=10,.value=5,.phase=7,.range=4,.kind=3};p->offset=mover_offset(p,0);p=&m->hazards[m->hazardCount++];*p=(RescueMover){.x=(uint8_t)(m->width-6),.y=6,.value=6,.phase=11,.range=2,.kind=4};p->offset=mover_offset(p,0);}
 }
 static void pickup(RescueModel *m){
  const RescueLevelData *l=rescue_model_level(m);
@@ -72,6 +73,11 @@ static void deliver(RescueModel *m){
  if(m->carried){m->rescued+=m->carried;m->score+=m->carried*50;m->carried=0;}
  if(m->rescued==3){m->score+=250;m->phase=RESCUE_DONE;}
 }
+static void hazard_touch(RescueModel *m){
+ int index=hazard_at(m,m->x,m->y);if(index<0)return;
+ if(m->hazards[index].kind==4){m->score+=25;m->hazards[index]=m->hazards[--m->hazardCount];return;}
+ const RescueLevelData *l=rescue_model_level(m);m->x=l->homeX;m->y=l->homeY;m->carried=0;m->riding=-1;
+}
 bool rescue_model_step(RescueModel *m,int dx,int dy){
  if(m->phase!=RESCUE_PLAYING)return false;
  if((dx==0)==(dy==0))return false;
@@ -80,7 +86,7 @@ bool rescue_model_step(RescueModel *m,int dx,int dy){
  m->x=(unsigned)nx;m->y=(unsigned)ny;m->moves++;m->riding=platform_at(m,m->x,m->y);
  if(m->parts[m->y*m->width+m->x]==3&&!m->broken[m->y*m->width+m->x])m->crackMs[m->y*m->width+m->x]=3000;
  pickup(m);deliver(m);
- if(hazard_at(m,m->x,m->y)>=0){const RescueLevelData *l=rescue_model_level(m);m->x=l->homeX;m->y=l->homeY;m->carried=0;m->riding=-1;}
+ hazard_touch(m);
  return true;
 }
 void rescue_model_tick(RescueModel *m,double milliseconds){
@@ -94,7 +100,7 @@ void rescue_model_tick(RescueModel *m,double milliseconds){
   p->offset=next;(void)old;
  }
  for(unsigned i=0;i<m->hazardCount;i++)m->hazards[i].offset=mover_offset(&m->hazards[i],m->time);
- if(hazard_at(m,m->x,m->y)>=0){const RescueLevelData *l=rescue_model_level(m);m->x=l->homeX;m->y=l->homeY;m->carried=0;m->riding=-1;}
+ hazard_touch(m);
  if(m->riding>=0&&platform_at(m,m->x,m->y)<0)m->riding=-1;
 }
 void rescue_model_next(RescueModel *m){

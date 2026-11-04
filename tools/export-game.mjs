@@ -71,6 +71,8 @@ function rescueBank(data,theme,key,tile,parts){
  const snowball=symbol('snowball'),bat=symbol('bat');
  for(let i=0;i<4;i++)frame.push({depth:300+i,id:snowball,name:'snowball'+i,matrix:[1,0,0,1,0,-10000]});
  for(let i=0;i<4;i++)frame.push({depth:320+i,id:bat,name:'bat'+i,matrix:[1,0,0,1,0,-10000]});
+ frame.push({depth:340,id:symbol('kraken'),name:'kraken',matrix:[1,0,0,1,0,-10000]});
+ for(let i=0;i<2;i++)frame.push({depth:342+i,id:symbol('secretcoinballoon'),name:'secret'+i,matrix:[1,0,0,1,0,-10000]});
  frame.push({depth:350,id:symbol('bg'),name:'bg',matrix:[1,0,0,1,0,0]});
  frame.push({depth:360,id:symbol('player'),name:'player',matrix:[1,0,0,1,0,-10000]});
  data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
