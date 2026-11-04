@@ -16,10 +16,11 @@ typedef struct {
  GameBank *bank;
  SWLScene *scene;
  JetpackModel model;
- bool started,thrust,left,right,down;
- unsigned screen;
+ bool started,thrust,left,right,down,sceneReady;
+ unsigned screen,loadedLevel;
  double camX,camY;
  int pad;
+ char resource[40];
 } Jetpack;
 
 JetpackModel *game_jetpack_model(void *game){return &((Jetpack *)game)->model;}
@@ -54,20 +55,35 @@ static void sync_tiles(Jetpack *j){
  swl_visible(j->scene,player,true);
 }
 
-static void load_level(Jetpack *j){sync_tiles(j);game_port_snap(j->port);}
+static void hide_scene(Jetpack *j){
+ for(unsigned i=0;i<TILE_SLOTS;i++){char path[24];snprintf(path,sizeof path,"root.tile%u",i);hide(j,path);}
+ hide(j,"root.player");
+}
+static void attach_scene(Jetpack *j){
+ j->bank=game_port_bank(j->port,0);j->scene=game_bank_scene(j->bank);j->sceneReady=j->scene!=NULL;
+ if(j->sceneReady){hide_scene(j);game_port_snap(j->port);}
+}
+static void request_level(Jetpack *j,unsigned level){
+ if(j->sceneReady&&j->loadedLevel==level)return;
+ if(j->bank)game_port_release_bank(j->port,0);
+ j->bank=NULL;j->scene=NULL;j->sceneReady=false;j->loadedLevel=level;
+ if(level==0)snprintf(j->resource,sizeof j->resource,"games/jetpack.gpk");
+ else snprintf(j->resource,sizeof j->resource,"games/jetpack%u.gpk",level+1);
+ GameResource state=game_port_require_bank(j->port,0);
+ if(state==GAME_RESOURCE_READY)attach_scene(j);
+}
+static void load_level(Jetpack *j){request_level(j,j->model.level);if(j->sceneReady){sync_tiles(j);game_port_snap(j->port);}}
 static void start(Jetpack *j){j->started=true;j->screen=SCREEN_GAME;jetpack_model_start(&j->model);load_level(j);}
 
 static void *create(GamePort *port){Jetpack *j=calloc(1,sizeof *j);if(!j)return NULL;j->port=port;jetpack_model_init(&j->model);return j;}
 static void destroy(void *game){free(game);}
 static bool ready(void *game){
- Jetpack *j=game;j->bank=game_port_bank(j->port,0);j->scene=game_bank_scene(j->bank);
- if(!j->scene)return false;
- for(unsigned i=0;i<TILE_SLOTS;i++){char path[24];snprintf(path,sizeof path,"root.tile%u",i);hide(j,path);}
- hide(j,"root.player");j->screen=SCREEN_TITLE;return true;
+ Jetpack *j=game;j->screen=SCREEN_TITLE;request_level(j,0);return true;
 }
 
 static void tick(void *game){
- Jetpack *j=game;if(!j->scene)return;
+ Jetpack *j=game;
+ if(!j->sceneReady){GameResource state=game_port_require_bank(j->port,0);if(state==GAME_RESOURCE_READY)attach_scene(j);else return;}
  swl_tick_deferred(j->scene);
  if(j->screen!=SCREEN_GAME||game_port_session(j->port)!=GAME_SESSION_PLAYING)return;
  jetpack_model_step(&j->model,j->thrust,j->left,j->right,j->down);
@@ -76,7 +92,7 @@ static void tick(void *game){
 }
 
 static void frame(void *game,float seconds,const GameInput *input){
- Jetpack *j=game;(void)seconds;if(!j->scene)return;
+ Jetpack *j=game;(void)seconds;
  unsigned clicked=game_port_clicked(j->port);
  if(j->screen==SCREEN_TITLE){
   if(clicked==BUTTON_EXIT){game_port_leave(j->port);return;}
@@ -85,8 +101,8 @@ static void frame(void *game,float seconds,const GameInput *input){
  }
  if(j->screen==SCREEN_RESULTS){
   JetpackModel *m=&j->model;
-  if(m->phase==JETPACK_DONE){if(clicked==BUTTON_NEXT||(input->down&GAME_KEY_A)){jetpack_model_next(m);if(m->phase!=JETPACK_WON){j->screen=SCREEN_GAME;load_level(j);}}}
-  else if(m->phase==JETPACK_OVER){if(clicked==BUTTON_RETRY||(input->down&GAME_KEY_A)){j->screen=SCREEN_GAME;m->phase=JETPACK_PLAYING;jetpack_model_reset(m);load_level(j);}}
+  if(m->phase==JETPACK_DONE){if(clicked==BUTTON_NEXT||(input->down&GAME_KEY_A)){jetpack_model_next(m);if(m->phase!=JETPACK_WON){j->screen=SCREEN_GAME;request_level(j,m->level);}}}
+  else if(m->phase==JETPACK_OVER){if(clicked==BUTTON_RETRY||(input->down&GAME_KEY_A)){j->screen=SCREEN_GAME;m->phase=JETPACK_PLAYING;jetpack_model_reset(m);request_level(j,m->level);}}
   else{if(clicked==BUTTON_PAY||(input->down&GAME_KEY_A))game_port_finish(j->port,jetpack_model_total(m));else if(clicked==BUTTON_LEAVE)game_port_leave(j->port);}
   return;
  }
@@ -134,10 +150,17 @@ static void draw_bottom(void *game){
  game_port_pad(p,258,196,58,40,">",j->pad>0||j->right);
 }
 static bool packet(void *game,const char *command,unsigned count,char *const *args){(void)game;(void)command;(void)count;(void)args;return false;}
+#ifdef GP_NINJA_GAMES
+static const char *bank_resource(void *game,unsigned bank){Jetpack *j=game;return bank==0?j->resource:NULL;}
+#endif
+static bool bank_view(void *game,unsigned bank,SWLMatrix *local){(void)local;Jetpack *j=game;return bank==0&&j->sceneReady;}
 
 const GameController GAME_JETPACK_CONTROLLER={
  .key="jetpack",.kind=GAME_SOLO,.room=JETPACK_ROOM,.rate=24,
- .banks={"games/jetpack.gpk"},.order={0,1,2},.backgroundRGB=0x016691,
+ .banks={"games/jetpack.gpk"},.lazy=1,.order={0,1,2},.backgroundRGB=0x016691,
+#ifdef GP_NINJA_GAMES
+ .bank_resource=bank_resource,
+#endif
  .create=create,.destroy=destroy,.ready=ready,.frame=frame,.tick=tick,.touch=touch,.packet=packet,
- .close=close_game,.draw_bottom=draw_bottom,
+ .close=close_game,.draw_bottom=draw_bottom,.bank_view=bank_view,
 };

@@ -6,8 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct {unsigned join,zo,left,coins;} Fixture;
-static GameResource resource(void *user,const char *name,char *path,size_t cap){(void)user;snprintf(path,cap,"romfs/%s",name);return GAME_RESOURCE_READY;}
+typedef struct {unsigned join,zo,left,coins,loads;char loaded[8][32];} Fixture;
+static GameResource resource(void *user,const char *name,char *path,size_t cap){Fixture *f=user;if(f->loads<8)snprintf(f->loaded[f->loads++],sizeof f->loaded[0],"%s",name);snprintf(path,cap,"romfs/%s",name);return GAME_RESOURCE_READY;}
 static bool sendp(void *user,char extension,const char *command,unsigned count,const char *const *args){
  Fixture *f=user;if(!strcmp(command,"j#jr")){assert(extension=='s'&&count==3&&!strcmp(args[0],"906"));f->join++;}
  else if(!strcmp(command,"zo")){assert(extension=='z'&&count==1);f->zo++;}else assert(false);return true;
@@ -44,6 +44,9 @@ int main(void){
   if(level+1<JETPACK_LEVELS)assert(m->level==level+1);else assert(m->phase==JETPACK_WON);
  }
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
+ assert(fixture.loads==5);
+ static const char *levels[]={"games/jetpack.gpk","games/jetpack2.gpk","games/jetpack3.gpk","games/jetpack4.gpk","games/jetpack5.gpk"};
+ for(unsigned i=0;i<5;i++)assert(!strcmp(fixture.loaded[i],levels[i]));
  assert(fixture.zo==1);
  char *reply[]={"510"};assert(game_port_packet(p,"zo",1,reply));
  assert(fixture.left==1&&fixture.coins==510);

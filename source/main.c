@@ -1200,6 +1200,10 @@ static GameResource game_resource(void *unused,const char *name,char *path,size_
   snprintf(bank,sizeof bank,"games/%s-under.gpk",gameKeys[n]);if(!strcmp(name,bank))id=702001+n;
  }
  if(!strcmp(name,"games/fish-worms.gpk"))id=702006;
+ if(!strcmp(name,"games/jetpack2.gpk"))id=703102;
+ if(!strcmp(name,"games/jetpack3.gpk"))id=703103;
+ if(!strcmp(name,"games/jetpack4.gpk"))id=703104;
+ if(!strcmp(name,"games/jetpack5.gpk"))id=703105;
  if(!id)return GAME_RESOURCE_FAILED;
  if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;
  FILE *file=fopen(path,"rb");if(file){fclose(file);return GAME_RESOURCE_READY;}
