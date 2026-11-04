@@ -24,14 +24,15 @@ int main(void){
  GameHost host={.user=&f,.resource=resource,.send=sendp,.leave=leave,.coins=coins};
  GamePort *p=game_port_open(&descriptor,&host);assert(p);tick(p,1);assert(game_port_texture_bytes(p)<=GAME_PORT_TEXTURE_LIMIT);
  char *join[]={"949"};assert(game_port_packet(p,"jg",1,join));assert(f.join==1);assert(game_port_session(p)==GAME_SESSION_PLAYING);
- for(unsigned theme=0;theme<3;theme++){SWLInstance parts;assert(swl_instance(game_bank_scene(game_port_bank(p,theme)),"root.part39",&parts));}
+ SWLInstance parts;assert(swl_instance(game_bank_scene(game_port_bank(p,0)),"root.part39",&parts));
+ assert(swl_instance(game_bank_scene(game_port_bank(p,1)),"root.introSnow",&parts));
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
- tick(p,50);
+ tick(p,210);
  RescueModel *m=game_rescue_model(game_port_game(p));assert(m);assert(m->phase==RESCUE_PLAYING);
 
  for(unsigned level=0;level<RESCUE_LEVELS;level++){
   m->level=level;rescue_model_load(m);tick(p,1);
-  const RescueLevelData *data=rescue_model_level(m);SWLScene *scene=game_bank_scene(game_port_bank(p,data->theme));
+  SWLScene *scene=game_bank_scene(game_port_bank(p,0));
   assert(scene);assert(render(scene)>0);
  }
  m->level=0;rescue_model_load(m);

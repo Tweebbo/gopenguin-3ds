@@ -331,6 +331,10 @@ const games={
    }},
   },
  },
+ 'rescue-intro':{
+  code:700044,
+  banks:{main:{pack:'rescue-intro-anim',artScale:1,textureBudget:12*1024*1024}},
+ },
  rescue:{
   code:700018,
   banks:{

@@ -7,22 +7,34 @@
 #include <string.h>
 
 #define RESCUE_ROOM 949
+#define PART_SLOTS 40
 enum {SCREEN_TITLE,SCREEN_INTRO,SCREEN_GAME,SCREEN_RESULTS};
 enum {BUTTON_PLAY=1,BUTTON_UP,BUTTON_DOWN,BUTTON_LEFT,BUTTON_RIGHT,BUTTON_NEXT,BUTTON_PAY,BUTTON_EXIT};
-typedef struct {GamePort *port;GameBank *bank[3];SWLScene *scene[3];RescueModel model;unsigned screen,introTicks;int pad;} Rescue;
+typedef struct {
+ GamePort *port;
+ GameBank *themeBank,*introBank;
+ SWLScene *themeScene,*introScene;
+ RescueModel model;
+ unsigned screen,introTicks,introFrame,loadedTheme;
+ bool themeReady;
+ int pad;
+ char resource[40];
+} Rescue;
 RescueModel *game_rescue_model(void *game){return &((Rescue *)game)->model;}
 static const char *STYLES[]={"skier","indy","jet"};
+static const char *THEME_BANKS[]={"games/rescue-snow.gpk","games/rescue-temple.gpk","games/rescue-volcanoe.gpk"};
+static const char *INTRO_NAMES[]={"introSnow","introTemple","introVolcanoe"};
+static const unsigned INTRO_FRAMES[]={26,26,27};
 
-static bool bank_view(void *game,unsigned bank,SWLMatrix *local){(void)local;Rescue *r=game;return bank==rescue_model_level(&r->model)->theme;}
-static void target(Rescue *r,const char *path,unsigned frame,double x,double y){SWLScene *s=r->scene[rescue_model_level(&r->model)->theme];swl_target(s,path,frame,NULL,false);swl_transform(s,path,(SWLMatrix){1,0,0,1,(float)x,(float)y});swl_visible(s,path,true);}
-static void hide(Rescue *r,const char *path){SWLScene *s=r->scene[rescue_model_level(&r->model)->theme];swl_visible(s,path,false);}
-#define PART_SLOTS 40
+static void target(Rescue *r,const char *path,unsigned frame,double x,double y){if(!r->themeScene)return;swl_target(r->themeScene,path,frame,NULL,false);swl_transform(r->themeScene,path,(SWLMatrix){1,0,0,1,(float)x,(float)y});swl_visible(r->themeScene,path,true);}
+static void hide(Rescue *r,const char *path){if(r->themeScene)swl_visible(r->themeScene,path,false);}
 static void place_part(Rescue *r,unsigned *slot,unsigned frame,double x,double y){
  if(*slot>=PART_SLOTS)return;
  char path[32];snprintf(path,sizeof path,"root.part%u",(*slot)++);target(r,path,frame,x,y);
 }
 static void sync(Rescue *r){
- RescueModel *m=&r->model;const RescueLevelData *l=rescue_model_level(m);unsigned theme=l->theme;SWLScene *sc=r->scene[theme];
+ RescueModel *m=&r->model;if(!r->themeReady||!r->themeScene)return;
+ const RescueLevelData *l=rescue_model_level(m);unsigned theme=l->theme;SWLScene *sc=r->themeScene;
  swl_target(sc,"root.bg",theme+1,NULL,false);swl_goto(sc,"root.player",1,STYLES[theme],false);
  double width=l->width*80.0,height=l->height*80.0;double camX=m->x*80+40-380,camY=m->y*80+40-240;
  if(camX<0)camX=0;
@@ -60,12 +72,40 @@ static void sync(Rescue *r){
  swl_transform(sc,"root.player",(SWLMatrix){1,0,0,1,(float)(m->x*80-camX),(float)(m->y*80-camY)});
  game_port_snap(r->port);
 }
-static void start(Rescue *r){r->screen=SCREEN_INTRO;r->introTicks=48;rescue_model_start(&r->model);sync(r);}
-static void next(Rescue *r){rescue_model_next(&r->model);if(r->model.phase!=RESCUE_WON){r->screen=SCREEN_GAME;sync(r);}}
+static void sync_intro(Rescue *r){
+ if(!r->introScene)return;
+ unsigned theme=rescue_model_level(&r->model)->theme;
+ for(unsigned i=0;i<3;i++){char path[32];snprintf(path,sizeof path,"root.%s",INTRO_NAMES[i]);swl_visible(r->introScene,path,i==theme);}
+ if(r->introFrame<1)r->introFrame=1;
+ unsigned frames=INTRO_FRAMES[theme];r->introFrame=r->introFrame>frames?frames:r->introFrame;
+ char path[32];snprintf(path,sizeof path,"root.%s",INTRO_NAMES[theme]);swl_target(r->introScene,path,r->introFrame,NULL,false);
+ game_port_snap(r->port);
+}
+static void attach_theme(Rescue *r){r->themeBank=game_port_bank(r->port,0);r->themeScene=game_bank_scene(r->themeBank);r->themeReady=r->themeScene!=NULL;if(r->themeReady)game_port_snap(r->port);}
+static void request_theme(Rescue *r,unsigned theme){
+ if(r->themeReady&&r->loadedTheme==theme)return;
+ if(r->themeBank)game_port_release_bank(r->port,0);
+ r->themeBank=NULL;r->themeScene=NULL;r->themeReady=false;r->loadedTheme=theme;
+ snprintf(r->resource,sizeof r->resource,"%s",THEME_BANKS[theme]);
+ GameResource state=game_port_require_bank(r->port,0);
+ if(state==GAME_RESOURCE_READY)attach_theme(r);
+}
+static void start(Rescue *r){r->screen=SCREEN_INTRO;r->introTicks=200;r->introFrame=1;rescue_model_start(&r->model);request_theme(r,rescue_model_level(&r->model)->theme);sync_intro(r);}
+static void next(Rescue *r){rescue_model_next(&r->model);if(r->model.phase!=RESCUE_WON){r->screen=SCREEN_GAME;request_theme(r,rescue_model_level(&r->model)->theme);sync(r);}}
 static void *create(GamePort *port){Rescue *r=calloc(1,sizeof *r);if(!r)return NULL;r->port=port;rescue_model_init(&r->model);return r;}
 static void destroy(void *game){free(game);}
-static bool ready(void *game){Rescue *r=game;for(unsigned i=0;i<3;i++){r->bank[i]=game_port_bank(r->port,i);r->scene[i]=game_bank_scene(r->bank[i]);if(!r->scene[i])return false;}r->screen=SCREEN_TITLE;return true;}
-static void tick(void *game){Rescue *r=game;for(unsigned i=0;i<3;i++)if(r->scene[i])swl_tick_deferred(r->scene[i]);if(r->screen==SCREEN_INTRO){if(r->introTicks){r->introTicks--;return;}r->screen=SCREEN_GAME;}if(r->screen==SCREEN_GAME&&game_port_session(r->port)==GAME_SESSION_PLAYING){rescue_model_tick(&r->model,1000.0/24.0);sync(r);}}
+static bool ready(void *game){
+ Rescue *r=game;r->introBank=game_port_bank(r->port,1);r->introScene=game_bank_scene(r->introBank);if(!r->introScene)return false;
+ r->screen=SCREEN_TITLE;request_theme(r,0);return true;
+}
+static void tick(void *game){
+ Rescue *r=game;
+ if(!r->themeReady){GameResource state=game_port_require_bank(r->port,0);if(state==GAME_RESOURCE_READY)attach_theme(r);else return;}
+ if(r->themeScene)swl_tick_deferred(r->themeScene);
+ if(r->introScene)swl_tick_deferred(r->introScene);
+ if(r->screen==SCREEN_INTRO){if(!r->introTicks){r->screen=SCREEN_GAME;sync(r);return;}r->introTicks--;if(r->introTicks%2==0&&r->introFrame<INTRO_FRAMES[rescue_model_level(&r->model)->theme])r->introFrame++;sync_intro(r);return;}
+ if(r->screen==SCREEN_GAME&&game_port_session(r->port)==GAME_SESSION_PLAYING){rescue_model_tick(&r->model,1000.0/24.0);sync(r);}
+}
 static void frame(void *game,float seconds,const GameInput *input){
  Rescue *r=game;(void)seconds;unsigned clicked=game_port_clicked(r->port);RescueModel *m=&r->model;
  if(r->screen==SCREEN_INTRO){if(clicked==BUTTON_PLAY||(input->down&GAME_KEY_A))r->introTicks=0;return;}
@@ -89,4 +129,12 @@ static void draw_bottom(void *game){
  game_port_button(p,BUTTON_RIGHT,258,196,58,40,">",false);
 }
 static bool packet(void *game,const char *command,unsigned count,char *const *args){(void)game;(void)command;(void)count;(void)args;return false;}
-const GameController GAME_RESCUE_CONTROLLER={.key="rescue",.kind=GAME_SOLO,.room=RESCUE_ROOM,.rate=24,.banks={"games/rescue-snow.gpk","games/rescue-temple.gpk","games/rescue-volcanoe.gpk"},.order={0,1,2},.backgroundRGB=0x071c33,.create=create,.destroy=destroy,.ready=ready,.frame=frame,.tick=tick,.touch=touch,.packet=packet,.close=close_game,.draw_bottom=draw_bottom,.bank_view=bank_view};
+#ifdef GP_NINJA_GAMES
+static const char *bank_resource(void *game,unsigned bank){Rescue *r=game;return bank==0?r->resource:bank==1?"games/rescue-intro.gpk":NULL;}
+#endif
+static bool bank_view(void *game,unsigned bank,SWLMatrix *local){(void)local;Rescue *r=game;return bank==0?r->themeReady:(bank==1&&r->screen==SCREEN_INTRO);}
+const GameController GAME_RESCUE_CONTROLLER={.key="rescue",.kind=GAME_SOLO,.room=RESCUE_ROOM,.rate=24,.banks={"games/rescue-snow.gpk","games/rescue-intro.gpk",NULL},.lazy=1,.order={0,1,2},.backgroundRGB=0x071c33,
+#ifdef GP_NINJA_GAMES
+ .bank_resource=bank_resource,
+#endif
+ .create=create,.destroy=destroy,.ready=ready,.frame=frame,.tick=tick,.touch=touch,.packet=packet,.close=close_game,.draw_bottom=draw_bottom,.bank_view=bank_view};
