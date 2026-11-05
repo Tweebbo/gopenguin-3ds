@@ -25,7 +25,8 @@ void card_preview_hand(GamePort *port,unsigned slot,int value,char element,char 
 bool card_preview_resource_name(const char *name){
  static const char prefix[]=GP_CARD_PREVIEW_PREFIX;
  if(!name||strncmp(name,prefix,sizeof prefix-1))return false;
- const char *start=name+sizeof prefix-1;if(*start<'1'||*start>'9')return false;
+ const char *start=name+sizeof prefix-1;if(!strcmp(start,"dojo.gpk"))return true; /* Card-Jitsu dojo + Sensei menu bank */
+ if(*start<'1'||*start>'9')return false;
  char *end;unsigned long id=strtoul(start,&end,10);if(strcmp(end,".gpk"))return false;
  for(unsigned i=0;i<CARD_ICON_COUNT;i++)if(CARD_ICON_IDS[i]==id)return true;
  return false;

@@ -62,6 +62,13 @@ TARGET := gopenguin-debug
 BUILD := obj-debug
 ROMFS := build/debug-romfs
 endif
+STABILITY_DIAGNOSTICS ?= 0
+# Private builds tag their reports; release packaging rejects the private marker.
+STABILITY_PRIVATE_BUILD ?= 0
+ifeq ($(STABILITY_DIAGNOSTICS),1)
+BUILD := $(BUILD)-stability
+TARGET := $(TARGET)-stability
+endif
 APP_TITLE := GoPenguin
 APP_DESCRIPTION := Native island client
 APP_AUTHOR := GoPenguin
@@ -72,6 +79,8 @@ endif
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 GOPENGUIN_VERSION ?= $(shell cat $(if $(TOPDIR),$(TOPDIR),$(CURDIR))/VERSION)
 CFLAGS := -g -Wall -Wextra -Werror -O2 -D__3DS__ -DGAME_THINICE_READY -DGOPENGUIN_VERSION=\"$(GOPENGUIN_VERSION)\" -mword-relocations -ffunction-sections -std=gnu11 $(ARCH) $(INCLUDE)
+CFLAGS += -DSTABILITY_DIAGNOSTICS=$(STABILITY_DIAGNOSTICS)
+CFLAGS += -DSTABILITY_PRIVATE_BUILD=$(STABILITY_PRIVATE_BUILD)
 ifeq ($(LAN_TEST),1)
 CFLAGS += -DGP_LAN_ONLY
 GP_UPDATE_TEST_URL ?= http://10.0.2.2:18891/latest.json
@@ -115,6 +124,9 @@ export OFILES += incremental.o
 export OFILES += resource_store.o
 export OFILES += frame_metrics.o
 export OFILES += frame_hacks.o mining.o book_camera.o
+ifeq ($(STABILITY_DIAGNOSTICS),1)
+export OFILES += stability_core.o stability_client.o
+endif
 ifeq ($(GPU_TEST),1)
 export OFILES := gpu_test.o swl.o swl_gpu.o swl_shader.shbin.o
 endif

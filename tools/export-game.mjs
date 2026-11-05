@@ -12,7 +12,7 @@ import {createRequire,syncBuiltinESMExports} from 'node:module';
 import {spawn} from 'node:child_process';
 import path from 'node:path';
 import {readFishArt,prepareFishArt} from './fish-art.mjs';
-import {cardAssets,cardStage,cardActors,fireStage,writeCardManifest} from './card-art.mjs';
+import {cardAssets,cardStage,cardActors,dojoStage,fireStage,writeCardManifest} from './card-art.mjs';
 
 const root=path.resolve(import.meta.dirname,'..'),web=path.resolve(process.env.GOPENGUIN_WEB??root+'/../web-server/web');
 const debugCard=['debug-card','debug-fire'].includes(process.argv[2])||/^debug-(card|fire):/.test(process.env.GAME_EXPORT_PRELOAD??'');
@@ -36,6 +36,7 @@ function hydroParts(data){
  if(!background||data.sprites[background.id])throw Error('Unexpected Hydro background');
  return {main,game,sprite,background,hazard:by('hazard'),water:by('water'),wake:by('wake'),boat:by('boat'),player:by('player'),crash:by('crash_mc')};
 }
+const booksData=JSON.parse(await readFile(web+'/public/data/books.json','utf8'));
 const beansConfig=JSON.parse(await readFile(web+'/public/data/beans.json','utf8'));
 const cartConfig=JSON.parse(await readFile(web+'/public/data/cart.json','utf8'));
 const sledData=JSON.parse(await readFile(web+'/public/data/sled.json','utf8'));
@@ -66,16 +67,23 @@ function rescueBank(data,theme,key,tile,parts){
  const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
  const frame=[];
  const tileId=symbol(tile),partId=symbol(parts);
- for(let i=0;i<96;i++)frame.push({depth:1+i,id:tileId,name:'tile'+i,matrix:[1,0,0,1,0,-10000]});
- for(let i=0;i<40;i++)frame.push({depth:200+i,id:partId,name:'part'+i,matrix:[1,0,0,1,0,-10000]});
+ // Rescue.as draws bg first, then tiles and parts: the backdrop sits below every slot.
+ frame.push({depth:1,id:symbol('bg'),name:'bg',matrix:[1,0,0,1,0,0]});
+ // 3DS dual screen: the upper screen shows a wider window (about 12x7 tiles), so more slots.
+ for(let i=0;i<144;i++)frame.push({depth:2+i,id:tileId,name:'tile'+i,matrix:[1,0,0,1,0,-10000]});
+ for(let i=0;i<64;i++)frame.push({depth:200+i,id:partId,name:'part'+i,matrix:[1,0,0,1,0,-10000]});
  const snowball=symbol('snowball'),bat=symbol('bat');
  for(let i=0;i<4;i++)frame.push({depth:300+i,id:snowball,name:'snowball'+i,matrix:[1,0,0,1,0,-10000]});
  for(let i=0;i<4;i++)frame.push({depth:320+i,id:bat,name:'bat'+i,matrix:[1,0,0,1,0,-10000]});
  frame.push({depth:340,id:symbol('kraken'),name:'kraken',matrix:[1,0,0,1,0,-10000]});
  for(let i=0;i<2;i++)frame.push({depth:342+i,id:symbol('secretcoinballoon'),name:'secret'+i,matrix:[1,0,0,1,0,-10000]});
- frame.push({depth:350,id:symbol('bg'),name:'bg',matrix:[1,0,0,1,0,0]});
  frame.push({depth:360,id:symbol('player'),name:'player',matrix:[1,0,0,1,0,-10000]});
- data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+ // Original in-game HUD (hud_display): level and score fields get names so the game can write them.
+ const hud=symbol('hud_display'),hudSprite=data.sprites[hud];
+ for(const entry of hudSprite.frames[0]){if(entry.depth===7)entry.name='stage_txt';if(entry.depth===118)entry.name='score_txt';}
+ frame.push({depth:400,id:hud,name:'hud',matrix:[1,0,0,1,0,0]});
+ // Root frame 2 is the touch-screen composition: the same slots without the HUD.
+ data.main={frames:[frame,frame.filter(entry=>entry.name!=='hud')],labels:{},actions:{1:[['stop',null]],2:[['stop',null]]},scriptFrames:[],sounds:[]};
  return data;
 }
 function bookBank(data,pages){
@@ -84,7 +92,12 @@ function bookBank(data,pages){
   const art=(data.main.frames[page-1]??[]).find(entry=>entry.name==='art');
   if(!art)throw Error('Missing book page art '+page);
   const id=nextId(data);
-  data.sprites[id]={frames:[data.sprites[art.id].frames[0]],labels:{},scriptFrames:[],sounds:[],actions:{1:[['stop',null]]}};
+  /* Paint By Letters paints the picture while the player types (books.json "paint": [letter index, art frame]).
+     Keep frame 1 and every frame a paint step reaches; other frames stay empty so frame numbers are unchanged. */
+  const source=data.sprites[art.id],book=booksData.books.find(b=>b.source?.sha256===data.source),info=book?.pages.find(p=>p.frame===page);
+  const keep=new Set([1,...(info?.paint??[]).map(([,frame])=>frame)]),last=Math.max(...keep);
+  const frames=Array.from({length:last},(_,i)=>keep.has(i+1)?source.frames[i]??[]:[]);
+  data.sprites[id]={frames,labels:{},scriptFrames:[],sounds:[],actions:Object.fromEntries(frames.map((_,i)=>[i+1,[['stop',null]]]))};
   frame.push({...art,id,depth:1+index,name:'page'+index,matrix:[art.matrix[0],art.matrix[1],art.matrix[2],art.matrix[3],380,240]});
  });
  const sprites=new Set(),characters=new Set();
@@ -104,6 +117,105 @@ function bookBank(data,pages){
  }
  data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
  return data;
+}
+/** Keeps only the timelines and characters reachable from `frame`, which becomes the bank's single root frame. */
+function bookRoot(data,frame){
+ const sprites=new Set(),characters=new Set();
+ const addCharacter=id=>{
+  if(characters.has(id)||!data.characters[id])return;
+  characters.add(id);
+  const character=data.characters[id];
+  if(character.records)for(const list of Object.values(character.records))walk(list);
+ };
+ const walk=entries=>{for(const entry of entries){const id=String(entry.id);if(data.sprites[id]){if(!sprites.has(id)){sprites.add(id);for(const child of data.sprites[id].frames)walk(child);}}else addCharacter(id);}};
+ walk(frame);
+ for(const id of Object.keys(data.sprites))if(!sprites.has(id))delete data.sprites[id];
+ for(const id of Object.keys(data.characters))if(!characters.has(id))delete data.characters[id];
+ for(const timeline of Object.values(data.sprites))for(const action of Object.values(timeline.actions??{})){
+  const lists=Array.isArray(action)?[action]:[action.commands??[]];
+  for(const list of lists)for(const command of list)if(typeof command[1]==='string'&&command[0]?.startsWith('goto')&&!(command[1] in (timeline.labels??{})))command[1]=1;
+ }
+ data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+ return unbakedTints(data);
+}
+/**
+ * Player-coloured placements (sentinel setRGB, see applyPlayerTint) must reach the runtime: the scene exporter bakes
+ * static groups with their colour transform, which froze the sentinel green into the page atlas. Each tinted
+ * placement goes through a two-frame playing wrapper, which the scene exporter never bakes; the runtime then paints
+ * it with the player's colour, as the original setRGB does.
+ */
+function unbakedTints(data){
+ const sentinel=c=>c?.mult?.[0]===0&&c.mult[1]===0&&c.mult[2]===0&&c.add?.[0]===1&&c.add[1]===254&&c.add[2]===3;
+ const wrappers=new Map();let sequence=nextId(data);
+ for(const timeline of [data.main,...Object.values(data.sprites)])for(const list of timeline.frames)for(const entry of list){
+  if(!sentinel(entry.color))continue;
+  if(data.sprites[entry.id]?.wrapped)continue;
+  let id=wrappers.get(entry.id);
+  if(id===undefined){id=sequence++;wrappers.set(entry.id,id);}
+  entry.id=id;
+ }
+ for(const [child,id] of wrappers)data.sprites[id]={frames:[[{id:child,depth:1}],[{id:child,depth:1}]],labels:{},actions:{},scriptFrames:[],sounds:[],wrapped:true};
+ return data;
+}
+const stopped=frames=>({frames,labels:{},scriptFrames:[],sounds:[],actions:Object.fromEntries(frames.map((_,i)=>[i+1,[['stop',null]]]))});
+/**
+ * Paint By Letters, one bank per page (2026-11-05 dual-screen pass). The page's original `art` clip at its original
+ * stage position, with frame 1 (the blank page) and every frame a paint step reaches (books.json paintClips: root and
+ * named child clips). Child clips that no step drives keep all their frames (their own animations). The puffle colour
+ * clip of My Puffle stops on "blue", the colour the text names. Nothing else of the spread: the book chrome is drawn
+ * over it by the cover bank (bookCoverBank "spread").
+ */
+function bookPageBank(data,page){
+ const art=(data.main.frames[page-1]??[]).find(entry=>entry.name==='art');
+ if(!art)throw Error('Missing book page art '+page);
+ const book=booksData.books.find(b=>b.source?.sha256===data.source),info=book?.pages.find(p=>p.frame===page);
+ if(!info)throw Error('Missing books.json page '+page);
+ const commands=info.paintClips??(info.paint??[]).map(([at,frame])=>[at,'',frame]);
+ const copied=new Map();let sequence=nextId(data);
+ const clone=(symbol,path,depth=0)=>{
+  const timeline=data.sprites[symbol];if(!timeline||depth>24)return symbol;
+  const key=symbol+':'+path;if(copied.has(key))return copied.get(key);
+  const id=sequence++;copied.set(key,id);data.sprites[id]={frames:[]};
+  const selected=commands.filter(([,target])=>target===path).map(([, ,frame])=>frame);
+  const colour=timeline.labels?.blue&&JSON.stringify(timeline.actions?.[1]??[]).includes('pufflecolor');
+  const keep=selected.length||path===''||colour?new Set([1,...selected,...(colour?[timeline.labels.blue]:[])]):null;
+  const last=keep?Math.max(...keep):timeline.frames.length;
+  const frames=Array.from({length:last},(_,i)=>keep&&!keep.has(i+1)?[]:(timeline.frames[i]??[]).map(entry=>{
+   const child=entry.name?(path?path+'.':'')+entry.name:(path+'#'+entry.depth);
+   return {...entry,id:clone(entry.id,child,depth+1)};
+  }));
+  let actions=timeline.actions;
+  if(path==='')actions=stopped(frames).actions;
+  else if(colour)actions={...timeline.actions,1:[['gotoAndStop','blue']]};
+  else if(selected.length)actions=Object.fromEntries(frames.map((_,i)=>[i+1,[['stop',null]]]));
+  const labels=Object.fromEntries(Object.entries(timeline.labels??{}).filter(([,frame])=>frame<=frames.length));
+  actions=Object.fromEntries(Object.entries(actions??{}).filter(([frame])=>Number(frame)<=frames.length));
+  const scriptFrames=(timeline.scriptFrames??[]).filter(frame=>frame<=frames.length),sounds=(timeline.sounds??[]).filter(sound=>!(sound?.frame>frames.length));
+  data.sprites[id]={...timeline,frames,labels,actions,scriptFrames,sounds};
+  return id;
+ };
+ return bookRoot(data,[{...art,id:clone(art.id,''),depth:1,name:'page'}]);
+}
+/**
+ * Paint By Letters cover bank: the original cover (main frame 1), the closing page (last frame) and the open-book
+ * "spread" overlay that frames every page: the cover board with the right-page window, the left page and the spine
+ * (the original bookmask layer, drawn above the page art so its bleed stays hidden, as in the original).
+ */
+function bookCoverBank(data,ending=false){
+ const frames=data.main.frames,pageFrame=frames.find(f=>f.some(e=>e.name==='art')),artIndex=pageFrame.findIndex(e=>e.name==='art');
+ const pageId=pageFrame.slice(0,artIndex).find(e=>Math.abs(e.matrix[4]-238.5)<2)?.id;
+ const spine=id=>{const c=data.characters[id];return c?.size&&Math.abs(c.size[0]-40.6)<1&&Math.abs(c.size[1]-393.8)<1;};
+ const spread=[pageFrame[artIndex+1],...pageFrame.slice(artIndex+2).filter(e=>e.id===pageId||spine(e.id))].map((e,i)=>({id:e.id,depth:1+i,matrix:e.matrix,...(e.color?{color:e.color}:{})}));
+ if(!pageId||spread.length<2)throw Error('Unexpected book spread');
+ const full=e=>{const c=data.characters[e.id];return c?.size&&c.size[0]>=760&&c.size[1]>=480;};
+ const keep=e=>e.name!=='closeBtn'&&!(data.characters[e.id]?.kind==='text')&&e.matrix[5]<480&&!full(e);
+ const holder=list=>{const id=nextId(data);data.sprites[id]=stopped([list.filter(keep).map(e=>({...e}))]);return id;};
+ if(ending)return bookRoot(data,[{id:holder(frames[frames.length-1]),depth:1,name:'ending',matrix:[1,0,0,1,0,0]}]);
+ const cover=holder(frames[0]),id=nextId(data);data.sprites[id]=stopped([spread]);
+ return bookRoot(data,[
+  {id:cover,depth:1,name:'cover',matrix:[1,0,0,1,0,0]},
+  {id,depth:2,name:'spread',matrix:[1,0,0,1,0,0]},
+ ]);
 }
 function missionBank(data){
  const frame=(data.main.frames[0]??[]).filter(entry=>!['screenArea','blocker_mc','dark_mc','instruc'].includes(entry.name));
@@ -125,11 +237,20 @@ function missionBank(data){
  data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
  return data;
 }
+export const JETPACK_HAZARD_SLOTS=12;
 function jetpackBank(data){
  const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
- const tile=symbol('tile'),player=symbol('player');
+ const tile=symbol('tile'),player=symbol('player'),hazard=symbol('hazard');
+ // Hit-area clips hide themselves at runtime (this._visible = false); drop them from the art.
+ const hidden=new Set(Object.entries(data.sprites).filter(([,s])=>Object.values(s.actions??{}).some(a=>/_visible\s*=\s*false/.test(a?.custom??''))).map(([id])=>Number(id)));
+ for(const id of [tile,hazard])for(const f of data.sprites[id].frames)for(let i=f.length-1;i>=0;i--)if(hidden.has(f[i].id))f.splice(i,1);
+ /* The player's `hit` clip is an authored collision shape (a flat oval); drop it so it does not cover the
+    penguin. The game moves and collides through the level map, not through this clip. */
+ for(const timeline of [data.main,...Object.values(data.sprites)])for(const list of timeline.frames)for(let i=list.length-1;i>=0;i--)if(list[i].name==='hit')list.splice(i,1);
  const frame=[];
+ // Terrain: the level's 480x480 hazard pieces (Jetpack.drawStage draws them over the 80x80 tiles).
  for(let i=0;i<96;i++)frame.push({depth:1+i,id:tile,name:'tile'+i,matrix:[1,0,0,1,0,-10000]});
+ for(let i=0;i<JETPACK_HAZARD_SLOTS;i++)frame.push({depth:100+i,id:hazard,name:'haz'+i,matrix:[1,0,0,1,0,-10000]});
  frame.push({depth:120,id:player,name:'player',matrix:[1,0,0,1,0,-10000]});
  data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
  return data;
@@ -137,8 +258,9 @@ function jetpackBank(data){
 const games={
  'debug-fire':{code:703002,banks:{main:{pack:'games/fire/fire',artScale:.5,textureBudget:8*1024*1024,fonts:{fields:[34],chars:'0123456789?'} ,virtualAssets:cardArt?.assets,transform:data=>fireStage(data,cardArt.icons)}}},
  'debug-card':{code:703001,banks:{
-  main:{pack:'games/card/card',artScale:.5,textureBudget:4*1024*1024,fonts:{fields:[55,75,76],chars:'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz -!?'} ,virtualAssets:cardArt?.assets,transform:data=>cardStage(data,cardArt.icons)},
+  main:{pack:'games/card/card',artScale:.5,textureBudget:4*1024*1024,fonts:{fields:[55,75,76,80],chars:'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz -!?'} ,virtualAssets:cardArt?.assets,transform:data=>cardStage(data,cardArt.icons)},
   actors:{pack:'games/card/battles/ambient',artScale:.5,textureBudget:4*1024*1024,virtualAssets:cardArt?.assets,transform:data=>cardActors(data,cardArt.walk)},
+  dojo:{pack:'games/sensei/SenseiWidget',artScale:.5,textureBudget:6*1024*1024,virtualAssets:cardArt?.assets,transform:data=>dojoStage(data,cardArt.board)},
  }},
  fish:{code:700006,banks:{main:{pack:'games/fish/IceFishing',artScale:.5,
   fonts:{fields:Object.keys(fishOriginal.editTexts).map(Number),chars:Array.from({length:95},(_,i)=>String.fromCharCode(32+i)).join('')},
@@ -338,9 +460,9 @@ const games={
  rescue:{
   code:700018,
   banks:{
-   snow:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,0,'snow','tilesnow','partssnow')},
-   temple:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,1,'temple','tiletemple','partstemple')},
-   volcanoe:{pack:'rescue',artScale:.4,textureBudget:3*1024*1024,transform:data=>rescueBank(data,2,'volcanoe','tilevolcanoe','partsvolcanoe')},
+   snow:{pack:'rescue',artScale:.4,fonts:{fields:[2199,2237],chars:'0123456789'},textureBudget:3*1024*1024,transform:data=>rescueBank(data,0,'snow','tilesnow','partssnow')},
+   temple:{pack:'rescue',artScale:.4,fonts:{fields:[2199,2237],chars:'0123456789'},textureBudget:3*1024*1024,transform:data=>rescueBank(data,1,'temple','tiletemple','partstemple')},
+   volcanoe:{pack:'rescue',artScale:.4,fonts:{fields:[2199,2237],chars:'0123456789'},textureBudget:3*1024*1024,transform:data=>rescueBank(data,2,'volcanoe','tilevolcanoe','partsvolcanoe')},
   },
  },
  'psa3-vault':{
@@ -409,22 +531,71 @@ const games={
  },
  waves:{
   code:700020,
-  banks:{main:{pack:'games/waves/CatchinWaves',artScale:.5,textureBudget:4*1024*1024,
+  // Catchin' Waves, composed like the original gameplay frame (frame 3 of CatchinWaves.swf):
+  // bg, map.water (the wave face at 58.4x), the four parallax foam layers, the crest curl,
+  // shark, player, the breaking wave and the screeninterface HUD; plus the original title sign
+  // and end-screen art. Root frame 2 holds lower-screen-only art (menu panels, red arrows, face texture).
+  banks:{main:{pack:'games/waves/CatchinWaves',artScale:.5,textureBudget:6*1024*1024,
+   fonts:{fields:[698,1610,1612,1613,1621,1623,1649,1650,1655,1658,1659,1660,1692,1694,1695,1696,1711,1713,1714,1715,1765,1767,1768,1769],chars:'0123456789'},
    transform(data){
     const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
+    let next=nextId(data);
+    // The breaking wave's 5130x655 body (sprite 1262) has 8 drawings; the first is held (budget).
+    {const body=data.sprites[1262];if(!body||body.frames.length!==8)throw Error('Unexpected wave body');const a=body.frames[0];body.frames=body.frames.map(()=>structuredClone(a));}
+    // Its lip spray (sprite 1287) and foam overlay (sprite 1331) redraw every one of their 24 frames;
+    // every sixth drawing is held for six frames (same art, 4 drawings per second) to fit the budget.
+    for(const id of [1287,1331]){const t=data.sprites[id];if(!t||t.frames.length!==24)throw Error('Unexpected wave foam '+id);t.frames=t.frames.map((_,i)=>structuredClone(t.frames[i-i%6]));}
+    const sprite=frames=>{const id=next++;data.sprites[id]={frames,labels:{},actions:Object.fromEntries(frames.map((_,i)=>[i+1,[['stop',null]]])),scriptFrames:[],sounds:[]};return id;};
+    const mul=(a,b)=>[a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3],a[0]*b[4]+a[2]*b[5]+a[4],a[1]*b[4]+a[3]*b[5]+a[5]];
+    const titleMain=data.main.frames[0].find(e=>e.name==='titlescreen');if(!titleMain)throw Error('Missing titlescreen');
+    const menuFrame=data.sprites[titleMain.id].frames[data.sprites[titleMain.id].labels.main-1];
+    // Title sign (CATCHIN' WAVES board + SELECT GAME MODE plank) for the upper menu.
+    const signIds=new Set([1457,1458,1459,1460,726,1447]),signText=new Set(['titlet','select']);
+    const sign=sprite([menuFrame.filter(e=>signIds.has(e.id)||signText.has(e.name)).map(e=>structuredClone(e))]);
+    // Mode panels for the lower menu: the title frame without its text fields, lock badges and
+    // the instructions button; the four panel buttons become their authored up-state art.
+    const panels=[];
+    const menu=sprite([menuFrame.flatMap(e=>{
+     const c=data.characters[e.id];
+     if(data.editTexts?.[e.id]||e.name==='memberLocks'||e.id===1453||signIds.has(e.id))return [];
+     if(c?.kind==='button'){const up=c.records.up;return up.map((r,i)=>({depth:e.depth*4+i,id:r.id,matrix:mul(e.matrix,r.matrix),...(i===0&&e.name?{name:e.name}:{}),...(r.color?{color:r.color}:{})}));}
+     return [{...structuredClone(e),depth:e.depth*4}];
+    })]);
+    // End screens: main frames endnormal..endcompetitionfirst without the Done button.
+    const endFrames=['endnormal','endsurvivalgood','endsurvivalbad','endcompetitionthird','endcompetitionsecond','endcompetitionfirst']
+     // 1615 is the plate under the Done button (the lower screen has the buttons).
+     .map(label=>data.main.frames[data.main.labels[label]-1].filter(e=>data.characters[e.id]?.kind!=='button'&&e.id!==1615).map(e=>structuredClone(e)));
+    const ends=sprite(endFrames);
+    const arrow=data.sprites[symbol('screeninterface')].frames[0].find(e=>e.name==='gouparrow');
+    const arrowArt=data.sprites[arrow.id].frames[1][0];
     const frame=[
      {id:1596,depth:1,name:'bg',matrix:[1,0,0,1,380,240]},
-     {id:symbol('watersurface4'),depth:2,name:'water',matrix:[1,0,0,1,380,300]},
-     {id:symbol('player'),depth:3,name:'player',matrix:[1,0,0,1,380,300]},
-     {id:symbol('shark'),depth:4,name:'shark',matrix:[1,0,0,1,380,300]},
+     {id:symbol('water'),depth:2,name:'water',matrix:[58.4,0,0,58.4,380,240]},
+     {id:symbol('wavecurl'),depth:4,name:'curl',matrix:[1,0,0,1,110,240]},
+     {id:symbol('watersurface2'),depth:5,name:'surface2',matrix:[1,0,0,1,380,742]},
+     {id:symbol('watersurface3'),depth:6,name:'surface3',matrix:[1,0,0,1,380,742]},
+     {id:symbol('watersurface4'),depth:7,name:'surface4',matrix:[1,0,0,1,380,742]},
+     {id:symbol('shark'),depth:8,name:'shark',matrix:[1,0,0,1,-300,300]},
+     {id:symbol('player'),depth:9,name:'player',matrix:[1,0,0,1,480,300]},
+     {id:symbol('wave'),depth:10,name:'wave',matrix:[1,0,0,1,-1400,240]},
+     {id:symbol('screeninterface'),depth:11,name:'hud',matrix:[1,0,0,1,0,0]},
+     {id:sign,depth:12,name:'sign',matrix:[1,0,0,1,380,240]},
+     {id:ends,depth:13,name:'ends',matrix:[1,0,0,1,0,0]},
     ];
-    data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+    // Lower-screen art (root frame 2): menu panels around (380,240); the steering pad around x 1400.
+    const lower=[
+     {id:menu,depth:1,name:'menu',matrix:[1,0,0,1,380,240]},
+     {id:symbol('water'),depth:2,name:'padwater',matrix:[40,0,0,40,1400,140]},
+     ...['up','right','down','left'].map((n,i)=>{const a=i*Math.PI/2,c=Math.cos(a),sn=Math.sin(a),off=[[0,-1],[1,0],[0,1],[-1,0]][i];
+      const base=[c,sn,-sn,c,1300+off[0]*74,240+off[1]*74];return {id:arrowArt.id,depth:3+i,name:'arrow'+n,matrix:mul(base,[1.5,0,0,1.5,arrowArt.matrix[4]*1.5,arrowArt.matrix[5]*1.5])};}),
+    ];
+    data.main={frames:[frame,lower],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
     return data;
    }}},
  },
  dance:{
   code:700019,
-  banks:{main:{pack:'dance',artScale:.35,textureBudget:6*1024*1024,
+  banks:{main:{pack:'dance',artScale:.35,textureBudget:6*1024*1024,fonts:{fields:[3046,3050],chars:'0123456789'},
    transform(data){
     const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
     const gameMC=data.main.frames[2].find(entry=>entry.name==='gameMC');
@@ -433,17 +604,26 @@ const games={
     const background=parts.find(entry=>entry.name==='background'),arrows=parts.find(entry=>entry.name==='arrows');
     if(!background||!arrows)throw Error('Missing Dance stage');
     const frame=[{...background,depth:1},{...arrows,depth:2}];
-    const names={up:'noteBaseUp',down:'noteBaseDown',left:'noteBaseLeft',right:'noteBaseRight'};
-    for(const [dir,exportName] of Object.entries(names)){
-      const source=symbol(exportName),id=nextId(data);
-      data.sprites[id]={frames:[data.sprites[source].frames[0]],labels:{},scriptFrames:[],sounds:[],actions:{1:[['stop',null]]}};
-      for(let i=0;i<8;i++)frame.push({depth:900+i,id,name:dir+'Note'+i,matrix:[1,0,0,1,0,-10000]});
+    for(const dir of ['left','down','up','right'])for(const [part,prefix] of [['Stem','noteStem'],['Tail','noteBase'],['Note','notePress']]){
+      const source=symbol(prefix+dir[0].toUpperCase()+dir.slice(1)),id=nextId(data);
+      let entries=structuredClone(data.sprites[source].frames[0]);
+      if(part==='Stem'){
+        const height=data.characters[entries[0].id].size[1];
+        entries=entries.map(entry=>{const matrix=[...(entry.matrix??[1,0,0,1,0,0])];for(const index of [1,3,5])matrix[index]/=height;return {...entry,matrix};});
+      }
+      data.sprites[id]={frames:[entries],labels:{},scriptFrames:[],sounds:[],actions:{1:[['stop',null]]}};
+      for(let i=0;i<8;i++)frame.push({depth:900+frame.length,id,name:dir+part+i,matrix:[1,0,0,1,0,-10000]});
     }
     for(const timeline of [data.main,...Object.values(data.sprites)]){
       timeline.labels={...timeline.labels,en:1,english:1};
       for(const action of Object.values(timeline.actions??{}))if(Array.isArray(action))for(const command of action)if(command.length>1&&typeof command[1]==='string'&&command[1].startsWith('_root.myGame'))command[1]=1;
     }
-    data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+    // Root frame 2: the 3DS touch-screen lane. The club backdrop without the crowd (background's first
+    // child), the original receptors and notes, and the original score/combo clip (game.score).
+    const backdrop=data.sprites[background.id].frames[0].find(entry=>entry.depth===1),score=parts.find(entry=>entry.name==='score');
+    if(!backdrop||!score)throw Error('Missing Dance backdrop or score');
+    const lower=[{...backdrop,depth:1,name:'wall'},...frame.slice(1),{...score,depth:3000,name:'score'}];
+    data.main={frames:[frame,lower],labels:{},actions:{1:[['stop',null]],2:[['stop',null]]},scriptFrames:[],sounds:[]};
     return data;
    }}},
  },
@@ -465,13 +645,41 @@ const games={
    transform(data){
     const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
     const frame=[{id:symbol('sub'),depth:1,name:'sub',matrix:[1,0,0,1,0,0]},{id:symbol('puffle'),depth:2,name:'puffle',matrix:[1,0,0,1,0,-10000]},{id:symbol('claw'),depth:3,name:'claw',matrix:[1,0,0,1,0,-10000]}];
-    data.main={frames:[frame],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+    // Frame 2 (touch screen): the same sub, puffle and claw plus the hudbar's sub (lives) and coin icons.
+    const bar=data.sprites[symbol('hudbar')],show=bar.frames[bar.labels.show-1].find(e=>e.name==='art'),art=data.sprites[show.id].frames[0][0],icons=data.sprites[art.id].frames[0];
+    // Each icon gets its own two-frame holder clip so the exporter keeps it a movable instance.
+    const icon=x=>{const e=icons.find(e=>Math.abs(e.matrix[4]-x)<4&&data.sprites[e.id]);if(!e)throw Error('Missing Aqua hudbar icon');
+     const id=nextId(data),inner=[{depth:1,id:e.id,name:'art',matrix:[1,0,0,1,0,0]}];data.sprites[id]={frames:[inner,structuredClone(inner)],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};return id;};
+    const off=[1,0,0,1,0,-10000];
+    data.main={frames:[frame,[...frame,{id:icon(241),depth:4,name:'hudsub',matrix:off},{id:icon(20),depth:5,name:'hudcoin',matrix:off}]],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
     return data;
    }}},
  },
  jetpack:{
   code:700016,
   banks:{main:{pack:'jetpack-1-1',artScale:.5,textureBudget:6*1024*1024,transform:data=>jetpackBank(data)}},
+ },
+ // Original level backdrop: JetpackAdventures' background_mc (one frame per level), drawn behind the level bank.
+ jetpackbg:{
+  code:703106,
+  banks:{main:{pack:'games/jetpack/JetpackAdventures',artScale:.5,textureBudget:4*1024*1024,transform(data){
+   const holder=data.main.frames.flat().find(e=>e.name==='background_mc');if(!holder)throw Error('Missing Jet Pack background_mc');
+   // Frame 2 is the touch-screen composition: the original interFace pieces (bar, fuelGuage with
+   // its mask, lives_mc, coin) as separately placed instances; the controller lays them out.
+   const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
+   const hud=data.sprites[symbol('interFace')].frames[0],by=test=>{const e=hud.find(test);if(!e)throw Error('Missing interFace piece');return e;};
+   const bar=by(e=>!e.name&&data.characters[e.id]?.kind==='shape'),fuel=by(e=>e.name==='fuelGuage'),lives=by(e=>e.name==='lives_mc'),coin=by(e=>!e.name&&data.sprites[e.id]&&e.id!==fuel.id&&e.id!==lives.id);
+   addressable(data,fuel.id);const mask=data.sprites[fuel.id].frames[0].find(e=>e.name==='mask');if(!mask)throw Error('Missing fuel mask');addressable(data,mask.id);addressable(data,coin.id);
+   const crisp=id=>{const walk=i=>{if(data.sprites[i]){for(const f of data.sprites[i].frames)for(const e of f)walk(e.id);}else if(data.characters[i]?.kind==='shape')data.characters[i].nativeRasterScale=1;};walk(id);};
+   for(const e of [bar,fuel,lives,coin])crisp(e.id);
+   const off=[1,0,0,1,0,-10000],title={...data.main.frames[0].find(e=>e.name==='titleScreen'),depth:6,name:'title'};if(!title.id)throw Error('Missing Jet Pack titleScreen');
+   data.main={frames:[[{depth:1,id:holder.id,name:'bg',matrix:[1,0,0,1,0,0]}],
+    [{depth:2,id:bar.id,name:'hudbar',matrix:off},{depth:3,id:fuel.id,name:'fuel',matrix:off},{depth:4,id:lives.id,name:'lives',matrix:off},{depth:5,id:coin.id,name:'coin',matrix:off}],
+    // Frame 3: the original title art (titleScreen without its Flash buttons) for the touch-screen menu.
+    [title]],
+    labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+   return data;
+  }}},
  },
  jetpack2:{
   code:700023,
@@ -496,20 +704,67 @@ const games={
    transform(data){
     // The cabinet and the game live on main frame 3 of the original timeline.
     const frame=data.main.frames[2];
-    data.main={frames:[[...frame]],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};
+    // Root frame 2: the 3DS touch-screen control panel in screen pixels (320x240): the cabinet's
+    // backdrop and its orange joystick knob (the original stage has no fire button art).
+    const backdrop=frame.find(entry=>entry.depth===1),knob=frame.find(entry=>entry.depth===131);
+    if(!backdrop||!knob)throw Error('Missing Astro backdrop or knob');
+    const panel=[{...backdrop,name:'panelBg',matrix:[.5,0,0,.5,-35,-4]},{...knob,depth:3,name:'knob',matrix:[.8,0,0,.8,80,120]}];
+    data.main={frames:[[...frame],panel],labels:{},actions:{1:[['stop',null]],2:[['stop',null]]},scriptFrames:[],sounds:[]};
     return data;
    }}},
  },
 };
 
 games['debug-beans']={...games.beans,code:703003,banks:{main:games.beans.banks.main}};
+/* Paint By Letters page banks (games/bookN-pK.gpk) and cover banks (games/bookN-cover.gpk), loaded one page at a time. */
+for(const [id,code] of [['book1',700027],['book2',700021],['book3',700022]]){
+ const book=booksData.books.find(b=>b.id===id);if(!book)continue;
+ games[id+'-cover']={code,banks:{main:{pack:id,artScale:Number(process.env.BOOK_ART_SCALE??.65),textureBudget:4*1024*1024,transform:data=>bookCoverBank(data)}}};
+ games[id+'-end']={code,banks:{main:{pack:id,artScale:Number(process.env.BOOK_ART_SCALE??.65),textureBudget:6*1024*1024,transform:data=>bookCoverBank(data,true)}}};
+ book.pages.forEach((page,index)=>{
+  games[`${id}-p${index+1}`]={code,banks:{main:{pack:id,artScale:Number(process.env.BOOK_ART_SCALE??.65),textureBudget:6*1024*1024,transform:data=>bookPageBank(data,page.frame)}}};
+ });
+}
 for(let mission=4;mission<=11;mission++){
  const data=JSON.parse(await readFile(`${web}/public/data/mission${mission}.json`,'utf8'));
  let index=0;
  for(const [scene,info] of Object.entries(data.scenes)){
   const pack=String(info.pack).replace(/^\/swf\//,'').replace(/\/$/,'');
-  games[`psa${mission}-${scene}`]={code:704000+mission*100+index++,banks:{main:{pack,artScale:.5,textureBudget:12*1024*1024,transform:data=>missionBank(data)}}};
+  games[`psa${mission}-${scene}`]={code:704000+mission*100+index++,banks:{main:{pack,artScale:Number(process.env.PSA_ART_SCALE??.5),textureBudget:12*1024*1024,transform:data=>missionBank(data)}}};
  }
+}
+
+/**
+ * Player colour. The original games paint the penguin from clip scripts (`new Color(this).setRGB(<player colour>)`)
+ * that the exported timelines do not run. web/tools/import-player-tints.py recovers those placements from the
+ * decompiled scripts into web/public/data/player-tints.json; here they get the sentinel setRGB(0x01FE03), which
+ * swl.c draws with the local player's colour (swl_player_color, set by game_port when a bank becomes ready).
+ * Applied before each bank's own transform, because transforms rebuild the main timeline. Only the games ported
+ * after v1.3.9 use it: the published games keep their hand-made tint lists (consistency with the public build).
+ */
+export const PLAYER_TINT_GAMES=new Set(['waves','dance','mixmaster','aqua-sub','jetpack','jetpack2','jetpack3','jetpack4','jetpack5','rescue','rescue-intro','book1a','book1b','book1c','book2a','book2b','book2c','book3a','book3b','book3c',...['book1','book2','book3'].flatMap(id=>[id+'-cover',id+'-end',...Array.from({length:10},(_,i)=>id+'-p'+(i+1))])]);
+const playerTints=JSON.parse(await readFile(web+'/public/data/player-tints.json','utf8').catch(()=>'{}'));
+const PLAYER_SENTINEL={mult:[0,0,0,1],add:[1,254,3,0]};
+/** Resolves a tint entry to placements [sprite, depth, character]; sprite 0 is the main timeline. */
+export function tintPlacements(data,entry){
+ const timeline=id=>id===0?data.main:data.sprites[id],out=new Map(),add=p=>out.set(p.join(':'),p);
+ for(const p of entry.placements)add(p);
+ for(const [sprite,path] of entry.paths){
+  let parents=[sprite];const names=path.split('.');
+  names.forEach((name,i)=>{const next=[];for(const parent of parents)for(const frame of timeline(parent)?.frames??[])for(const e of frame){if(e.name!==name)continue;if(i===names.length-1)add([parent,e.depth,e.id]);else next.push(e.id);}parents=[...new Set(next)];});
+ }
+ return [...out.values()];
+}
+export function applyPlayerTint(data,pack){
+ const entry=playerTints[pack];if(!entry)return 0;let count=0;
+ for(const [sprite,depth,id] of tintPlacements(data,entry))for(const frame of (sprite===0?data.main:data.sprites[sprite])?.frames??[])for(const e of frame)if(e.depth===depth&&e.id===id){e.color=structuredClone(PLAYER_SENTINEL);count++;}
+ return count;
+}
+for(const key of PLAYER_TINT_GAMES)for(const bank of Object.values(games[key]?.banks??{})){
+ if(!playerTints[bank.pack])continue;
+ /* Tint before the transform (the transform may rebuild the main timeline) and wrap what survives afterwards:
+    the scene exporter bakes static groups with their colour, which paints the sentinel green into the atlas. */
+ const own=bank.transform;bank.transform=data=>{applyPlayerTint(data,bank.pack);return unbakedTints(own?own(data):data);};
 }
 
 // Preload mode: patch fs/promises.readFile for the single timelines.json of the game.
@@ -521,7 +776,7 @@ if(process.env.GAME_EXPORT_PRELOAD){
   const virtual=typeof file==='string'&&game.virtualAssets?.get(path.resolve(file));
   if(virtual)return original.call(fsp,virtual,...rest);
   if(typeof file==='string'&&path.resolve(file)===target){
-   if(!cached){const data=game.transform(JSON.parse(await original.call(fsp,file,'utf8')));
+   if(!cached){const data=game.transform(JSON.parse(await original.call(fsp,file,'utf8')));if(process.env.BOOK_DUMP)require('node:fs').writeFileSync(process.env.BOOK_DUMP,JSON.stringify(data));
     // Script variables become SWL counters (8 per clip); keep only those a timeline loop reads.
     for(const t of [data.main,...Object.values(data.sprites)]){
      const used=new Set(Object.values(t.actions??{}).map(a=>!Array.isArray(a)&&a.loop?.counter).filter(Boolean));

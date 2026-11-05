@@ -9,6 +9,12 @@ Open **Help > Account > Updates** and choose **Prepare / resume**. Choose
 **Pause** retains preparation progress, and closing the application retains
 resumable files. Sleep suspends background work.
 
+The local 2026-11-05 candidate also offers **Use full download** and **Use smaller
+download** before starting when a compatible patch exists. Download totals include
+the selected application plus its required resource offers. This choice retains
+package validation and resource preparation. The complete CIA remains a separate
+installation alternative alongside compact resource-aware packages.
+
 When **Update ready** appears, open Updates and choose **Install now** when you
 are ready to stop playing. Installation remains a protected foreground phase.
 Keep GoPenguin open until it confirms that installation finished, then press

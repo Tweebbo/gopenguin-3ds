@@ -41,22 +41,49 @@ int main(void){
   assert(render(scene)>0);
  }
  assert(swl_view_frame(scene,"root.astroBarrier",1));
- game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
- assert(swl_frame(scene,"root.astroBarrier")==2);
- AstroModel *model=game_astro_model(game_port_game(p));assert(model);
- model->gunX=55;
- for(unsigned i=0;i<40&&model->score==0;i++)game_port_update(p,1.0f/24,&(GameInput){.down=i==0?GAME_KEY_A:0});
- assert(model->score>=10);assert(model->hits>=1);
+ AstroModel *model=game_astro_model(game_port_game(p));assert(model);assert(model->phase==ASTRO_TITLE);
+ game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});tick(p,1);
+ assert(model->phase==ASTRO_PLAYING&&model->level==1);assert(swl_frame(scene,"root.astroBarrier")==2);
+ {
+  const GameController *controller=game_port_controller(p);SWLMatrix view;SWLInstance monitor;
+  assert(controller->top_view(game_port_game(p),&view)&&swl_pose(scene,"root.astroBarrier",&monitor));
+  /* Upper: the whole cabinet monitor fits the 400x240 screen. */
+  float left=view.a*monitor.matrix.x+view.x,top=view.d*monitor.matrix.y+view.y;
+  assert(fabsf(view.a-.552f)<.001f&&left>0&&left<200&&top>-10&&top<60);
+  /* Lower: the control panel (root frame 2) drawn 1:1; joystick on the left, fire on the right. */
+  assert(controller->lower_view(game_port_game(p),&view)&&view.a==1&&view.d==1);
+  assert(controller->lower_frame&&controller->lower_frame(game_port_game(p),0)==2);
+  double oldX=model->gunX;game_port_touch(p,GAME_TOUCH_DOWN,42,100);tick(p,3);
+  assert(model->gunX<oldX&&!model->fireHeld);
+  game_port_touch(p,GAME_TOUCH_UP,42,100);game_port_touch(p,GAME_TOUCH_DOWN,236,124);tick(p,2);assert(model->fireHeld);
+  game_port_touch(p,GAME_TOUCH_UP,236,124);tick(p,1);assert(!model->fireHeld);
+  astro_model_start(model,1);tick(p,1);
+ }
+ /* Hold A: the gun follows ob0's moving wall until a shot lands (targets move every frame). */
+ for(unsigned i=0;i<2000&&model->score==0;i++){
+  double box[4];const AstroObject *ob=NULL;for(unsigned j=0;j<model->objectCount;j++)if(!strcmp(model->objects[j].data->name,"ob0"))ob=&model->objects[j];
+  assert(ob&&astro_model_wall_box(model,ob,box));double centre=(box[0]+box[2])/2;
+  unsigned held=GAME_KEY_A|(model->gunX<centre-3?GAME_KEY_RIGHT:model->gunX>centre+3?GAME_KEY_LEFT:0);
+  game_port_update(p,1.0f/24,&(GameInput){.held=held});
+  if(model->phase!=ASTRO_PLAYING)break;
+ }
+ assert(model->score>=10);assert(model->hitCounter>=1);
+ /* The clip frame drawn is the model's frame (drawing and collisions agree). */
+ for(unsigned j=0;j<model->objectCount;j++){const AstroObject *o=&model->objects[j];if(o->data->clip<0)continue;char path[64];snprintf(path,sizeof path,"root.astroBarrier.%s",o->data->name);assert(swl_frame(scene,path)==o->clipFrame);}
  unsigned score=model->score;
+ assert(swl_visible(scene,"root.astroBarrier.leveldone.score_txt",false));
  game_port_close(p);assert(fixture.zo==1&&fixture.score==score);
  char *reply[]={"510"};assert(game_port_packet(p,"zo",1,reply));
  assert(fixture.left==1&&fixture.coins==510);
  game_port_free(p);
 
  Fixture offline;GamePort *q=open_game(&offline,false);
- game_port_update(q,1.0f/24,&(GameInput){.down=GAME_KEY_A});
+ /* Level 10 start from the title's expert buttons, then the level-7 instruction screen. */
+ AstroModel *om=game_astro_model(game_port_game(q));
+ astro_model_start(om,7);tick(q,1);assert(om->phase==ASTRO_INTRO);assert(swl_frame(game_bank_scene(game_port_bank(q,0)),"root.astroBarrier")==61);
+ tick(q,12);game_port_update(q,1.0f/24,&(GameInput){.down=GAME_KEY_START});tick(q,1);assert(om->phase==ASTRO_PLAYING&&om->level==7);
  game_port_close(q);assert(offline.zo==0);tick(q,1);assert(offline.left==1);
  game_port_free(q);
- puts("PASS Astro Barrier native controller: original bank renders all 60 level frames, title to level 1, fire and hit, one zo and authoritative return, offline no payout");
+ puts("PASS Astro Barrier native controller: original bank renders all 60 level frames, title to level 1, held fire hits a moving target, drawn clip frames match the model, intro screen, one zo and authoritative return, offline no payout");
  return 0;
 }

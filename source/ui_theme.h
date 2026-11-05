@@ -26,6 +26,12 @@ void ui_header(void);
 void ui_box(float x,float y,float w,float h,uint32_t fill);
 /** Raised round button; returns whether it is drawn pressed. */
 bool ui_button(float x,float y,float w,float h,bool pressed,bool enabled);
+/** Sentinel colour a game port uses for its default lower-screen backdrop (the island sky). */
+#define UI_GAME_PANEL 0xdaf2ffu
+/** Sentinel for the dark island-night backdrop of games that draw white text. */
+#define UI_GAME_NIGHT 0x0b3f70u
+/** Lower-screen style for the current game: false = published v1.3.9 look, true = themed look (nightPanel games). */
+void ui_game_style(bool themed);
 bool ui_game_button(float x,float y,float w,float h,bool pressed,bool enabled);
 void ui_game_fill(float x,float y,float w,float h,uint32_t rgb);
 /** A minigame's lower-screen fill: the whole screen becomes a gradient of its colour, smaller fills round. */

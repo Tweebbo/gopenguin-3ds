@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(dir=build) as temporary:
     store = folder / 'objects'
     stats = json.loads(run('reuse', old, store, source))
     assert stats['ready'] and stats['copied'] == sum(map(len, contents.values()))
-    checks.append('Bridge migration copies and reads back every original resource')
+    checks.append('Bridge migration hashes and copies every original resource in one pass')
     stats = json.loads(run('reuse', old, store, source))
     assert stats['ready'] and not stats['copied'] and stats['existing'] == sum(map(len, contents.values()))
     checks.append('Repeated updates reuse immutable SD objects without rewriting them')
@@ -90,13 +90,15 @@ with tempfile.TemporaryDirectory(dir=build) as temporary:
 real = root / 'build/split-139'
 timings = []
 if real.exists() and not os.environ.get('SANITIZE'):
+    immutable = sorted((root/'build/package-igloo-bridge').glob('inputs-*/romfs'))
+    source = immutable[-1] if immutable else root/'romfs'
     with tempfile.TemporaryDirectory(dir=build) as temporary:
         start = time.monotonic()
-        stats = json.loads(run('reuse', real/'gopenguin-resources.idx', Path(temporary)/'objects', root/'romfs'))
+        stats = json.loads(run('reuse', real/'gopenguin-resources.idx', Path(temporary)/'objects', source))
         assert stats['ready'] and stats['files'] == 1275
         timings.append(dict(case='real bridge migration', seconds=time.monotonic()-start, **stats))
         start = time.monotonic()
-        again = json.loads(run('reuse', real/'gopenguin-resources.idx', Path(temporary)/'objects', root/'romfs'))
+        again = json.loads(run('reuse', real/'gopenguin-resources.idx', Path(temporary)/'objects', source))
         assert again['ready'] and not again['copied']
         timings.append(dict(case='real unchanged resource set', seconds=time.monotonic()-start, **again))
         payload = real / 'gopenguin-resources.gpb'

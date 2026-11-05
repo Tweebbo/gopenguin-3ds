@@ -135,7 +135,7 @@ static bool prepare_resources(const GPResourceOffer *offer,bool allow_full){
  if(!incremental_verify(indexPath,offer->index.sha,offer->index.bytes,&hooks)){remove(indexPath);state(GP_UPD_ERROR,"The resource list failed verification. Try again.");return false;}
  ResourceIndex *index=resource_index_load(indexPath);if(!index){state(GP_UPD_ERROR,"The resource list is not supported.");return false;}
  job_lock(&U.mutex);U.view.total=(unsigned)resource_index_bytes(index);job_unlock(&U.mutex);phase(GP_UPD_RESOURCES,U.background?"Preparing game resources in the background. You can keep playing.":"Checking and reusing installed resources on SD...");
- ResourceStats stats={0};bool ok=resource_store_reuse(index,directory,"romfs:/",&hooks,&stats);
+ ResourceStats stats={0};bool ok=U.repair?resource_store_reuse(index,directory,"romfs:/",&hooks,&stats):resource_store_reuse_cached(index,directory,"romfs:/",&hooks,&stats);
  if(ok&&!resource_store_ready(index,directory)){
   const GPUpdateArtifact *bundle=&offer->bundle;bool delta=false;
   if(!allow_full)for(unsigned n=0;n<offer->count;n++)if(!strcmp(offer->deltas[n].from,gp_update_current())){bundle=&offer->deltas[n].bundle;delta=true;break;}
@@ -149,7 +149,7 @@ static bool prepare_resources(const GPResourceOffer *offer,bool allow_full){
  }
  if(!ok&&gp_update_view().state==GP_UPD_RESOURCES)state(GP_UPD_ERROR,cancelled(NULL)?"Resource preparation stopped. Choose Install again to resume.":"Resources could not be saved. Check your SD card's free space and try again.");
  resource_index_free(index);
- if(ok){FILE *log=fopen(DATA_DIR "/last-update.log","a");if(log){fprintf(log,"resources reused=%llu copied=%llu changed=%llu files=%u\n",(unsigned long long)stats.existing,(unsigned long long)stats.copied,(unsigned long long)stats.written,stats.files);fclose(log);}if(!U.background)remove(indexPath);remove(bundlePath);}
+ if(ok){FILE *log=fopen(DATA_DIR "/last-update.log","a");if(log){fprintf(log,"resources reused=%llu copied=%llu changed=%llu verified=%llu cached=%llu files=%u\n",(unsigned long long)stats.existing,(unsigned long long)stats.copied,(unsigned long long)stats.written,(unsigned long long)stats.verified,(unsigned long long)stats.cached,stats.files);fclose(log);}if(!U.background)remove(indexPath);remove(bundlePath);}
  return ok;
 }
 static bool prepared_resources_present(void){
@@ -234,6 +234,18 @@ static bool start(bool install){
 bool gp_update_check(void){GPUpdateState s=gp_update_view().state;if(s==GP_UPD_INSTALLED||s==GP_UPD_READY||!atomic_load(&U.finished))return false;U.background=false;return start(false);}
 bool gp_update_start(void){GPUpdateView view=gp_update_view();if(!atomic_load(&U.finished)||(view.state!=GP_UPD_READY&&view.state!=GP_UPD_AVAILABLE&&!(view.state==GP_UPD_ERROR&&U.manifest.version[0])))return false;U.repair=view.resourcesOnly;U.background=false;return start(true);}
 bool gp_update_prepare(void){GPUpdateView view=gp_update_view();if(!atomic_load(&U.finished)||(view.state!=GP_UPD_AVAILABLE&&!(view.state==GP_UPD_ERROR&&U.manifest.version[0])))return false;U.repair=view.resourcesOnly;U.background=!U.repair;return start(true);}
+bool gp_update_use_full(bool full){
+ if(!U.initialized||!atomic_load(&U.finished))return false;
+ job_lock(&U.mutex);
+ bool allowed=(U.view.state==GP_UPD_AVAILABLE||U.view.state==GP_UPD_ERROR)&&U.view.small&&!U.view.resourcesOnly;
+ if(allowed){
+  const IncrementalOffer *small=U.launch[0]?&U.manifest.smallHomebrew:&U.manifest.smallCia;
+  unsigned before=U.view.fullFallback?U.view.fullBytes:small->bytes;
+  unsigned after=full?U.view.fullBytes:small->bytes;
+  U.view.downloadBytes=U.view.downloadBytes-before+after;U.view.fullFallback=full;
+ }
+ job_unlock(&U.mutex);return allowed;
+}
 bool gp_update_repair_resources(void){
  if(!U.initialized||!atomic_load(&U.finished)||gp_update_busy(gp_update_view().state))return false;
  FILE *f=fopen("romfs:/data/resource-offer.json","rb");if(!f)return false;char *text=malloc(16385);if(!text){fclose(f);return false;}size_t bytes=fread(text,1,16385,f);bool ok=!ferror(f)&&bytes<=16384&&gp_resource_offer(text,bytes,&U.manifest.resources);fclose(f);free(text);if(!ok)return false;

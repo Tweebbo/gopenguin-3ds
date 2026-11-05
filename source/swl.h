@@ -50,6 +50,8 @@ bool swl_tick_deferred(SWLScene *scene);
 bool swl_goto(SWLScene *scene,const char *path,unsigned frame,const char *label,bool playing);
 bool swl_target(SWLScene *scene,const char *path,unsigned frame,const char *label,bool playing);
 bool swl_color(SWLScene *scene,const char *path,SWLColor color);
+/** Colour (0xRRGGBB) for entries exported with the player-tint sentinel setRGB(0x01FE03). */
+void swl_player_color(SWLScene *scene,uint32_t rgb);
 bool swl_transform(SWLScene *scene,const char *path,SWLMatrix matrix);
 bool swl_instance(SWLScene *scene,const char *path,SWLInstance *instance);
 /** Current timeline geometry, including hidden clips, without rebuilding draw commands. */

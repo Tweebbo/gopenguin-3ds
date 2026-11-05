@@ -4,7 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define GAME_BUTTONS 12
+#define GAME_BUTTONS 64
+#define GAME_PORT_PANEL_RGB 0xdaf2ffu
+#define GAME_PORT_NIGHT_RGB 0x0b3f70u
+/* Port-owned buttons use ids no controller enum reaches (controllers use small ids and key bases). */
+#define GAME_PORT_RETRY_ID 0xfff1u
+#define GAME_PORT_BACK_ID 0xfff2u
 #ifdef GP_LAN_ONLY
 static int testTracing=1;
 void game_port_test_tracing(int enabled){testTracing=enabled;}
@@ -47,9 +52,10 @@ struct GamePort {
  GameDescriptor descriptor;GameHost host;
  GameBank *banks[GAME_PORT_BANKS];
  GameSessionState session;
- float clock,accumulator,requestAt;bool paused,joinSent,snap,disconnected,rejoining;
+ float clock,accumulator,requestAt;bool paused,joinSent,snap,disconnected,rejoining;float deferredAt;unsigned deferred; /* bit per lazy bank shown as "Loading..." for a frame before its blocking load */
  PayState pay;unsigned score,failedBank;
  char status[96];bool retry;
+ GameBankJob *jobs[GAME_PORT_BANKS]; /* banks loading in the background */
  Button buttons[GAME_BUTTONS],next[GAME_BUTTONS];unsigned buttonCount,nextCount,pressed,clicked;
 };
 
@@ -106,24 +112,47 @@ static GameResource load_bank(GamePort *p,unsigned i){
 #endif
  char path[256];GameResource state=p->host.resource?p->host.resource(p->host.user,name,path,sizeof path):GAME_RESOURCE_FAILED;
  if(state!=GAME_RESOURCE_READY){if(state==GAME_RESOURCE_FAILED)set_status(p,"The game resources are not available.",true);return state;}
- size_t used=game_port_texture_bytes(p);const char *error=NULL;
- p->banks[i]=game_bank_load(path,used<GAME_PORT_TEXTURE_LIMIT?GAME_PORT_TEXTURE_LIMIT-used:0,&error);
+ const char *error=NULL;
+ if(!p->jobs[i]){
+  /* One background load at a time keeps the texture limit exact. */
+  for(unsigned j=0;j<GAME_PORT_BANKS;j++)if(p->jobs[j])return GAME_RESOURCE_PENDING;
+  size_t used=game_port_texture_bytes(p);
+  p->jobs[i]=game_bank_job_start(path,used<GAME_PORT_TEXTURE_LIMIT?GAME_PORT_TEXTURE_LIMIT-used:0);
+  if(!p->jobs[i]){set_status(p,"Out of memory.",true);return GAME_RESOURCE_FAILED;}
+  p->deferredAt=p->clock;
+ }
+ if(!game_bank_job_done(p->jobs[i]))return GAME_RESOURCE_PENDING;
+ p->banks[i]=game_bank_job_finish(p->jobs[i],&error);p->jobs[i]=NULL;
  if(!p->banks[i]){set_status(p,error?error:"Could not load the game.",true);return GAME_RESOURCE_FAILED;}
+ swl_player_color(game_bank_scene(p->banks[i]),p->descriptor.colourRGB?p->descriptor.colourRGB:0x003366u);
  return GAME_RESOURCE_READY;
 }
 GameResource game_port_require_bank(GamePort *p,unsigned i){
  if(!p||i>=GAME_PORT_BANKS)return GAME_RESOURCE_FAILED;
+ p->deferred&=~(1u<<i);
  GameResource state=load_bank(p,i);if(state==GAME_RESOURCE_READY&&p->retry&&p->failedBank==i+1){set_status(p,"",false);}
  p->failedBank=state==GAME_RESOURCE_FAILED?i+1:0;return state;
 }
-void game_port_release_bank(GamePort *p,unsigned i){if(p&&i<GAME_PORT_BANKS&&p->banks[i]){game_bank_free(p->banks[i]);p->banks[i]=NULL;}}
+void game_port_release_bank(GamePort *p,unsigned i){
+ if(!p||i>=GAME_PORT_BANKS)return;
+ /* A scene switch can drop a bank that is still loading: wait for it and discard it. */
+ if(p->jobs[i]){game_bank_free(game_bank_job_finish(p->jobs[i],NULL));p->jobs[i]=NULL;}
+ if(p->banks[i]){p->deferred&=~(1u<<i);game_bank_free(p->banks[i]);p->banks[i]=NULL;}
+}
 
 static void load_banks(GamePort *p){
  for(unsigned i=0;i<GAME_PORT_BANKS;i++){
   if(!p->controller->banks[i]||(p->controller->lazy&1u<<i))continue;
+  bool fresh=!p->banks[i];
   GameResource state=load_bank(p,i);
   if(state==GAME_RESOURCE_PENDING)return;
   if(state==GAME_RESOURCE_FAILED){p->session=GAME_SESSION_FAILED;return;}
+#ifdef __3DS__
+  /* One bank per frame on the console, so the loading screen keeps drawing between multi-second bank loads. */
+  if(fresh){for(unsigned j=i+1;j<GAME_PORT_BANKS;j++)if(p->controller->banks[j]&&!(p->controller->lazy&1u<<j)&&!p->banks[j])return;}
+#else
+  (void)fresh;
+#endif
  }
  if(!p->controller->ready(p->game)){p->session=GAME_SESSION_FAILED;set_status(p,"The game resources are incomplete.",true);return;}
  if(p->descriptor.online&&p->controller->kind==GAME_SOLO){p->session=GAME_SESSION_JOINING;join(p);}else p->session=GAME_SESSION_PLAYING;
@@ -213,8 +242,8 @@ void game_port_update(GamePort *p,float seconds,const GameInput *input){
  if(p->session==GAME_SESSION_PAYING&&p->pay==PAY_SENT&&p->clock-p->requestAt>GAME_PAY_TIMEOUT&&!p->retry)
   set_status(p,"Waiting for the server to confirm your coins.",false);
  static const GameInput none={0};
- if(p->clicked==GAME_BUTTONS+1){p->clicked=0;game_port_retry(p);}
- else if(p->clicked==GAME_BUTTONS+2){p->clicked=0;game_port_leave(p);return;}
+ if(p->clicked==GAME_PORT_RETRY_ID){p->clicked=0;game_port_retry(p);}
+ else if(p->clicked==GAME_PORT_BACK_ID){p->clicked=0;game_port_leave(p);return;}
  if(p->session!=GAME_SESSION_LOADING&&p->session!=GAME_SESSION_FAILED&&p->controller->frame)p->controller->frame(p->game,seconds,p->paused?&none:input?input:&none);
  p->clicked=0;
  if(p->paused||p->session==GAME_SESSION_LOADING||p->session==GAME_SESSION_FAILED||p->session==GAME_SESSION_LEFT)return;
@@ -240,7 +269,7 @@ void game_port_close(GamePort *p){
 void game_port_free(GamePort *p){
  if(!p)return;
  if(p->game)p->controller->destroy(p->game);
- for(unsigned i=0;i<GAME_PORT_BANKS;i++)game_bank_free(p->banks[i]);
+ for(unsigned i=0;i<GAME_PORT_BANKS;i++){if(p->jobs[i])game_bank_free(game_bank_job_finish(p->jobs[i],NULL));game_bank_free(p->banks[i]);}
  free(p);
 }
 
@@ -270,11 +299,18 @@ void game_port_draw_bottom(GamePort *p){
  if(p->session==GAME_SESSION_LOADING||p->session==GAME_SESSION_FAILED||(p->session==GAME_SESSION_JOINING&&!p->retry)){
   game_port_rect(p,0,0,320,240,0x003366);
   game_port_text(p,160,96,14,0xffffff,GAME_ALIGN_CENTER,p->session==GAME_SESSION_JOINING?"Joining the game...":p->session==GAME_SESSION_FAILED?p->status:"Loading...");
-  if(p->retry)game_port_button(p,GAME_BUTTONS+1,100,140,120,36,"Try again",true);
-  game_port_button(p,GAME_BUTTONS+2,100,190,120,30,"Back",true);
+  if(p->retry)game_port_button(p,GAME_PORT_RETRY_ID,100,140,120,36,"Try again",true);
+  game_port_button(p,GAME_PORT_BACK_ID,100,190,120,30,"Back",true);
  }else{
+  /* Default backdrop (the host draws it as the island sky); controllers paint over it as needed. */
+  /* Games with a lower scene (Hydro, Roundup, Fish, Pizzatron, Cart, Beans, Thin Ice, Sled, cards, tables, PSA 1-2)
+     already drew their playfield there through game_port_draw_lower: never cover it (v1.3.9 behaviour). */
+  SWLMatrix lowerView;bool lowerScene=game_port_drawable(p)&&p->controller->lower_view&&p->controller->lower_view(p->game,&lowerView);
+  if(!lowerScene)game_port_rect(p,0,0,320,240,p->controller->nightPanel?GAME_PORT_NIGHT_RGB:GAME_PORT_PANEL_RGB);
   if(p->controller->draw_bottom)p->controller->draw_bottom(p->game);
-  if(p->status[0]){game_port_rect(p,0,196,320,44,0x003366);game_port_text(p,8,202,11,0xffffff,GAME_ALIGN_LEFT,p->status);if(p->retry)game_port_button(p,GAME_BUTTONS+1,228,204,84,30,"Try again",true);}
+  bool loading=false;for(unsigned i=0;i<GAME_PORT_BANKS;i++)if(p->jobs[i])loading=true;
+  if(loading&&p->clock-p->deferredAt>.15f){game_port_rect(p,110,104,100,32,0x003366);game_port_text(p,160,113,11,0xffffff,GAME_ALIGN_CENTER,"Loading...");}
+  if(p->status[0]){game_port_rect(p,0,196,320,44,0x003366);game_port_text(p,8,202,11,0xffffff,GAME_ALIGN_LEFT,p->status);if(p->retry)game_port_button(p,GAME_PORT_RETRY_ID,228,204,84,30,"Try again",true);}
  }
  memcpy(p->buttons,p->next,sizeof p->next);p->buttonCount=p->nextCount;
 }

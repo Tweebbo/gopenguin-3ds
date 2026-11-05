@@ -23,6 +23,33 @@ Before checking the extracted base, run `python3 tools/restore-seasonal-assets.p
 
 CIA packaging uses `node tools/package-native.mjs --release --tools /path/to/ctrtools` with makerom 0.18.4. makerom 0.19.0 has a known minor-version encoding issue.
 
+Add `--lossless` to compress the immutable packaging snapshot before making the
+CIA and 3DSX. The original prepared RomFS and its pinned profiles remain intact.
+The packer preserves a `romfs-source` copy, verifies source stability, records
+every optimized file hash and validates all embedded files in both artifacts.
+GPK2 uses the existing zlib decoder for each scene, metadata and Tex3DS part.
+PCM keeps its existing independent 8 KiB blocks, predictors and decoder. Texture
+dimensions, pixels, format, decoded sizes and PCM samples are unchanged. This
+does not lower raster density or change the 64 MB Legacy memory configuration.
+
+`tools/optimize-romfs.py --source romfs --output build/lossless-romfs --report
+build/lossless.json` stages the same transformation separately. The output must
+be a new directory. Python zlib level 9 is always available; installed
+libdeflate additionally tries level 12 on the build machine and keeps a result
+only when it is smaller. The console does not gain another codec or library.
+Compressed parts are decoded and compared before publication into the stage;
+incompressible files retain their original bytes. Optimize before constructing
+any split resource index, since container hashes and sizes change.
+
+The 2026-11-05 local stage reduced resource bytes from 378,651,450 to
+354,372,661. ASan/UBSan checks through `package.c` and `pcm_stream.c` compared
+728 optimized movie packages and 617 audio files against the originals,
+including audio rewind. This establishes lossless decoding, not physical SD
+performance. Zopfli was evaluated separately; its slower build cost was excluded
+from the default pipeline. References: [libdeflate](https://github.com/ebiggers/libdeflate),
+[Zopfli](https://github.com/google/zopfli), and
+[Tex3DS compression options](https://github.com/devkitPro/tex3ds).
+
 Update formats are described in [UPDATER.md](UPDATER.md) and [INCREMENTAL-UPDATES.md](INCREMENTAL-UPDATES.md).
 
 ## Old 3DS resource handling
@@ -42,6 +69,16 @@ Run `tests/old3ds.sh`, `tests/wear-loader.sh` and `python3 tests/check-romfs.py 
 An isolated auxiliary-core experiment can be built with `make CORE1_TEST=1 ROMFS=romfs`. It uses `sdmc:/3ds/gopenguin-core1-test`, requests 5% application time on core 1, and falls back to default affinity if unavailable. It restores the previous time limit when the worker stops. This flag is disabled in normal builds and needs physical Old 3DS testing before release. Do not infer GPU time, SD latency or hardware frame pacing from emulator CPU measurements.
 
 `Help > Graphics > Hide other penguins` skips other players' room avatars, names, minimap markers and clothing requests. The local penguin and Captain Rockhopper remain visible. Messages, emotes, chat history, the player list and network updates remain active. The `hideOtherPenguins` setting defaults to false, including when loading older settings files, and persists on SD. Enabling it requests an unwanted-clothing trim; GPU textures are released by the next `wear_update()` inside the frame, preserving resources still requested by the local penguin, guides and room furniture. Disabling it resumes ordinary avatar rendering and clothing loading. Battery saver is also available in the Graphics page.
+
+### 3DS power profiles (local candidate, 2026-11-05)
+
+`source/power_profile.h` selects and applies the runtime profile. Old 3DS remains at 30 FPS and its normal CPU clock. New 3DS normal mode requests 804 MHz plus L2 and up to 60 FPS during activity. After two quiet seconds it requests the normal clock plus L2 and 30 FPS. Battery saver keeps that latter profile during gameplay too. Input immediately restores the active normal profile. The blocking updater uses 10 FPS and respects the selected CPU policy. Simulation continues using elapsed time; texture formats, texture budgets and Old 3DS memory mode are unchanged.
+
+CIA service access includes `ptm:sysm`. The application checks the result of `PTMSYSM_ConfigureNew3DSCPU`; a failure is visible in Graphics rather than silently presenting CPU savings as successful. PTM flags 2 select normal clock with L2; flags 3 select high clock with L2. Cached profiles avoid CPU IPC every frame, and wake invalidates the cache because libctru reapplies its saved speedup configuration during resume. Asset workers pause during suspend; update throttling receives the effective low-clock profile, including automatic idle saving, so 30 FPS does not indefinitely defer background transfers.
+
+Primary references: [PTMSYSM CPU flags](https://github.com/devkitPro/libctru/blob/master/libctru/include/3ds/services/ptmsysm.h), [libctru speedup implementation](https://github.com/devkitPro/libctru/blob/master/libctru/source/os.c), [APT resume](https://github.com/devkitPro/libctru/blob/master/libctru/source/services/apt.c), and [Citro3D frame synchronization](https://github.com/devkitPro/citro3d/blob/master/source/renderqueue.c).
+
+`tests/power-profile.c` exercises the real header with SDK call stubs under ASan/UBSan: Old/New, saver on/off, idle/input transitions, foreground updates, normal-clock L2, cached calls, resume, PTM errors and timer resets. Offline Azahar Astro probes measured approximately 60 FPS for New normal, 30 FPS for New saver, and 30 FPS for Old normal; New CPU requests returned success. Evidence is in `~/GoPenguin-Minigame-Review-20261105/checks/power/`. Emulator timings and accepted clock requests do not measure electrical power or battery runtime. Physical A/B acceptance must use equal brightness, volume, Wi-Fi, battery condition and workload, including sleep/resume and active minigames.
 
 Chat letters and edit keys register on touch-down; Send and Close require release on the same button. The keyboard caches the last two visible input lines and recalculates wrapping only after an edit or a width-provider change. Wrapping respects UTF-8 boundaries. ASCII text uses the existing bitmap font, with the normal system-font fallback for Unicode. `tests/chat-keyboard.c` checks touch timing, guarded actions, failed-send retention, character limits and layout-cache invalidation.
 

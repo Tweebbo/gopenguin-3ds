@@ -22,6 +22,7 @@ struct SWLScene {
  unsigned stride[TABLES],used,overrides,drawCount,oldCount,actionDepth,maskDepth,colorDepth;
  float width,height,rate;Head *heads;uint16_t hash[HASH_SIZE],overrideHash[OVERRIDE_HASH];Override *override;
  Draw *draw,*old;uint16_t oldHash[DRAW_HASH];bool dirty,building;const char *error;size_t fileBytes;
+ float player[3];bool hasPlayer; // local player's colour for exported player-tint entries (swl_player_color)
  Instance *instances;SWLHit *hits;uint16_t instanceHash[INSTANCE_HASH];unsigned instanceCount,hitCount;
  SWLSound sound;void *soundUser;SWLText text;void *textUser;SWLArt *glyphs;unsigned glyphCount;SWLStats stats;
  char viewPath[SWL_PATH];unsigned viewFrame;
@@ -172,6 +173,11 @@ static bool entry(SWLScene *s,const uint8_t *r,const char *parent,SWLMatrix matr
  if(!force&&hidden(s,path))return true;
  unsigned offset=s->version==2?24:20;SWLMatrix local={f32(r+offset),f32(r+offset+4),f32(r+offset+8),f32(r+offset+12),f32(r+offset+16),f32(r+offset+20)};SWLColor color=identity;
  if(!masking)for(unsigned i=0;i<4;i++){color.mult[i]=f32(r+offset+24+i*4);color.add[i]=f32(r+offset+40+i*4);}
+ /* Exporters mark the clips the original scripts paint with the player's colour (setRGB) with the sentinel
+    setRGB(0x01FE03); draw them with the local player's colour, or the default blue before one is set. */
+ if(!masking&&color.mult[0]==0&&color.mult[1]==0&&color.mult[2]==0&&color.add[0]==1&&color.add[1]==254&&color.add[2]==3){
+  if(s->hasPlayer){color.add[0]=s->player[0];color.add[1]=s->player[1];color.add[2]=s->player[2];}else{color.add[0]=0;color.add[1]=0x33;color.add[2]=0x66;}
+ }
  Override *override=override_at(s,path,false);if(override){if(override->hasMatrix)local=override->matrix;if(override->hasColor&&!masking)color=override->color;}
  if(color.mult[3]==0&&color.add[3]==0)return true;
  SWLMatrix world=swl_matrix_multiply(matrix,local);
@@ -314,3 +320,4 @@ typedef struct {float bounds[4];bool any,painting[SWL_MAX_MASKS];unsigned masks;
 static bool bounds_emit(void *user,const SWLArt *art,const SWLMatrix *m,const SWLColor *color){Bounds *b=user;(void)color;for(unsigned i=0;i<b->masks;i++)if(b->painting[i])return true;for(unsigned i=0;i<4;i++){float x=art->left+(i&1?art->width:0),y=art->top+(i&2?art->height:0),px=m->a*x+m->c*y+m->x,py=m->b*x+m->d*y+m->y;if(!b->any){b->bounds[0]=b->bounds[2]=px;b->bounds[1]=b->bounds[3]=py;b->any=true;}else{b->bounds[0]=fminf(b->bounds[0],px);b->bounds[1]=fminf(b->bounds[1],py);b->bounds[2]=fmaxf(b->bounds[2],px);b->bounds[3]=fmaxf(b->bounds[3],py);}}return true;}
 static bool bounds_mask(void *user,unsigned event){Bounds *b=user;if(event==1){if(b->masks==SWL_MAX_MASKS)return false;b->painting[b->masks++]=true;}else if(event==2){if(!b->masks)return false;b->painting[b->masks-1]=false;}else if(event==3){if(!b->masks)return false;b->masks--;}return true;}
 bool swl_bounds(SWLScene *s,float bounds[4]){Bounds b={0};if(!swl_render(s,(SWLMatrix){1,0,0,1,0,0},-1,1,&(SWLRenderer){.emit=bounds_emit,.mask=bounds_mask},&b)||!b.any)return false;memcpy(bounds,b.bounds,sizeof b.bounds);return true;}
+void swl_player_color(SWLScene *s,uint32_t rgb){if(!s)return;float c[3]={(float)(rgb>>16&255),(float)(rgb>>8&255),(float)(rgb&255)};if(s->hasPlayer&&!memcmp(c,s->player,sizeof c))return;memcpy(s->player,c,sizeof c);s->hasPlayer=true;s->dirty=true;}

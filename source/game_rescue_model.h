@@ -3,6 +3,7 @@
 #include "game_rescue_data.h"
 
 typedef enum {RESCUE_PLAYING,RESCUE_DONE,RESCUE_WON} RescuePhase;
+enum {RESCUE_SOUND_PUFFLE=1,RESCUE_SOUND_HOME=2,RESCUE_SOUND_WIPEOUT=4};
 #define RESCUE_PLATFORMS 16
 #define RESCUE_HAZARDS 16
 
@@ -12,7 +13,7 @@ typedef struct {uint8_t x,y;int8_t dx,dy;uint16_t elapsed;} RescueShot;
 
 typedef struct {
  RescuePhase phase;
- unsigned level,carried,rescued,moves,score;
+ unsigned level,carried,rescued,moves,score,sounds;
  unsigned width,height,x,y;
  double time;
  unsigned platformCount,hazardCount;
@@ -37,6 +38,7 @@ const RescueLevelData *rescue_model_level(const RescueModel *model);
 unsigned rescue_model_total(const RescueModel *model);
 bool rescue_model_passable(const RescueModel *model,unsigned x,unsigned y);
 void rescue_model_tick(RescueModel *model,double milliseconds);
+unsigned rescue_model_take_sounds(RescueModel *model);
 unsigned rescue_model_platform_count(const RescueModel *model);
 bool rescue_model_platform_cell(const RescueModel *model,unsigned index,unsigned *x,unsigned *y,unsigned *frame);
 unsigned rescue_model_hazard_count(const RescueModel *model);

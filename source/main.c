@@ -15,6 +15,8 @@
 #include "penguin_atlas.h"
 #include "font.h"
 #include "viewport.h"
+#include "power_profile.h"
+#include "stability_client.h"
 #include "font_layout.h"
 #include "swl.h"
 #include "swl_gpu.h"
@@ -63,6 +65,7 @@
 #include "cave_mine.h"
 #include "newspaper.h"
 #include "game_port.h"
+#include "game_controller.h"
 #include "room_tube.h"
 #include "epf_access.h"
 #include "lobby.h"
@@ -112,13 +115,17 @@ static const char *gameKeys[]={"hydro","roundup","beans","cart","thinice","fish"
  ,"card","fire","mission1","mission2","mission3","mission4","mission5","mission6","mission7","mission8","mission9","mission10","mission11"
 #endif
  ,"astro","aqua"
+ /* Listed in the Games menu; their banks ship in RomFS and have no downloadable movie id. */
+ ,"jetpack","dj3k","rescue","dance","waves","book1","book2","book3"
 };
 static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters","Cart Surfer","Thin Ice","Ice Fishing","Find Four","Mancala","Sled Racing","Pizzatron 3000"
 #ifdef GP_NINJA_GAMES
  ,"Card-Jitsu","Card-Jitsu Fire","PSA: Missing Puffles","PSA: G's Secret Mission","PSA: Case of the Missing Coins","PSA: Avalanche Rescue","PSA: Secret of the Fur","PSA: Questions for a Crab","PSA: Clockwork Repairs","PSA: Mysterious Tremors","PSA: Operation: Spy and Seek","PSA: Waddle Squad","PSA: The Veggie Villain"
 #endif
  ,"Astro Barrier","Aqua Grabber"
+ ,"Jet Pack Adventure","DJ3K","Puffle Rescue","Dance Contest","Catchin' Waves","Book: My Puffle","Book: Burnt Out Bulbs","Book: Lime Green Dojo Clean"
 };
+_Static_assert(sizeof gameKeys/sizeof *gameKeys==sizeof gameNames/sizeof *gameNames,"Each game key needs a menu name");
 static IglooGeometry *iglooGeometry;
 static MovieBank *roomBank;
 static Mining mining;
@@ -135,6 +142,8 @@ static float wantedX=-1,wantedY=-1,triggerDelay;
 static bool serverRoom;
 static float interpolation=1;
 static Settings settings;
+static PowerProfile powerProfile;
+static bool powerUpdating;
 static ClientData *clientData;
 static GPProfile profile;
 static Social social;
@@ -748,11 +757,21 @@ static void toggle_audio(void){
  if(enabled&&!gp_audio_available()){gp_audio_set_enabled(false);modal_message("Audio is unavailable. Check that DSP support is installed.");return;}
  settings.audio=enabled;settings_save(&settings,SETTINGS_FILE);
 }
-static void power_apply(void){osSetSpeedupEnable(isNew3DS&&!settings.batterySaver);C3D_FrameRate(isNew3DS&&!settings.batterySaver?60:30);}
+static void power_tick(u64 now,bool active){
+ PowerTarget target=power_profile_target(&powerProfile,now,isNew3DS,settings.batterySaver,active,powerUpdating);
+ bool changed=power_profile_apply(&powerProfile,target,isNew3DS);
+#ifdef GP_LAN_ONLY
+ if(changed){FILE *trace=fopen(DATA_DIR "/power-profile.log","a");if(trace){fprintf(trace,"%llu saver=%u fps=%u cpu_flags=%u result=%ld\n",(unsigned long long)now,settings.batterySaver,target.fps,target.cpu,(long)powerProfile.clock_result);fclose(trace);}}
+#else
+ (void)changed;
+#endif
+}
+static void power_apply(void){power_tick(now_ms(),true);}
 static void toggle_battery(void){
  settings.batterySaver=!settings.batterySaver;power_apply();
  if(!settings_save(&settings,SETTINGS_FILE))modal_message("Could not save the battery setting on SD.");
- else modal_message(settings.batterySaver?"Battery saver on: 30 FPS and normal CPU speed. Chat and crossplay remain connected. On an original 3DS, CPU and frame rate already use this setting.":"Battery saver off. New 3DS uses the faster CPU and up to 60 FPS.");
+ else if(powerProfile.clock_result<0)modal_message("The 30 FPS limit is active, but the CPU clock request failed. Restart with the updated CIA or a compatible homebrew launcher.");
+ else modal_message(settings.batterySaver?"Battery saver on: 30 FPS and normal CPU speed, with L2 cache retained on New 3DS. Chat and crossplay remain connected.":"Battery saver off. New 3DS uses the faster CPU and up to 60 FPS during activity, with automatic idle saving.");
 }
 static void toggle_penguin_visibility(void){
  Settings next=settings;next.hideOtherPenguins=!next.hideOtherPenguins;
@@ -863,14 +882,16 @@ static bool updateInstallShown;
 static void update_draw(void){
  GPUpdateView view=gp_update_view();char line[96];
  updateInstallShown=view.state==GP_UPD_READY;
+ bool chooseFull=!gp_update_busy(view.state)&&view.small&&!view.resourcesOnly&&(view.state==GP_UPD_AVAILABLE||view.state==GP_UPD_ERROR);
  static u64 speedAt,speedDone;static unsigned speedKB;u64 now=now_ms();
  if(view.state!=GP_UPD_DOWNLOADING||!speedAt||view.done<speedDone||now-speedAt>(u64)view.elapsed*1000+2000){speedAt=view.state==GP_UPD_DOWNLOADING?now:0;speedDone=view.done;speedKB=0;}
  else if(now-speedAt>=1000)speedKB=(unsigned)((u64)(view.done-speedDone)*1000/(now-speedAt)/1024);
  text(12,34,13,0x003366,"GoPenguin updates");snprintf(line,sizeof line,"Running: %s",GOPENGUIN_VERSION);text(12,58,11,0x003366,line);
  if(view.version[0]){snprintf(line,sizeof line,"%s: %s",view.state==GP_UPD_INSTALLED?"Installed":"Update",view.version);text(12,78,11,0x003366,line);}
- wrapped(12,102,10,0x003366,view.paused?"Preparation paused. Resume whenever you want; downloaded data is kept.":view.message[0]?view.message:"Check for a new GoPenguin version.",294,4);
+ wrapped(12,102,10,0x003366,view.paused?"Preparation paused. Resume whenever you want; downloaded data is kept.":view.message[0]?view.message:"Check for a new GoPenguin version.",294,chooseFull?2:4);
  if(view.total&&(view.state==GP_UPD_DOWNLOADING||view.state==GP_UPD_VERIFYING||view.state==GP_UPD_RECONSTRUCTING||view.state==GP_UPD_INSTALLING)){snprintf(line,sizeof line,"%u%%  %u / %u MB",(unsigned)((u64)view.done*100/view.total),view.done/1048576,view.total/1048576);size_t used=strlen(line);if(view.state==GP_UPD_DOWNLOADING&&speedKB){if(speedKB<1024)snprintf(line+used,sizeof line-used,"  %u KB/s",speedKB);else snprintf(line+used,sizeof line-used,"  %.1f MB/s",speedKB/1024.0);}text(12,153,11,0x003366,line);}
- if(!gp_update_busy(view.state)&&view.state!=GP_UPD_READY&&view.downloadBytes){if(view.small&&!view.fullFallback&&view.fullBytes)snprintf(line,sizeof line,"Download: %.1f MB (full: %.1f MB)",view.downloadBytes/1000000.0,view.fullBytes/1000000.0);else snprintf(line,sizeof line,"Download: %.1f MB",view.downloadBytes/1000000.0);text(12,153,10,0x003366,line);}
+ if(!gp_update_busy(view.state)&&view.state!=GP_UPD_READY&&view.downloadBytes){if(view.small&&!view.fullFallback&&view.fullBytes)snprintf(line,sizeof line,"Download: %.1f MB (full: %.1f MB)",view.downloadBytes/1000000.0,view.fullBytes/1000000.0);else snprintf(line,sizeof line,"Download: %.1f MB",view.downloadBytes/1000000.0);text(12,chooseFull?130:153,10,0x003366,line);}
+ if(chooseFull)button(8,148,304,22,view.fullFallback?"Use smaller download":"Use full download",-1);
  if(view.state==GP_UPD_FINALIZING){snprintf(line,sizeof line,"%us elapsed. Keep the console awake.",view.elapsed);text(12,153,10,0x003366,line);}
  bool busy=gp_update_busy(view.state);const char *label=view.state==GP_UPD_CHECKING?"Checking...":view.state==GP_UPD_DOWNLOADING?"Downloading...":view.state==GP_UPD_VERIFYING?"Verifying...":view.state==GP_UPD_RECONSTRUCTING?"Preparing...":view.state==GP_UPD_INSTALLING?"Installing...":view.state==GP_UPD_FINALIZING?"Finishing...":view.state==GP_UPD_INSTALLED?"Installed":view.state==GP_UPD_READY?"Install now":view.state==GP_UPD_AVAILABLE||(view.state==GP_UPD_ERROR&&view.version[0])?(view.fullFallback?"Full download":"Prepare / resume"):"Check again";
  if(view.state==GP_UPD_RESOURCES)label="Resources...";
@@ -888,7 +909,7 @@ static void update_touch(int x,int y){
   if(current.background&&y>=174&&y<200&&x>=8&&x<312){if(x>=160)demo.tab=0;else gp_update_pause(!current.paused);}
   return;
  }
- if(y>=148&&y<170&&x>=8&&x<312){GPUpdateView view=gp_update_view();if(!gp_update_busy(view.state)&&(view.state==GP_UPD_IDLE||view.state==GP_UPD_CURRENT||view.resourcesOnly)&&view.state!=GP_UPD_INSTALLED&&gp_update_resource_bytes())gp_update_repair_resources();return;}
+ if(y>=148&&y<170&&x>=8&&x<312){GPUpdateView view=gp_update_view();if(view.small&&!view.resourcesOnly&&(view.state==GP_UPD_AVAILABLE||view.state==GP_UPD_ERROR))gp_update_use_full(!view.fullFallback);else if(!gp_update_busy(view.state)&&(view.state==GP_UPD_IDLE||view.state==GP_UPD_CURRENT||view.resourcesOnly)&&view.state!=GP_UPD_INSTALLED&&gp_update_resource_bytes())gp_update_repair_resources();return;}
  if(y<174||y>=200)return;
  if(x>=160){demo.tab=current.background?0:18;return;}
  GPUpdateView view=gp_update_view();
@@ -1126,8 +1147,8 @@ static void audio_focus(APT_HookType type,void *unused){
  (void)unused;
  switch(type){
   case APTHOOK_ONEXIT:pnet_request_stop();asset_cache_request_stop();gp_update_request_stop();break;
-  case APTHOOK_ONSUSPEND:case APTHOOK_ONSLEEP:gameSuspended=true;gp_update_activity(0,false,true,settings.batterySaver,isNew3DS);room_tube_cancel(&roomTube,&tubeHooks);gp_audio_pause(true);break;
-  case APTHOOK_ONRESTORE:case APTHOOK_ONWAKEUP:gameSuspended=false;gp_update_activity(0,false,false,settings.batterySaver,isNew3DS);gp_audio_pause(false);break;
+  case APTHOOK_ONSUSPEND:case APTHOOK_ONSLEEP:gameSuspended=true;gp_update_activity(0,false,true,settings.batterySaver,isNew3DS);asset_cache_pause(true);room_tube_cancel(&roomTube,&tubeHooks);gp_audio_pause(true);break;
+  case APTHOOK_ONRESTORE:case APTHOOK_ONWAKEUP:gameSuspended=false;powerProfile.applied=false;gp_update_activity(0,false,false,settings.batterySaver,isNew3DS);asset_cache_pause(powerUpdating);gp_audio_pause(false);break;
   default:break;
  }
 }
@@ -1174,7 +1195,21 @@ static void game_sound(void *unused,const char *bank,const char *name,unsigned v
 static void game_stop_sounds(void *unused,const char *bank){(void)unused;(void)bank;gp_audio_scene("");}
 static void game_text(void *unused,float x,float y,float size,uint32_t colour,GameAlign align,const char *value){(void)unused;unsigned pixels=(unsigned)fmaxf(FONT_MIN,fminf(FONT_MAX,size));if(align==GAME_ALIGN_CENTER)x-=textWidth(pixels,value)/2.0f;else if(align==GAME_ALIGN_RIGHT)x-=textWidth(pixels,value);text(x,y,pixels,colour,value);}
 static void game_rect(void *unused,float x,float y,float w,float h,uint32_t colour){(void)unused;ui_game_fill(x,y,w,h,colour);}
-static void game_button(void *unused,float x,float y,float w,float h,const char *label,bool pressed,bool enabled){(void)unused;float dy=ui_game_button(x,y,w,h,pressed,enabled)?1:0;button_label(x+w/2,y+h/2+dy,11,enabled?0x003366:0x526575,label);}
+static void game_button(void *unused,float x,float y,float w,float h,const char *label,bool pressed,bool enabled){(void)unused;float dy=ui_game_button(x,y,w,h,pressed,enabled)?1:0;
+ /* Long labels ("Pour chocolate sauce") shrink to fit the button instead of being clipped. */
+ /* Direction pads ("<", ">", "^", "v") get a drawn arrow instead of an ASCII letter. */
+ if(label&&label[0]&&!label[1]&&strchr("<>^v",label[0])){
+  float cx=x+w/2,cy=y+h/2+dy,r=fminf(w,h)*.22f;if(r>9)r=9;u32 c=enabled?C2D_Color32(0x00,0x33,0x66,255):C2D_Color32(0x52,0x65,0x75,255);
+  switch(label[0]){
+   case '<':C2D_DrawTriangle(cx-r,cy,c,cx+r*.8f,cy-r,c,cx+r*.8f,cy+r,c,.5f);break;
+   case '>':C2D_DrawTriangle(cx+r,cy,c,cx-r*.8f,cy-r,c,cx-r*.8f,cy+r,c,.5f);break;
+   case '^':C2D_DrawTriangle(cx,cy-r,c,cx-r,cy+r*.8f,c,cx+r,cy+r*.8f,c,.5f);break;
+   default:C2D_DrawTriangle(cx,cy+r,c,cx-r,cy-r*.8f,c,cx+r,cy-r*.8f,c,.5f);break;
+  }
+  return;
+ }
+ unsigned size=11;while(size>8){FontBounds b=font_ink(size,label);if(b.right-b.left<=w-8)break;size--;}
+ button_label(x+w/2,y+h/2+dy,size,enabled?0x003366:0x526575,label);}
 static bool game_edit_text(void *unused,char *value,size_t capacity,const char *hint){(void)unused;return keyboard(value,capacity,hint,false);}
 static GameResource game_resource(void *unused,const char *name,char *path,size_t capacity){
  (void)unused;unsigned id=0;
@@ -1195,6 +1230,7 @@ static GameResource game_resource(void *unused,const char *name,char *path,size_
  }
 #endif
  for(unsigned n=0;n<COUNT(gameKeys);n++){
+  if(n&&!strcmp(gameKeys[n-1],"aqua"))break; /* movie ids stop at the last downloadable game */
   char bank[80];snprintf(bank,sizeof bank,"games/%s.gpk",gameKeys[n]);if(!strcmp(name,bank))id=700001+n;
   snprintf(bank,sizeof bank,"games/%s-title.gpk",gameKeys[n]);if(!strcmp(name,bank))id=701001+n;
   snprintf(bank,sizeof bank,"games/%s-under.gpk",gameKeys[n]);if(!strcmp(name,bank))id=702001+n;
@@ -1207,7 +1243,8 @@ static GameResource game_resource(void *unused,const char *name,char *path,size_
  if(!strcmp(name,"games/jetpack3.gpk"))id=703103;
  if(!strcmp(name,"games/jetpack4.gpk"))id=703104;
  if(!strcmp(name,"games/jetpack5.gpk"))id=703105;
- if(!id)return GAME_RESOURCE_FAILED;
+ /* Banks without a downloadable movie id (Jet Pack, DJ3K, Rescue, Dance, Waves, books) ship in RomFS. */
+ if(!id){if(strncmp(name,"games/",6)||strstr(name,"..")||!strstr(name,".gpk"))return GAME_RESOURCE_FAILED;if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;FILE *f=fopen(path,"rb");if(!f)return GAME_RESOURCE_FAILED;fclose(f);return GAME_RESOURCE_READY;}
  if(snprintf(path,capacity,"romfs:/%s",name)>=(int)capacity)return GAME_RESOURCE_FAILED;
  FILE *file=fopen(path,"rb");if(file){fclose(file);return GAME_RESOURCE_READY;}
  unsigned key=asset_key(ASSET_MOVIE,id);if(asset_cache_request(key,path,capacity))return GAME_RESOURCE_READY;
@@ -1526,7 +1563,7 @@ static const char *section_title(void){
 }
 static void bottom(void){
  if(chatKeyboard.active&&!modal.open){C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);const ChatKeyboardWidgets widgets={box,text,center,keyboard_width};chat_keyboard_draw(&chatKeyboard,osGetTime(),&widgets);return;}
- if(game){game_port_draw_lower(game,sceneBottom);game_port_draw_bottom(game);return;}
+ if(game){ui_game_style(game_port_controller(game)->nightPanel);game_port_draw_lower(game,sceneBottom);game_port_draw_bottom(game);return;}
  ui_frame();ui_background();header(book.open?book.info->title:section_title());
  if(modal.open){modal_draw();return;}
  if(lobbyUI.open||lobbyUI.moving||lobbyUI.leavePending){lobby_draw();return;}
@@ -1588,7 +1625,7 @@ static void bottom(void){
   text(12,75,10,0x003366,"Your penguin and room guides stay visible.");
   text(12,91,10,0x003366,"Chat and the player list stay available.");
   button(8,118,304,30,settings.batterySaver?"Battery saver: on":"Battery saver: off",-1);
-  text(12,157,10,0x003366,"Battery saver limits New 3DS to 30 FPS.");
+  text(12,157,10,0x003366,powerProfile.clock_result<0?"CPU clock request failed; FPS cap remains active.":"Battery saver: 30 FPS and normal CPU clock.");
   button(8,177,304,26,"Back to Help",-1);
  }else if(demo.tab==7){player_draw();
  }else if(demo.tab==4){
@@ -1781,10 +1818,23 @@ int main(int argc,char **argv){
  if(settings.assets[0]&&!asset_cache_start(settings.assets,DATA_DIR "/cache"))message("Could not prepare the resource cache. Check your SD card and resource settings.");
  if(resource_store_enabled()&&!resource_store_complete()){demo.tab=20;modal_message("Game resources need preparation. Open Updates and choose Prepare resources. Your saved penguin is kept.");}
  u64 last=osGetTime(),sample=last,lastMove=0,updateCheckAt=last+10000;char offeredUpdate[24]="";unsigned frames=0;float sceneClock=0,lastX=demo.actors[0].x,lastY=demo.actors[0].y;bool wasMoving=false;PNetState previousState=PNET_OFFLINE;
+ stability_client_storage(DATA_DIR);
  while(aptMainLoop()){
   u64 now=osGetTime();float dt=(now-last)/1000.0f;
-  gp_update_activity((unsigned)(now-last),asset_cache_pending()||wantedRoom||waitingIgloo||wantedIgloo||gameQueued||book.wanted,gameSuspended,settings.batterySaver,isNew3DS);
+  unsigned elapsedFrame=(unsigned)(now-last);
   last=now;if(dt>.1f)dt=.1f;hidScanInput();u32 down=hidKeysDown(),held=hidKeysHeld();
+  bool powerActive=down||held||game||gameQueued||book.open||modal.open||demo.tab!=0||wantedRoom||wantedIgloo||waitingIgloo||asset_cache_pending()||igloo.editing;
+  for(unsigned i=0;!powerActive&&i<demo.count;i++)if(demo.actors[i].walking)powerActive=true;
+  power_tick(now,powerActive);
+#if STABILITY_DIAGNOSTICS
+  char stabilityRoom[16];snprintf(stabilityRoom,sizeof stabilityRoom,"%u",currentRoomId);
+  stability_client_tick(now,stabilityRoom,game||gameQueued?queuedGame.key:book.open?"book":"room",0,powerProfile.current.cpu|(settings.batterySaver?4u:0u),pnet_state()==PNET_ONLINE,pnet_state(),pnet_id());
+  static unsigned stabilityPanel=~0u,stabilityPhase=~0u;
+  if(stabilityPanel!=(unsigned)demo.tab){stabilityPanel=(unsigned)demo.tab;stability_client_event(now,ST_PANEL,stabilityPanel);}
+  unsigned phase=game?(unsigned)game_port_session(game):0;
+  if(game&&phase!=stabilityPhase){stabilityPhase=phase;if(phase==GAME_SESSION_FAILED)stability_client_event(now,ST_ERROR,2001);}
+#endif
+  gp_update_activity(elapsedFrame,asset_cache_pending()||wantedRoom||waitingIgloo||wantedIgloo||gameQueued||book.wanted,gameSuspended,settings.batterySaver||powerProfile.current.cpu==2,isNew3DS);
   bool historyInput=chatHistory.open&&!modal.open&&!game&&!book.open;
   if(historyInput){
    unsigned keys=0;if(down&KEY_L)keys|=CHAT_LOG_OLDER;if(down&KEY_R)keys|=CHAT_LOG_NEWER;if(down&KEY_DUP)keys|=CHAT_LOG_UP;if(down&KEY_DDOWN)keys|=CHAT_LOG_DOWN;if(down&KEY_A)keys|=CHAT_LOG_WRITE;if(down&KEY_B)keys|=CHAT_LOG_CLOSE;
@@ -1929,7 +1979,7 @@ int main(int argc,char **argv){
    if(room&&room!=currentRoomId){serverRoom=true;if(room>2000)open_igloo(room-2000);else{wantedRoom=room;wantedX=demo.actors[0].x;wantedY=demo.actors[0].y;}}pnet_message_free(&packet);}
   GPUpdateView releaseUpdate=gp_update_view();
   static bool updatingBusy;bool updatingNow=gp_update_blocks_game(releaseUpdate);
-  if(updatingNow!=updatingBusy){updatingBusy=updatingNow;asset_cache_pause(updatingNow);if(updatingNow){C3D_FrameRate(10);gp_audio_stop();}else{power_apply();if(game){gp_audio_scene(queuedGame.key);gp_audio_game(queuedGame.key);}else if(currentRoom){gp_audio_scene(roomBank&&igloo.layout.type==1?"igloo1":currentRoom->key);if(roomBank)gp_audio_music(igloo.layout.music);else gp_audio_room(currentRoom->key);}}}
+  if(updatingNow!=updatingBusy){updatingBusy=updatingNow;powerUpdating=updatingNow;power_apply();asset_cache_pause(updatingNow);if(updatingNow){gp_audio_stop();}else{if(game){gp_audio_scene(queuedGame.key);gp_audio_game(queuedGame.key);}else if(currentRoom){gp_audio_scene(roomBank&&igloo.layout.type==1?"igloo1":currentRoom->key);if(roomBank)gp_audio_music(igloo.layout.music);else gp_audio_room(currentRoom->key);}}}
   if(updatingNow){u64 updateDraw=now_ms();demo.tab=20;C3D_FrameBegin(C3D_FRAME_SYNCDRAW);if(chatGlyphs)C2D_TextBufClear(chatGlyphs);swl_gpu_frame();C2D_TargetClear(topTarget,rgb(0xffffff));C2D_SceneBegin(topTarget);swl_gpu_screen(topTarget,400,240);top();C2D_TargetClear(bottomTarget,rgb(0xdaf2ff));C2D_SceneBegin(bottomTarget);swl_gpu_screen(bottomTarget,320,240);bottom();swl_gpu_commit();C3D_FrameEnd(0);performance_record(now_ms(),(unsigned)(now_ms()-updateDraw),true);continue;}
   IglooVisitAction visitAction=igloo_visit_poll(&iglooVisit,now_ms(),pnet_state()==PNET_ONLINE||(!iglooVisit.owner&&pnet_state()==PNET_OFFLINE),game||gameQueued);
   if(visitAction==IGLOO_VISIT_REQUEST)open_igloo(iglooVisit.owner);
@@ -2029,6 +2079,7 @@ int main(int argc,char **argv){
   }
  }
  done:;
+ stability_client_close();
  performance_flush();free(performance.csv);performance.csv=NULL;
  pnet_request_stop();asset_cache_request_stop();gp_update_request_stop();wear_request_stop();
  u64 exitBegin=now_ms(),exitPhase=exitBegin;

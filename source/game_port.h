@@ -115,6 +115,13 @@ size_t game_port_texture_bytes(const GamePort *port);
 typedef struct GameBank GameBank;
 GameBank *game_bank_load(const char *path,size_t textureLimit,const char **error);
 void game_bank_free(GameBank *bank);
+/** Background bank load (console: a low-priority thread that runs while the main thread waits
+ *  for vblank; host builds load synchronously). Poll until it returns true, then take the bank. */
+typedef struct GameBankJob GameBankJob;
+GameBankJob *game_bank_job_start(const char *path,size_t textureLimit);
+bool game_bank_job_done(GameBankJob *job);
+/** Frees the job (waiting for it if needed) and returns its bank or NULL with *error set. */
+GameBank *game_bank_job_finish(GameBankJob *job,const char **error);
 SWLScene *game_bank_scene(GameBank *bank);
 MovieMeta *game_bank_meta(GameBank *bank);
 size_t game_bank_texture_bytes(const GameBank *bank);

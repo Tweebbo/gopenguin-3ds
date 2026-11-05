@@ -71,6 +71,7 @@ export function encodeScene({width,height,fps,root=0,pages,art,timelines,states=
 }
 
 export function packRectangles(rectangles,size=1024,height=512,bytesPerPixel=4){
+ if(process.env.SWL_DUMP_RECTS)require_dump(rectangles);
  const pages=[];
  for(const r of [...rectangles].sort((a,b)=>Math.max(b.h,b.w)-Math.max(a.h,a.w)||b.h*b.w-a.h*a.w||a.id-b.id)){
   const w=r.w+2,h=r.h+2;
@@ -98,3 +99,5 @@ export function packRectangles(rectangles,size=1024,height=512,bytesPerPixel=4){
  }
  return pages.length;
 }
+
+function require_dump(r){const fs=globalThis.process.getBuiltinModule('node:fs');fs.writeFileSync(process.env.SWL_DUMP_RECTS,JSON.stringify(r.map(a=>({id:a.id,w:a.w,h:a.h,...Object.fromEntries(Object.entries(a).filter(([k,v])=>typeof v!=='object'&&!['id','w','h'].includes(k)))}))));}

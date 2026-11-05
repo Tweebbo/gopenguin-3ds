@@ -236,6 +236,11 @@ bool pnet_send_to(char extension,const char *command,unsigned count,const char *
 bool pnet_receive(PNetMessage *message){if(!N.started)return false;lock(&N.mutex);Message *m=pop(&N.incoming);unlock(&N.mutex);if(!m)return false;char *data=malloc(m->len);if(!data){free(m);return false;}memcpy(data,m->data,m->len);free(m);if(!pnet_parse(data,message)){free(data);return false;}message->storage=data;return true;}
 void pnet_message_free(PNetMessage *m){free(m->storage);if(m->args&&m->args!=m->small)free(m->args);m->storage=NULL;m->args=m->small;m->count=0;}
 bool pnet_send(const char *command,unsigned count,const char *const *args){return pnet_send_to('s',command,count,args);}
+bool pnet_send_stability(const char *json,unsigned owner){
+ if(!N.started||!json||strlen(json)>2048)return false;
+ char data[2100];const char *args[]={json};if(!pnet_packet(data,sizeof data,"stability",1,args))return false;
+ lock(&N.mutex);bool ok=owner&&N.id==owner&&N.state==PNET_ONLINE&&N.outgoing.count<64&&N.outgoing.bytes<65536&&push(&N.outgoing,data,strlen(data)+1);unlock(&N.mutex);return ok;
+}
 void pnet_manual_room(bool manual){if(!N.started)return;lock(&N.mutex);N.manualRoom=manual;unlock(&N.mutex);}
 bool pnet_join(unsigned room,int x,int y){if(!N.started)return false;lock(&N.mutex);N.config.room=room;N.config.x=x;N.config.y=y;unlock(&N.mutex);char id[20],sx[20],sy[20];snprintf(id,sizeof id,"%u",room);snprintf(sx,sizeof sx,"%d",x);snprintf(sy,sizeof sy,"%d",y);return pnet_send("j#jr",3,(const char *[]){id,sx,sy});}
 

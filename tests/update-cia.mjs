@@ -13,7 +13,7 @@ execFileSync('cc',[...flags,folder+'/gp_update.o',folder+'/worker.o','source/upd
 const bytes=Buffer.alloc(512*1024,0x5a);bytes.fill(0,0,32);bytes.writeUInt32LE(32,0);const tmd=64;bytes.writeUInt32BE(0x10004,tmd);bytes.writeBigUInt64BE(0x0004000007E90200n,tmd+0x140+0x4c);bytes.writeUInt16BE(1045,tmd+0x140+0x9c);
 const artifact={url:'https://gopenguin.lol/3ds/test.cia',bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
 const manifest={schema:1,titleId:'0004000007E90200',version:'1.1.5',cia:artifact,'3dsx':artifact};
-const scenarios=['success','am-fail','start-fail','write-fail','short-write','finish-fail','query-fail','wrong-version','wrong-title','cancel','truncated','checksum','retry','slow-finish','small-success','small-base-missing','small-base-damaged','small-damaged-header','small-checksum','small-interrupted','small-install-retry'];
+const scenarios=['success','am-fail','start-fail','write-fail','short-write','finish-fail','query-fail','wrong-version','wrong-title','cancel','truncated','checksum','retry','slow-finish','small-success','small-full-choice','small-base-missing','small-base-damaged','small-damaged-header','small-checksum','small-interrupted','small-install-retry'];
 const results=[];
 for(const scenario of scenarios){
  const dir=folder+'/'+scenario;await rm(dir,{recursive:true,force:true});await mkdir(dir+'/sdmc:/3ds/gopenguin',{recursive:true});await writeFile(dir+'/payload.cia',bytes);await writeFile(dir+'/manifest.json',JSON.stringify(manifest));

@@ -7,6 +7,7 @@ const char *gp_update_current(void);
 bool gp_update_check(void);
 bool gp_update_start(void);
 bool gp_update_prepare(void);
+bool gp_update_use_full(bool full);
 void gp_update_pause(bool paused);
 void gp_update_activity(unsigned frame_ms,bool loading,bool suspended,bool saver,bool new_model);
 bool gp_update_blocks_game(GPUpdateView view);

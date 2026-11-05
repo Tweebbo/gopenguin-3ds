@@ -1,5 +1,5 @@
-// TS/C parity for Astro Barrier. Build build/game-astro-test first:
-// cc -O2 -std=c11 -Isource tests/game-astro.c source/game_astro_model.c -lm -o build/game-astro-test
+// TS/C parity for Astro Barrier: the same seeded inputs drive src/games/astro-model.ts and
+// source/game_astro_model.c; every frame's state must match. Build build/game-astro-test first.
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
@@ -14,67 +14,39 @@ const bundle=(await build({entryPoints:[reference+'/src/games/astro-model.ts'],b
 const module={exports:{}};new Function('module','exports',bundle)(module,module.exports);
 const {AstroModel}=module.exports;
 const data=JSON.parse(await readFile(reference+'/public/data/astro.json','utf8'));
-const phases=['ready','playing','done','lost','over','won'];
+const phases=['title','intro','playing','done','restart','secret','over','won'];
+const f=v=>v.toFixed(6);
 
-const snapshot=model=>{
-  const level=model.levels[model.level];
-  const values=[model.level,model.score,model.lives,model.shots,model.hits,phases.indexOf(model.phase),model.gunX,model.bulletY,model.bullet?1:0,level.frame,model.totalShots,model.oneUps,model.restarted?1:0,model.stamps.length,...model.stamps];
-  for(const object of model.objects)values.push(object.frame,object.hit?1:0);
-  return values;
-};
-
-const target=model=>{
-  const candidates=model.objects.filter(object=>
-    ((['barrier','slide','bonus'].includes(object.kind)&&!object.hit)||(object.kind==='yellow'&&!object.hit&&object.frame<3)));
-  const blockers=model.objects.filter(object=>object.kind==='block'||object.kind==='train'||(object.kind==='orange'&&object.frame<18));
-  const clear=candidates.filter(object=>{
-    const x=(object.box[0]+object.box[2])/2;
-    if(x<48||x>352)return false;
-    return !blockers.some(block=>x>block.box[0]&&x<block.box[2]&&block.box[1]>object.box[1]);
-  });
-  const pool=clear.length?clear:candidates.filter(object=>{const x=(object.box[0]+object.box[2])/2;return x>=48&&x<=352;});
-  pool.sort((a,b)=>b.box[3]-a.box[3]);
-  return pool[0];
-};
-
+let seed=0x5eed1234;const random=()=>{seed=(seed*1103515245+12345)>>>0;return seed/4294967296;};
 const model=new AstroModel(data);
-model.start();
 const commands=[],expected=[];
-for(let tick=0;tick<40000;tick++){
-  if(model.phase==='won'||model.phase==='over')break;
-  let action=0;
-  if(model.phase==='done')action=1;
-  else if(model.phase==='lost')action=2;
-  let direction=0,fire=0;
-  if(!action&&!model.bullet){
-    const next=target(model);
-    if(next){
-      const x=(next.box[0]+next.box[2])/2;
-      if(Math.abs(model.gunX-x)<=2.5)fire=model.shots>0?1:0;
-      else direction=model.gunX<x?1:-1;
-    }else fire=model.shots>0?1:0;
+// Sessions: each starts a level (some in a secret set), then plays random held inputs.
+const sessions=[[1,0],[7,0],[10,0],[11,0],[16,0],[20,0],[30,0],[31,0],[38,0],[2,2],[3,2],[4,2],[5,2],[6,2],[7,2],[8,2],[10,2],[3,1],[10,1],[40,0]];
+let fireHeld=false,dir=0;
+for(const [startLevel,set] of sessions){
+  for(let t=0;t<2400;t++){
+    let start=0,confirm=0;
+    if(t===0)start=startLevel;
+    if(model.phase==='intro'&&model.introTicks===12&&t<1800)confirm=1;
+    if(random()<0.05)dir=Math.floor(random()*3)-1;
+    if(random()<0.08)fireHeld=!fireHeld;
+    const left=dir<0?1:0,right=dir>0?1:0,fire=fireHeld?1:0;
+    commands.push(`${left} ${right} ${fire} ${confirm} ${start} ${start?set:0}`);
+    if(start){model.start(start);if(set){model.secretSet=set;model.level=start;model.load();}}
+    if(confirm)model.confirm();
+    model.release();if(left)model.press(-1);if(right)model.press(1);
+    model.trigger(!!fire);model.step();
+    const m=model,values=[phases.indexOf(m.phase),m.level,m.secretSet,m.score,m.lives,m.shotsFrame,m.hitCounter,m.totalShots>>>0,m.levelsStarted,
+      f(m.gunX),m.gunFrame,m.bullet.active?1:0,f(m.bullet.x),f(m.bullet.y),m.turretBullet.active?1:0,f(m.turretBullet.x),f(m.turretBullet.y),m.overlay,m.introTicks,m.planeFrame,m.livesCollected,m.levelRestarted?1:0,m.stamps.length,...m.stamps];
+    for(const o of m.objects){values.push(o.clipFrame,o.wallFrame,o.frame,o.hit?1:0,f(o.matrix[4]),f(o.matrix[5]));for(const p of o.parts??[])values.push(p.clipFrame,p.hit?1:0);}
+    expected.push(values.join(' '));
+    m.sounds.length=0;
   }
-  commands.push(`${direction} ${fire} ${action}`);
-  if(action===1)model.next();
-  else if(action===2)model.restart();
-  if(direction<0)model.press(-1);else if(direction>0)model.press(1);else model.release();
-  if(fire)model.fire();
-  model.step();
-  model.sounds.length=0;
-  expected.push(snapshot(model));
-  if(expected.length>40000)break;
 }
-
-const run=spawnSync(path.join(root,'build/game-astro-test'),[],{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:64*1024*1024});
+const run=spawnSync(path.join(root,'build/game-astro-test'),{input:commands.join('\n')+'\n',encoding:'utf8',maxBuffer:256*1024*1024});
 assert.equal(run.status,0,run.stderr);
-const actual=run.stdout.trim().split('\n').filter(Boolean).map(line=>line.trim().split(/\s+/).map(Number));
-assert.equal(actual.length,expected.length,`ticks ${actual.length} vs ${expected.length}`);
-actual.forEach((row,index)=>{
-  assert.equal(row.length,expected[index].length,`tick ${index} fields`);
-  row.forEach((value,field)=>{
-    assert(Math.abs(value-expected[index][field])<1e-6,`tick ${index}, field ${field}: ${value} vs ${expected[index][field]}`);
-  });
-});
-
-const levels=new Set(actual.map(row=>row[0]));
-console.log(`PASS Astro Barrier TS/C parity: ${actual.length} ticks, levels ${Math.min(...levels)+1}..${Math.max(...levels)+1}, final phase ${phases[actual.at(-1)[5]]}, score ${actual.at(-1)[1]}`);
+const actual=run.stdout.trimEnd().split('\n');
+assert.equal(actual.length,expected.length);
+for(let i=0;i<expected.length;i++)assert.equal(actual[i],expected[i],`frame ${i}: ${commands[i]}`);
+const phasesSeen=new Set(expected.map(line=>phases[Number(line.split(' ')[0])]));
+console.log(`PASS Astro Barrier TS/C parity: ${expected.length} frames over ${sessions.length} sessions; phases ${[...phasesSeen].join(', ')}`);

@@ -25,23 +25,24 @@ const server=http.createServer((req,res)=>{
 });
 await new Promise(r=>server.listen(18894,'127.0.0.1',r));const results=[];
 try{
- for(scenario of ['bridge','interrupted','missing-base','corrupt-bundle','corrupt-index','repair']){
+ for(scenario of ['bridge','interrupted','missing-base','corrupt-bundle','corrupt-index','repair','repair-corrupt']){
   requests={};manifest={schema:1,titleId:'0004000007E90200',version:'1.0.1',cia:artifact('app.3dsx',app),'3dsx':artifact('app.3dsx',app),resources:offer};
   const folder=build+'/'+scenario;await rm(folder,{recursive:true,force:true});await mkdir(folder+'/sdmc:/3ds/gopenguin',{recursive:true});await mkdir(folder+'/romfs:/audio',{recursive:true});await mkdir(folder+'/romfs:/data',{recursive:true});
-  if(!['missing-base','repair'].includes(scenario))await writeFile(folder+'/romfs:/audio/song.gpz',contents['audio/song.gpz']);
+  if(scenario!=='missing-base'&&!scenario.startsWith('repair'))await writeFile(folder+'/romfs:/audio/song.gpz',contents['audio/song.gpz']);
+  if(scenario==='repair-corrupt')for(const b of Object.values(contents)){const digest=sha(b).toString('hex'),directory=folder+'/sdmc:/3ds/gopenguin/resources/'+digest[0];await mkdir(directory,{recursive:true});await writeFile(directory+'/'+digest+'.bin',Buffer.alloc(b.length,0x58));}
   await writeFile(folder+'/romfs:/data/resource-offer.json',JSON.stringify(offer));
   const saved=Buffer.from('{"session":"local identity fixture"}');await writeFile(folder+'/sdmc:/3ds/gopenguin/settings.json',saved);
   const launch=folder+'/app.3dsx',old=Buffer.from('3DSX current app');await writeFile(launch,old);
-  const child=spawn(build+'/worker',[launch,scenario==='repair'?'repair':'update'],{cwd:folder});let output='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);const code=await new Promise(r=>child.once('exit',r));
-  const failed=scenario.startsWith('corrupt-');assert.equal(code,failed?6:0,output);
-  assert.deepEqual(await readFile(launch),failed||scenario==='repair'?old:app);
+  const child=spawn(build+'/worker',[launch,scenario.startsWith('repair')?'repair':'update'],{cwd:folder});let output='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);const code=await new Promise(r=>child.once('exit',r));
+  const failed=scenario.startsWith('corrupt-');assert.equal(code,failed?6:0,scenario+': '+output);
+  assert.deepEqual(await readFile(launch),failed||scenario.startsWith('repair')?old:app);
   assert.deepEqual(await readFile(folder+'/sdmc:/3ds/gopenguin/settings.json'),saved);
   if(!failed)for(const b of Object.values(contents)){const digest=sha(b).toString('hex');assert.deepEqual(await readFile(folder+'/sdmc:/3ds/gopenguin/resources/'+digest[0]+'/'+digest+'.bin'),b);}
   if(failed)assert(!requests['/app.3dsx']);
   if(scenario==='bridge')assert(!requests['/resources.gpb']);
   if(scenario==='interrupted')assert.equal(requests['/delta.gpb'],2);
   if(scenario==='missing-base')assert.equal(requests['/resources.gpb'],1);
-  if(scenario==='repair')assert(!requests['/app.3dsx']&&!requests['/latest.json']);
+  if(scenario.startsWith('repair'))assert(!requests['/app.3dsx']&&!requests['/latest.json']);
   results.push({scenario,status:'PASS',requests,accountFileRetained:true});
  }
 }finally{await new Promise(r=>server.close(r));}

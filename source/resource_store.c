@@ -83,6 +83,45 @@ static bool commit_object(const char *temporary,const char *target){
  return false;
 }
 static bool object_folder(const char *target){char parent[384];if(strlen(target)>=sizeof parent)return false;strcpy(parent,target);char *slash=strrchr(parent,'/');if(!slash)return false;*slash=0;return folder(parent);}
+enum {RECEIPT_BYTES=72};
+static void put64(unsigned char *p,uint64_t n){for(unsigned k=0;k<8;k++)p[k]=(unsigned char)(n>>(k*8));}
+static bool receipt_value(const char *path,const unsigned char *r,unsigned char value[RECEIPT_BYTES]){
+ struct stat s;
+#ifdef __3DS__
+ if(stat(path,&s))return false;
+#else
+ if(lstat(path,&s))return false;
+#endif
+ if(!S_ISREG(s.st_mode)||s.st_size!=(long)le32(r+160))return false;
+ memset(value,0,RECEIPT_BYTES);memcpy(value,"GPRVFY1",8);memcpy(value+8,r+128,36);
+ put64(value+44,(uint64_t)s.st_mtime);put64(value+52,(uint64_t)s.st_ctime);
+#ifndef __3DS__
+ put64(value+60,(uint64_t)s.st_mtim.tv_nsec);value[68]=(unsigned char)s.st_ctim.tv_nsec;value[69]=(unsigned char)(s.st_ctim.tv_nsec>>8);value[70]=(unsigned char)(s.st_ctim.tv_nsec>>16);value[71]=(unsigned char)(s.st_ctim.tv_nsec>>24);
+#endif
+ return true;
+}
+static bool cached_object(const char *path,const unsigned char *r){
+ unsigned char actual[RECEIPT_BYTES],saved[RECEIPT_BYTES];char receipt[416];
+ if(!receipt_value(path,r,actual)||snprintf(receipt,sizeof receipt,"%s.verified",path)>=(int)sizeof receipt)return false;
+ FILE *f=fopen(receipt,"rb");if(!f)return false;
+ bool ok=fread(saved,1,sizeof saved,f)==sizeof saved&&fgetc(f)==EOF&&!ferror(f)&&!memcmp(saved,actual,sizeof saved);
+ if(fclose(f))ok=false;
+ return ok;
+}
+static void remember_object(const char *path,const unsigned char *r){
+ unsigned char value[RECEIPT_BYTES];char receipt[416],temporary[432];
+ if(!receipt_value(path,r,value)||snprintf(receipt,sizeof receipt,"%s.verified",path)>=(int)sizeof receipt||snprintf(temporary,sizeof temporary,"%s.part",receipt)>=(int)sizeof temporary)return;
+ FILE *f=fopen(temporary,"wb");if(!f)return;
+ bool ok=fwrite(value,1,sizeof value,f)==sizeof value;if(fclose(f))ok=false;
+ if(ok&&rename(temporary,receipt)){
+#ifdef __3DS__
+  remove(receipt);ok=!rename(temporary,receipt);
+#else
+  ok=false;
+#endif
+ }
+ if(!ok)remove(temporary);
+}
 static bool verified(const char *path,const unsigned char *r,const IncrementalHooks *h){
  if(!regular(path,le32(r+160)))return false;
  FILE *f=fopen(path,"rb");if(!f)return false;HashPace pace={.hooks=h};bool ok=hash_file_progress(f,r+128,hash_stopped,hash_pace,&pace);if(fclose(f))ok=false;return ok;
@@ -120,14 +159,20 @@ bool resource_store_ready(const ResourceIndex *i,const char *directory){
  for(unsigned n=0;n<i->count;n++){const unsigned char *r=row(i,n);char path[384];if(!object_path(directory,r+128,path,sizeof path)||!regular(path,le32(r+160)))return false;}return true;
 #endif
 }
-bool resource_store_reuse(const ResourceIndex *i,const char *directory,const char *embedded,const IncrementalHooks *h,ResourceStats *stats){
+static bool reuse(const ResourceIndex *i,const char *directory,const char *embedded,const IncrementalHooks *h,ResourceStats *stats,bool cached){
  if(!i||!folder(directory))return false;
  unsigned char *buffer=malloc(IO_BYTES);if(!buffer)return false;
  bool ok=true;unsigned done=0;
  for(unsigned n=0;ok&&n<i->count;n++){
   const unsigned char *r=row(i,n);unsigned bytes=le32(r+160);char target[384],source[512],temporary[400];
   if(stopped(h)||!object_path(directory,r+128,target,sizeof target)){ok=false;break;}
-  if(verified(target,r,h)){if(stats){stats->existing+=bytes;stats->files++;}done+=bytes;progress(h,done);continue;}
+  bool known=cached&&cached_object(target,r);
+  if(known||verified(target,r,h)){if(stats){stats->existing+=bytes;if(known)stats->cached+=bytes;else stats->verified+=bytes;stats->files++;}if(!known)remember_object(target,r);done+=bytes;progress(h,done);continue;}
+  if(stopped(h)){ok=false;break;}
+  if(regular(target,bytes)){
+   char receipt[416];snprintf(receipt,sizeof receipt,"%s.verified",target);remove(receipt);
+   if(remove(target)){ok=false;break;}
+  }
   if(!object_folder(target)){ok=false;break;}
   int used=snprintf(source,sizeof source,"%s%s%s",embedded,embedded[strlen(embedded)-1]=='/'?"":"/",r);
   if(used<0||(size_t)used>=sizeof source){ok=false;break;}
@@ -140,13 +185,14 @@ bool resource_store_reuse(const ResourceIndex *i,const char *directory,const cha
   unsigned char actual[32];copied=copied&&!left&&end(&digest,actual)&&!memcmp(actual,r+128,32);release(&digest);
   if(fclose(input))copied=false,ioError=true;
   if(fclose(output))copied=false,ioError=true;
-  if(copied&&!verified(temporary,r,h))copied=false,ioError=true;
   if(copied&&!commit_object(temporary,target))copied=false,ioError=true;
-  if(!copied)remove(temporary);else{if(stats){stats->copied+=bytes;stats->files++;}done+=bytes;}
+  if(!copied)remove(temporary);else{remember_object(target,r);if(stats){stats->copied+=bytes;stats->verified+=bytes;stats->files++;}done+=bytes;}
   if(stopped(h)||ioError)ok=false;
  }
  free(buffer);return ok;
 }
+bool resource_store_reuse(const ResourceIndex *i,const char *directory,const char *embedded,const IncrementalHooks *h,ResourceStats *stats){return reuse(i,directory,embedded,h,stats,false);}
+bool resource_store_reuse_cached(const ResourceIndex *i,const char *directory,const char *embedded,const IncrementalHooks *h,ResourceStats *stats){return reuse(i,directory,embedded,h,stats,true);}
 static const unsigned char *find_object(const ResourceIndex *i,const unsigned char *sha,unsigned bytes){for(unsigned n=0;n<i->count;n++){const unsigned char *r=row(i,n);if(le32(r+160)==bytes&&!memcmp(r+128,sha,32))return r;}return NULL;}
 bool resource_store_bundle(const ResourceIndex *i,const char *directory,const char *bundle,const char *sha,unsigned bytes,const IncrementalHooks *h,ResourceStats *stats){
  if(!i||!sha||strlen(sha)!=64||!folder(directory)||!regular(bundle,bytes))return false;
@@ -166,9 +212,8 @@ bool resource_store_bundle(const ResourceIndex *i,const char *directory,const ch
   Digest digest;begin(&digest);unsigned left=size;
   while(ok&&left){unsigned take=left<IO_BYTES?left:IO_BYTES;ok=!stopped(h)&&fread(buffer,1,take,f)==take&&add(&whole,buffer,take)&&add(&digest,buffer,take)&&fwrite(buffer,1,take,output)==take;if(ok){left-=take;done+=take;progress(h,done);if(h&&h->cooperate)h->cooperate(take,h->user);}}
   ok=ok&&end(&digest,actual)&&!memcmp(actual,object,32);release(&digest);if(fclose(output))ok=false;
-  if(ok&&!verified(temporary,expected,h))ok=false;
   if(ok&&!commit_object(temporary,target))ok=false;
-  if(!ok)remove(temporary);else if(stats){stats->written+=size;stats->files++;}
+  if(!ok)remove(temporary);else{remember_object(target,expected);if(stats){stats->written+=size;stats->verified+=size;stats->files++;}}
  }
  char checksum[65];ok=ok&&done==bytes&&fgetc(f)==EOF&&!ferror(f)&&end(&whole,actual);hex(actual,checksum);ok=ok&&!strcmp(checksum,sha);release(&whole);if(fclose(f))ok=false;free(seen);free(buffer);return ok;
 }

@@ -52,7 +52,7 @@ void rescue_model_load(RescueModel *m){
  memcpy(m->map,l->map,(size_t)l->width*l->height*sizeof(uint16_t));
  memcpy(m->parts,l->parts,(size_t)l->width*l->height);
  memcpy(m->parts2,l->parts2,(size_t)l->width*l->height);
- m->x=l->homeX;m->y=l->homeY;m->carried=0;m->rescued=0;m->moves=0;m->time=0;m->riding=-1;
+ m->x=l->homeX;m->y=l->homeY;m->carried=0;m->rescued=0;m->moves=0;m->sounds=0;m->time=0;m->riding=-1;
  m->platformCount=m->hazardCount=0;m->turretCount=m->shotCount=0;memset(m->collected,0,sizeof m->collected);memset(m->broken,0,sizeof m->broken);memset(m->crackMs,0,sizeof m->crackMs);m->phase=RESCUE_PLAYING;
  for(unsigned y=0;y<m->height;y++)for(unsigned x=0;x<m->width;x++){
   unsigned at=y*m->width+x;unsigned part=m->parts[at];
@@ -68,17 +68,18 @@ void rescue_model_load(RescueModel *m){
 }
 static void pickup(RescueModel *m){
  const RescueLevelData *l=rescue_model_level(m);
- for(unsigned i=0;i<RESCUE_PUFFLES;i++)if(!m->collected[i]&&m->x==l->puffleX[i]&&m->y==l->puffleY[i]){m->collected[i]=true;m->carried++;}
+ for(unsigned i=0;i<RESCUE_PUFFLES;i++)if(!m->collected[i]&&m->x==l->puffleX[i]&&m->y==l->puffleY[i]){m->collected[i]=true;m->carried++;m->sounds|=RESCUE_SOUND_PUFFLE;}
 }
 static void deliver(RescueModel *m){
  const RescueLevelData *l=rescue_model_level(m);if(m->x!=l->homeX||m->y!=l->homeY)return;
- if(m->carried){m->rescued+=m->carried;m->score+=m->carried*50;m->carried=0;}
+ if(m->carried){m->rescued+=m->carried;m->score+=m->carried*50;m->carried=0;m->sounds|=RESCUE_SOUND_HOME;}
  if(m->rescued==3){m->score+=250;m->phase=RESCUE_DONE;}
 }
+static void wipeout(RescueModel *m){const RescueLevelData *l=rescue_model_level(m);m->x=l->homeX;m->y=l->homeY;m->carried=0;m->riding=-1;m->sounds|=RESCUE_SOUND_WIPEOUT;}
 static void hazard_touch(RescueModel *m){
  int index=hazard_at(m,m->x,m->y);if(index<0)return;
  if(m->hazards[index].kind==4){m->score+=25;m->hazards[index]=m->hazards[--m->hazardCount];return;}
- const RescueLevelData *l=rescue_model_level(m);m->x=l->homeX;m->y=l->homeY;m->carried=0;m->riding=-1;
+ wipeout(m);
 }
 bool rescue_model_step(RescueModel *m,int dx,int dy){
  if(m->phase!=RESCUE_PLAYING)return false;
@@ -95,7 +96,7 @@ void rescue_model_tick(RescueModel *m,double milliseconds){
  if(m->phase!=RESCUE_PLAYING)return;
  unsigned step=milliseconds>0?(unsigned)milliseconds:0;
  m->time+=step/1000.0;
- for(unsigned y=0;y<m->height;y++)for(unsigned x=0;x<m->width;x++){unsigned at=y*m->width+x;if(!m->crackMs[at])continue;if(m->crackMs[at]>step)m->crackMs[at]=(uint16_t)(m->crackMs[at]-step);else{m->crackMs[at]=0;m->broken[at]=1;if(m->x==x&&m->y==y){const RescueLevelData *l=rescue_model_level(m);m->x=l->homeX;m->y=l->homeY;m->carried=0;m->riding=-1;}}}
+ for(unsigned y=0;y<m->height;y++)for(unsigned x=0;x<m->width;x++){unsigned at=y*m->width+x;if(!m->crackMs[at])continue;if(m->crackMs[at]>step)m->crackMs[at]=(uint16_t)(m->crackMs[at]-step);else{m->crackMs[at]=0;m->broken[at]=1;if(m->x==x&&m->y==y){wipeout(m);}}}
  for(unsigned i=0;i<m->platformCount;i++){
   RescueMover *p=&m->platforms[i];int old=p->offset,next=mover_offset(p,m->time);
   if(m->riding==(int)i){int nx=(int)p->x+next;if(nx>=0&&(unsigned)nx<m->width){m->x=(unsigned)nx;m->y=p->y;}}
@@ -103,7 +104,7 @@ void rescue_model_tick(RescueModel *m,double milliseconds){
  }
  for(unsigned i=0;i<m->hazardCount;i++)m->hazards[i].offset=mover_offset(&m->hazards[i],m->time);
  for(unsigned i=0;i<m->turretCount;i++){RescueTurret *t=&m->turrets[i];double dx=t->x*80.0+40-m->x*80.0-40,dy=t->y*80.0+40-m->y*80.0-40;double distance=hypot(dx,dy);if(distance<=200)t->charge=(uint16_t)(t->charge+step);else t->charge=0;if(t->charge>=1200){int sx=(m->x>t->x)-(m->x<t->x),sy=(m->y>t->y)-(m->y<t->y);if((sx||sy)&&m->shotCount<16)m->shots[m->shotCount++]=(RescueShot){.x=t->x,.y=t->y,.dx=(int8_t)sx,.dy=(int8_t)sy,.elapsed=0};t->charge=0;}}
- for(unsigned i=0;i<m->shotCount;){RescueShot *shot=&m->shots[i];shot->elapsed=(uint16_t)(shot->elapsed+step);if(shot->elapsed<150){i++;continue;}shot->elapsed-=150;shot->x=(uint8_t)((int)shot->x+shot->dx);shot->y=(uint8_t)((int)shot->y+shot->dy);if(shot->x>=m->width||shot->y>=m->height){m->shots[i]=m->shots[--m->shotCount];continue;}if(shot->x==m->x&&shot->y==m->y){m->shots[i]=m->shots[--m->shotCount];hazard_touch(m);continue;}i++;}
+ for(unsigned i=0;i<m->shotCount;){RescueShot *shot=&m->shots[i];shot->elapsed=(uint16_t)(shot->elapsed+step);if(shot->elapsed<150){i++;continue;}shot->elapsed-=150;shot->x=(uint8_t)((int)shot->x+shot->dx);shot->y=(uint8_t)((int)shot->y+shot->dy);if(shot->x>=m->width||shot->y>=m->height){m->shots[i]=m->shots[--m->shotCount];continue;}if(shot->x==m->x&&shot->y==m->y){m->shots[i]=m->shots[--m->shotCount];wipeout(m);continue;}i++;}
  hazard_touch(m);
  if(m->riding>=0&&platform_at(m,m->x,m->y)<0)m->riding=-1;
 }
@@ -115,3 +116,5 @@ void rescue_model_next(RescueModel *m){
 }
 const RescueLevelData *rescue_model_level(const RescueModel *m){return &RESCUE_LEVEL_DATA[m->level];}
 unsigned rescue_model_total(const RescueModel *m){return m->score;}
+
+unsigned rescue_model_take_sounds(RescueModel *m){unsigned sounds=m->sounds;m->sounds=0;return sounds;}

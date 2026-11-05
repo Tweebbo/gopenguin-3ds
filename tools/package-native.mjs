@@ -1,4 +1,4 @@
-import {readFile,writeFile,mkdir,readdir,copyFile,stat,access} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,readdir,copyFile,stat,access,rename} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import path from 'node:path';
@@ -8,10 +8,11 @@ const version=(process.env.GOPENGUIN_VERSION??await readFile(root+'/VERSION','ut
 if(!/^\d+\.\d+\.\d+$/.test(version))throw Error('VERSION must contain a semantic release version.');
 const [major,minor,micro]=version.split('.').map(Number);
 if(major>63||minor>63||micro>15)throw Error('CIA versions support major/minor up to 63 and micro up to 15.');
-const options={elf:root+'/out/gopenguin-3ds-demo.elf',romfs:root+'/romfs',output:root+'/build/package-candidate',tools:path.resolve(root,'../Tweebbo-3DS/build/ctrtools'),resources:'','resource-index':'','unique-id':'0x7e901',release:false};
+const options={elf:root+'/out/gopenguin-3ds-demo.elf',romfs:root+'/romfs',output:root+'/build/package-candidate',tools:path.resolve(root,'../Tweebbo-3DS/build/ctrtools'),resources:'','resource-index':'','unique-id':'0x7e901',release:false,lossless:false};
 for(let i=2;i<process.argv.length;i++){
- const name=process.argv[i];if(name==='--help'){console.log('node tools/package-native.mjs [--elf FILE] [--romfs DIRECTORY] [--output build/DIRECTORY] [--tools DIRECTORY] [--unique-id HEX] [--release]');process.exit(0);}
+ const name=process.argv[i];if(name==='--help'){console.log('node tools/package-native.mjs [--elf FILE] [--romfs DIRECTORY] [--output build/DIRECTORY] [--tools DIRECTORY] [--unique-id HEX] [--release] [--lossless]');process.exit(0);}
  if(name==='--release'){options.release=true;continue;}
+ if(name==='--lossless'){options.lossless=true;continue;}
  if(!name.startsWith('--')||!(name.slice(2) in options)||!process.argv[i+1])throw Error('Unknown or incomplete option: '+name);
  options[name.slice(2)]=process.argv[++i];
 }
@@ -31,7 +32,7 @@ async function run(command,args){const child=spawn(command,args,{cwd:root,stdio:
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const started=new Date(),folder=options.output,inputs=folder+'/inputs-'+started.toISOString().replace(/[:.]/g,'-');await mkdir(inputs+'/romfs',{recursive:true});
 const elf=await readFile(options.elf);if(elf.toString('ascii',0,4)!=='\x7fELF'||elf[4]!==1||elf.readUInt16LE(18)!==40)throw Error('Expected a 32-bit ARM ELF input.');
-if(options.release&&(!elf.includes(Buffer.from('GOPENGUIN_RELEASE:'+version))||elf.includes(Buffer.from('http://10.0.2.2:18891/latest.json'))||elf.includes(Buffer.from('http://127.0.0.1:18891/latest.json'))||elf.includes(Buffer.from('background-update-auto'))))throw Error('Release packaging requires the matching versioned public ELF without LAN endpoints or automatic test controls.');
+if(options.release&&(!elf.includes(Buffer.from('GOPENGUIN_RELEASE:'+version))||elf.includes(Buffer.from('http://10.0.2.2:18891/latest.json'))||elf.includes(Buffer.from('http://127.0.0.1:18891/latest.json'))||elf.includes(Buffer.from('background-update-auto'))||elf.includes(Buffer.from('+stability-private'))))throw Error('Release packaging requires the matching versioned public ELF without LAN endpoints, private diagnostics or automatic test controls.');
 await writeFile(inputs+'/application.elf',elf);await copyFile(brand.icon,inputs+'/icon.png');
 if(brand.banner){await copyFile(brand.banner,inputs+'/banner.png');await copyFile(brand.wav,inputs+'/banner.wav');}
 const inventory=[],excluded=[];
@@ -47,6 +48,15 @@ async function snapshot(from,to,prefix=''){
 await snapshot(options.romfs,inputs+'/romfs');
 for(const file of inventory)if(sha(await readFile(path.join(options.romfs,file.file)))!==file.sha256)throw Error('RomFS changed while snapshotting: '+file.file);
 if(sha(await readFile(options.elf))!==sha(elf))throw Error('ELF changed while snapshotting. Run again after compilation finishes.');
+let lossless;
+if(options.lossless){
+ if(options.resources||options['resource-index'])throw Error('Optimize before generating split resource publication assets.');
+ await run('python3',['tools/optimize-romfs.py','--source',inputs+'/romfs','--output',inputs+'/romfs-optimized','--report',inputs+'/lossless.json']);
+ const report=JSON.parse(await readFile(inputs+'/lossless.json','utf8'));
+ await rename(inputs+'/romfs',inputs+'/romfs-source');await rename(inputs+'/romfs-optimized',inputs+'/romfs');
+ inventory.length=0;inventory.push(...report.files.map(({file,bytes,sha256})=>({file,bytes,sha256})));
+ lossless={sourceBytes:report.sourceBytes,bytes:report.bytes,savedBytes:report.sourceBytes-report.bytes,changed:report.changed,decodedPartsIdentical:report.decodedPartsIdentical,report:inputs+'/lossless.json'};
+}
 await writeFile(inputs+'/romfs-inventory.json',JSON.stringify(inventory,null,2)+'\n');
 
 const rsf=`BasicInfo:
@@ -158,6 +168,7 @@ AccessControlInfo:
     - gsp::Gpu
     - hid:USER
     - ptm:u
+    - ptm:sysm
     - ps:ps
 SystemControlInfo:
   SaveDataSize: 0KB
@@ -193,6 +204,7 @@ const relative=p=>path.relative(root,p);
 await run('podman',['run','--rm','--network','none','--cpus','2','--memory','1g','-v',root+':/work:z','-w','/work',process.env.DEVKITARM_IMAGE??'localhost/native-3ds-libctru-fixed:latest','3dsxtool',relative(inputs+'/application.elf'),relative(base+'.3dsx'),'--smdh='+relative(base+'.smdh'),'--romfs='+relative(inputs+'/romfs')]);
 const manifest={createdAt:new Date().toISOString(),status:brand.status,titleId,uniqueId:'0x'+uniqueId.toString(16),title:brand.short,internalTitle:'GoPengui',productCode:'CTR-P-GPPD',snapshot:relative(inputs),sourceElf:relative(options.elf),elfSha256:sha(elf),romfsBytes:inventory.reduce((sum,f)=>sum+f.bytes,0),romfsFiles:inventory.length,excludedBuildMetadata:excluded,old3ds:{systemMode:'64MB',systemModeExt:'Legacy',idealProcessor:0,affinityMask:1},new3ds:{cpu:'804MHz',l2Cache:true,core2:false},packagingTools:{makerom:sha(await readFile(makerom)),bannertool:sha(await readFile(bannertool))},artifacts:{},limits:['Games and other port work may still be incomplete; packaging is not complete-port acceptance.','DSP playback remains unverified where firmware is unavailable.','No CIA installation, console test, upload, publication or auto-update has been performed.','Title ID is a development convention, not a registered public allocation.']};
 manifest.version=version;manifest.titleVersion=(major<<10)|(minor<<4)|micro;
+if(lossless)manifest.lossless=lossless;
 if(options['resource-index']){
  const bytes=await readFile(path.resolve(options['resource-index']));
  if(bytes.toString('ascii',0,8)!=='GPRIDX1\0'||bytes.length<16||bytes.length!==16+bytes.readUInt32LE(8)*164)throw Error('Invalid bridge resource index.');

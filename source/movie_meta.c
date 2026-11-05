@@ -41,7 +41,10 @@ const char *movie_meta_clip(const MovieMeta *m){return m->clip;}
 unsigned movie_meta_source(const MovieMeta *m,unsigned symbol){char id[20];snprintf(id,sizeof id,"%u",symbol);json_t *value=json_object_get(m->symbols,id);return json_is_integer(value)?(unsigned)json_integer_value(value):symbol;}
 bool movie_meta_text(MovieMeta *m,const char *path,const char *value){if(!m||!path||!value||strlen(path)>=SWL_PATH||strlen(value)>1024)return false;const char *old=json_string_value(json_object_get(m->textValues,path));if(old&&!strcmp(old,value))return false;if(!old&&json_object_size(m->textValues)>=128)return false;return json_object_set_new(m->textValues,path,json_string(value))==0;}
 static double decimal(json_t *root,const char *key){return json_number_value(json_object_get(root,key));}
-static json_t *glyph(json_t *style,unsigned code){char key[12];snprintf(key,sizeof key,"%u",code);json_t *glyphs=json_object_get(style,"glyphs"),*g=json_object_get(glyphs,key);return g?g:json_object_get(glyphs,"63");}
+/* Exported font subsets often hold only one letter case; prefer the other case over "?". */
+static json_t *glyph(json_t *style,unsigned code){char key[12];snprintf(key,sizeof key,"%u",code);json_t *glyphs=json_object_get(style,"glyphs"),*g=json_object_get(glyphs,key);if(g)return g;
+ unsigned other=code>='a'&&code<='z'?code-32:code>='A'&&code<='Z'?code+32:0;if(other){snprintf(key,sizeof key,"%u",other);g=json_object_get(glyphs,key);if(g)return g;}
+ return json_object_get(glyphs,"63");}
 static float kern(json_t *style,unsigned a,unsigned b){char key[24];snprintf(key,sizeof key,"%u:%u",a,b);return (float)decimal(json_object_get(style,"kern"),key);}
 static unsigned decode(const unsigned char **cursor){const unsigned char *p=*cursor;unsigned n=*p++;if(n>=0xc2&&n<=0xdf&&(*p&0xc0)==0x80){n=((n&31)<<6)|(*p++&63);}else if(n>=0x80)n='?';*cursor=p;return n;}
 static float line_width(json_t *style,const unsigned *codes,unsigned first,unsigned end){float width=0;for(unsigned i=first;i<end;i++){if(i>first)width+=kern(style,codes[i-1],codes[i]);width+=(float)decimal(glyph(style,codes[i]),"advance");}return width;}

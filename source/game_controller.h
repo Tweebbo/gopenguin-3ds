@@ -10,6 +10,7 @@ typedef struct {
  unsigned rate;          // logic ticks per second (the movie's frame rate); 0 means 24
  unsigned stageWidth,stageHeight; // movie stage, fitted to the top screen; 0 means 760x480
  uint32_t backgroundRGB; // authored background for custom table compositions; 0 uses the host clear
+ bool nightPanel; // lower screen uses the dark island-night backdrop (controllers that draw white text on it)
  const char *banks[GAME_PORT_BANKS]; // bank names resolved through GameHost.resource; NULL if unused
  /** Banks (bit per index) loaded on demand with game_port_require_bank instead of at open. */
  unsigned lazy;
@@ -43,6 +44,8 @@ typedef struct {
  bool (*lower_bank_view)(void *game,unsigned bank,SWLMatrix *view);
  /** Optional composition frame for each lower-screen bank; 0 hides that bank. */
  unsigned (*lower_frame)(void *game,unsigned bank);
+ /** Screen-space readouts after the upper scene, on the current 400x240 target. */
+ void (*draw_top)(void *game);
 } GameController;
 
 typedef enum {GAME_SESSION_LOADING,GAME_SESSION_JOINING,GAME_SESSION_PLAYING,GAME_SESSION_PAYING,GAME_SESSION_LEFT,GAME_SESSION_FAILED} GameSessionState;

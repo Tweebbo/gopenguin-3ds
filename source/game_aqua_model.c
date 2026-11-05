@@ -6,7 +6,8 @@
 #define AQUA_LIVES 2
 
 static bool solid(unsigned tile){return (tile>=500&&tile<=689)||(tile>=1400&&tile<=1422);}
-static bool collectible(unsigned tile){return (tile>=2&&tile<=39)||(tile>=1200&&tile<=1201);}
+/* Tile 2 is the air pocket under the surface (it refills air in aqua_model_step), not a treasure. */
+static bool collectible(unsigned tile){return (tile>=3&&tile<=39)||(tile>=1200&&tile<=1201);}
 static unsigned tile_at(const AquaModel *m,double x,double y){
  int tx=(int)(x/AQUA_TILE),ty=(int)(y/AQUA_TILE);
  if(tx<0||ty<0||(unsigned)tx>=m->width||(unsigned)ty>=m->height)return 1;
@@ -19,9 +20,16 @@ void aqua_model_load(AquaModel *m){
  memcpy(m->map,l->map,(size_t)l->width*l->height*sizeof(uint16_t));
  m->x=l->startX;m->y=l->startY;m->air=100;m->treasure=0;m->cargo=0;m->claw=0;m->time=l->time;m->grace=20;m->puffleX=m->x-40;m->puffleY=m->y+10;m->pufflePinched=false;m->phase=AQUA_PLAYING;
 }
+/* Rows 0-1 hold the water-surface strip (500-509 wave tiles over the 2 air row); the sub starts in it
+   (startY 120), so the strip is open water, as the original's art hitTest treated it. */
+static bool blocked(const AquaModel *m,double x,double y){
+ unsigned t=tile_at(m,x,y);
+ if(y<2*AQUA_TILE&&t>=500&&t<=509)return false;
+ return solid(t);
+}
 static bool collides(const AquaModel *m){
  static const int offsets[4][2]={{-14,0},{14,0},{0,-14},{0,14}};
- for(unsigned i=0;i<4;i++)if(solid(tile_at(m,m->x+offsets[i][0],m->y+offsets[i][1])))return true;
+ for(unsigned i=0;i<4;i++)if(blocked(m,m->x+offsets[i][0],m->y+offsets[i][1]))return true;
  return false;
 }
 static void collect(AquaModel *m){

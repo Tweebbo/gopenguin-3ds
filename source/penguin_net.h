@@ -15,6 +15,7 @@ void pnet_status(char *out,size_t cap);
 unsigned pnet_id(void);
 bool pnet_take_session(char *out,size_t cap);
 bool pnet_send(const char *command,unsigned count,const char *const *args);
+bool pnet_send_stability(const char *json,unsigned owner);
 bool pnet_send_to(char extension,const char *command,unsigned count,const char *const *args);
 bool pnet_receive(PNetMessage *message);
 void pnet_message_free(PNetMessage *message);

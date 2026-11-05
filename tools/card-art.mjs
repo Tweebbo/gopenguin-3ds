@@ -18,25 +18,68 @@ export async function cardAssets(){
  const ambient=JSON.parse(await readFile(root+'/build/debug-prepared/public/swf/card-ambient/timelines.json'));
  for(const art of Object.values(ambient.characters))for(const item of [art,...Object.values(art.states??{})])for(const field of ['file','maskFile'])if(item[field])assets.set(path.resolve(web+'/public/swf/games/card/battles/ambient/chars/'+item[field]),root+'/build/debug-prepared/public/swf/card-ambient/chars/'+item[field]);
  for(const art of Object.values(walk.characters))for(const item of [art,...Object.values(art.states??{})])for(const field of ['file','maskFile'])if(item[field])assets.set(path.resolve(web+'/public/swf/games/card/battles/ambient/chars/debug-walk-'+item[field]),root+'/build/debug-prepared/public/swf/card-walk/chars/'+item[field]);
+ // The dojo bank (Sensei menu pack) reuses the board background of the card pack: unpack its vectors once
+ // and serve them to the Sensei pack under a card- prefix.
+ const cardDir=web+'/public/swf/games/card/card',board=JSON.parse(await readFile(cardDir+'/timelines.json')),unpacked=root+'/build/card-chars';
+ await mkdir(unpacked,{recursive:true});const vectors=await readFile(cardDir+'/chars/'+board.pack.file);
+ for(const [file,[offset,length]] of Object.entries(board.pack.entries)){await writeFile(unpacked+'/'+file,vectors.subarray(offset,offset+length));assets.set(path.resolve(web+'/public/swf/games/sensei/SenseiWidget/chars/card-'+file),unpacked+'/'+file);}
  if(process.argv[2]==='debug-fire'||process.env.GAME_EXPORT_PRELOAD?.startsWith('debug-fire:')){
   const fire=JSON.parse(await readFile(root+'/build/debug-prepared/public/swf/card-fire/timelines.json'));
   for(const art of Object.values(fire.characters))for(const item of [art,...Object.values(art.states??{})])for(const field of ['file','maskFile'])if(item[field])assets.set(path.resolve(web+'/public/swf/games/fire/fire/chars/'+item[field]),root+'/build/debug-prepared/public/swf/card-fire/chars/'+item[field]);
   for(const i of icons)assets.set(path.resolve(web+'/public/swf/games/fire/fire/chars/debug-icon-'+i.id+'.png'),folder+'/'+i.id+'.swf/1.png');
  }
- return {assets,icons,walk};
+ return {assets,icons,walk,board};
 }
+const scaled=(x,y,sx,sy=sx)=>[sx,0,0,sy,x,y];
+const nextId=data=>1+Math.max(...Object.keys(data.sprites).map(Number),...Object.keys(data.characters).map(Number),...Object.keys(data.editTexts??{}).map(Number));
+/** Card-Jitsu board bank. Frame 1 (upper screen, drawn over the dojo and fighters): board panel, names, both hands,
+ *  played cards and won-card thumbnails at the original card.ts poses. Frame 2 (touch screen, 1 px = 2.375 stage
+ *  units): the help scroll paper, the original clock and the hand as large card faces. Frame 3: the help scroll. */
 export function cardStage(data,icons){
  const lookup=5000;data.sprites[lookup]={frames:icons.map((icon,i)=>{
   const id=6000+i;data.characters[id]={kind:'shape',file:icon.file,size:[icon.width/.23,icon.height/.23],origin:[0,0],nativeRasterScale:1};return [{id,depth:1,matrix:matrix()}];
  }),labels:{},actions:{1:[['stop',null]]},sounds:[]};
  // Keep each tint/number/icon as its own instance, including single-frame clips.
- for(const id of [53,56])still(data.sprites[id]);
+ for(const id of [53,56,66])still(data.sprites[id]);
  for(const frame of data.sprites[67].frames)for(const e of frame){if(e.name==='mc_art')e.id=lookup;if(e.name==='mc_glow')e.name='card_glow';}
- const rootEntries=data.main.frames[0].filter(e=>[1,4,5,6].includes(e.depth));
- rootEntries.push({id:67,name:'pick0',depth:100,matrix:matrix(225,50,.4)},{id:67,name:'pick1',depth:101,matrix:matrix(425,50,.4)});
- for(let seat=0;seat<2;seat++)for(let slot=0;slot<9;slot++)rootEntries.push({id:67,name:`score${seat}_${slot}`,depth:110+seat*10+slot,matrix:matrix((seat?540:15)+slot%3*63,15+Math.floor(slot/3)*19,.14)});
- const lower=[];for(let i=0;i<5;i++)lower.push({id:67,name:'hand'+i,depth:10+i,matrix:matrix(15+i*150,135,.55)});
- data.main={frames:[rootEntries,lower],labels:{battle:1,hand:2},actions:{1:[['stop',null]],2:[['stop',null]]},sounds:[]};
+ const original=Object.fromEntries(data.main.frames[0].map(e=>[e.depth,e]));
+ const upper=[{...original[7],name:'board'},{...original[9]},{...original[10]}];
+ for(let seat=0;seat<2;seat++)for(let slot=0;slot<5;slot++)upper.push({id:67,name:`seat${seat}_${slot}`,depth:20+seat*5+slot,matrix:matrix(seat?710-(slot+1)*35:50+slot*35,385,.15)});
+ for(let seat=0;seat<2;seat++)for(let e=0;e<3;e++)for(let i=0;i<8;i++)upper.push({id:67,name:`score${seat}_${e}_${i}`,depth:100+seat*30+e*10+(7-i),matrix:matrix((seat?550:50)+e*50,25+i*15,.4)});
+ upper.push({id:67,name:'pick0',depth:200,matrix:matrix(225,150,.4)},{id:67,name:'pick1',depth:201,matrix:matrix(425,150,.4)});
+ const lower=[{id:102,name:'paper',depth:1,matrix:scaled(-12,40,1.69,2.0)},{id:101,name:'mc_clock',depth:12,matrix:scaled(330,92,1.25)}];
+ for(let i=0;i<5;i++)lower.push({id:67,name:'hand'+i,depth:20+i,matrix:matrix(12+i*149.6,380,.6)});
+ data.sprites[112].frames=data.sprites[112].frames.map(frame=>frame.filter(e=>e.name!=='tf_help'));
+ const help=[{id:102,name:'paper',depth:1,matrix:scaled(-12,40,1.69,2.0)},{id:112,name:'help',depth:2,matrix:scaled(78,40,1.3)}];
+ data.main={frames:[upper,lower,help],labels:{battle:1,hand:2,help:3},actions:{1:[['stop',null]],2:[['stop',null]],3:[['stop',null]]},sounds:[]};
+ return data;
+}
+/** Dojo bank from the Sensei menu pack: frame 1 = the board's dojo background (card pack art), frame 2 = the
+ *  Sensei menu scene for the upper screen, frame 3 = the options scroll with its belt/Sensei/instructions icons. */
+export function dojoStage(data,board){
+ const offset=30000,copied=new Set();
+ const visit=id=>{
+  if(copied.has(id))return;copied.add(id);
+  const sprite=board.sprites[id];
+  if(sprite){const copy=structuredClone(sprite);for(const frame of copy.frames)for(const e of frame){visit(e.id);e.id+=offset;}data.sprites[id+offset]=copy;return;}
+  const art=structuredClone(board.characters[id]);if(!art)throw Error('Missing board symbol '+id);
+  for(const item of [art,...Object.values(art.states??{})])for(const field of ['file','maskFile'])if(item[field])item[field]='card-'+item[field];
+  data.characters[id+offset]=art;
+ };
+ const background=board.main.frames[0].find(e=>e.depth===1);visit(background.id);
+ const texts=new Set(Object.keys(data.editTexts??{}).map(Number)),menus=631,options=625;
+ const strip=frame=>frame.filter(e=>!texts.has(e.id)&&data.characters[e.id]?.kind!=='button');
+ for(const sprite of Object.values(data.sprites))sprite.frames=sprite.frames.map(strip);
+ // Only the Sensei's idle pose: the other poses belong to the first-time tutorial.
+ const pose=data.sprites[617];pose.frames=[pose.frames[1],structuredClone(pose.frames[1])];pose.labels={};pose.actions={1:[['stop',null]]};
+ const menu=data.sprites[menus];menu.frames=menu.frames.map(frame=>frame.filter(e=>!['howtoplay','options','background'].includes(e.name)));
+ const backdrop=nextId(data);data.sprites[backdrop]={frames:[menu.frames[0].filter(e=>[1,2,9].includes(e.depth))],labels:{},actions:{1:[['stop',null]]},sounds:[]};still(data.sprites[backdrop]);
+ const panel=data.sprites[options].frames[0].find(e=>e.name==='background');
+ const top=[{id:menus,name:'menu',depth:1,matrix:scaled(57,344.9,1)}];
+ const scroll=[{id:backdrop,name:'backdrop',depth:1,matrix:scaled(57*1.25-95,344.9*1.25-130,1.25)},{id:panel.id,name:'panel',depth:2,matrix:scaled(36,74,2.05,1.85)}];
+ [35,31,33].forEach((icon,i)=>scroll.push({id:icon,name:'icon'+i,depth:10+i,matrix:scaled(100,108+i*100,.62)}));
+ data.main={frames:[[{...background,id:background.id+offset,name:'dojo'}],top,scroll],labels:{dojo:1,menu:2,options:3},actions:{1:[['stop',null]],2:[['stop',null]],3:[['stop',null]]},sounds:[]};
+ data.editTexts={};data.fonts={};
  return data;
 }
 export function fireStage(data,icons){

@@ -39,8 +39,8 @@ Objects live at `resources/<first hex digit>/<sha256>.bin` under the application
 SD data directory. Each application has its own index, so it cannot silently use
 another release's art. Account settings are separate from the resource store.
 
-Copies and downloads are hashed, closed, read back, and renamed from `.part`
-files. The complete bundle is also checked. Missing base resources after a delta
+Copies and downloads are hashed while streaming, closed successfully, and renamed
+from `.part` files. The complete bundle is also checked. Missing base resources after a delta
 require explicit full repair. Interrupted transfers retain verified objects and
 support HTTP range resume. Bootstrap packages retain Town, core graphics and
 update UI so an initial installation can prepare missing resources.
@@ -49,6 +49,11 @@ Boot readiness checks file presence and size, as before; checksum verification
 runs during preparation and repair. On 3DS, directory reads check sizes in batches
 instead of opening every file individually. Same-size corruption is detected by
 repair, rather than by the lightweight boot check.
+
+Previously verified immutable objects can reuse bounded verification receipts
+during normal preparation. Missing or changed metadata falls back to hashing;
+explicit Repair bypasses receipts. See [verification caching](update-verification-cache.md)
+for the trust boundary and measured I/O savings.
 
 ## Local build and packaging
 

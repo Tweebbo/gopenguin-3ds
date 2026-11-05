@@ -26,6 +26,13 @@ are absent cannot become playable through scheduling alone.
 
 ## Scheduling and integrity
 
+Normal preparation now reuses metadata-bound receipts for immutable resources
+whose content was already verified. Explicit resource repair still hashes every
+object. Newly copied/extracted bytes are hashed in their write pass, without the
+old redundant temporary-file reread. See
+[verification cache and compressed alternatives](update-verification-cache.md)
+for the exact trust boundary, measurements and optional lossless ZCIA tooling.
+
 The main loop reports loading activity, frame intervals, model family, battery
 saver and suspension. Loading foreground assets holds update work for 200 ms;
 frames over the model's budget plus a 6 ms margin hold it for 100 ms. Continued

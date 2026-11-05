@@ -56,14 +56,21 @@ static GPUpdateView wait_worker(void){
  u64 end=now_ms()+5000;GPUpdateView v;do{job_sleep(2);v=gp_update_view();}while(gp_update_busy(v.state)&&now_ms()<end);assert(!gp_update_busy(v.state));return v;
 }
 int main(int argc,char **argv){
- assert(argc==2);scenario=argv[1];struct stat payload;assert(!stat("payload.cia",&payload));bytes=(unsigned)payload.st_size;gp_update_init(NULL);assert(gp_update_check());assert(wait_worker().state==GP_UPD_AVAILABLE);assert(gp_update_start());GPUpdateView v=wait_worker();
+ assert(argc==2);scenario=argv[1];struct stat payload;assert(!stat("payload.cia",&payload));bytes=(unsigned)payload.st_size;gp_update_init(NULL);assert(gp_update_check());assert(wait_worker().state==GP_UPD_AVAILABLE);
+ if(is("small-full-choice")){
+  u64 until=now_ms()+1000;while(!gp_update_use_full(true)){assert(now_ms()<until);job_sleep(1);}
+  GPUpdateView full=gp_update_view();assert(full.small&&full.fullFallback&&full.downloadBytes==full.fullBytes);
+  assert(gp_update_use_full(false));GPUpdateView small=gp_update_view();assert(!small.fullFallback&&small.downloadBytes<small.fullBytes);
+  assert(gp_update_use_full(true));
+ }
+ assert(gp_update_start());GPUpdateView v=wait_worker();
  if(!strncmp(scenario,"small-",6)){
   bool fallback=is("small-base-missing")||is("small-base-damaged")||is("small-damaged-header")||is("small-checksum");
   if(fallback){assert(v.state==GP_UPD_ERROR&&v.fullFallback&&!starts&&!writes&&!fullDownloads);assert(strstr(v.message,"Full download"));}
   if(is("small-interrupted"))assert(v.state==GP_UPD_ERROR&&!v.fullFallback&&!starts&&!fullDownloads);
   if(fallback||is("small-interrupted")||is("small-install-retry")){while(!gp_update_start())job_sleep(1);v=wait_worker();}
   assert(v.state==GP_UPD_INSTALLED&&queries==1&&finishes==1&&writes==4);
-  assert(smallDownloads==(is("small-interrupted")?2u:1u));assert(fullDownloads==(fallback?1u:0u));
+  assert(smallDownloads==(is("small-full-choice")?0u:is("small-interrupted")?2u:1u));assert(fullDownloads==(fallback||is("small-full-choice")?1u:0u));
   assert(gp_update_stop_within(1000));printf("PASS incremental CIA worker %s: patch=%u full=%u writes=%u\n",scenario,smallDownloads,fullDownloads,writes);return 0;
  }
  if(is("retry")){assert(v.state==GP_UPD_ERROR&&starts==1&&downloads==1);while(!gp_update_start())job_sleep(1);v=wait_worker();}

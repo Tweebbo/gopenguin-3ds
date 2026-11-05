@@ -36,6 +36,17 @@ int main(void){
   assert(scene);assert(render(scene)>0);
  }
  m->level=0;rescue_model_load(m);
+ /* Lower-screen edge arrows: each tap moves one cell. */
+ {static const int dirs[4][2]={{0,-1},{-1,0},{0,1},{1,0}};static const float taps[4][2]={{160,38},{16,132},{160,226},{304,132}}; /* edge arrows */
+  for(unsigned d=0;d<4;d++){bool done=false;
+   for(unsigned y=1;y+1<m->height&&!done;y++)for(unsigned x=1;x+1<m->width&&!done;x++){
+    if(!rescue_model_passable(m,x,y)||!rescue_model_passable(m,(unsigned)((int)x+dirs[d][0]),(unsigned)((int)y+dirs[d][1])))continue;
+    m->x=x;m->y=y;game_port_draw_bottom(p);game_port_touch(p,GAME_TOUCH_DOWN,taps[d][0],taps[d][1]);game_port_touch(p,GAME_TOUCH_UP,taps[d][0],taps[d][1]);game_port_update(p,0,NULL);
+    if(m->x!=x||m->y!=y){assert((int)m->x==(int)x+dirs[d][0]&&(int)m->y==(int)y+dirs[d][1]);done=true;}
+   }
+   assert(done);
+  }
+  rescue_model_load(m);}
  unsigned crackX=0,crackY=0;bool crackFound=false;
  for(unsigned y=0;y<m->height&&!crackFound;y++)for(unsigned x=0;x<m->width&&!crackFound;x++)if(m->parts[y*m->width+x]==3){
   for(int dx=-1;dx<=1&&!crackFound;dx++)for(int dy=-1;dy<=1&&!crackFound;dy++)if((dx==0)!=(dy==0)&&rescue_model_passable(m,(unsigned)((int)x+dx),(unsigned)((int)y+dy))){
@@ -68,6 +79,14 @@ int main(void){
  rescue_model_tick(m,1);
  const RescueLevelData *water=rescue_model_level(m);
  assert(m->x==water->homeX&&m->y==water->homeY&&m->carried==0);
+ assert(rescue_model_take_sounds(m)&RESCUE_SOUND_WIPEOUT);
+ /* A turret projectile must reset the penguin even without a moving hazard on its cell. */
+ m->hazardCount=m->platformCount=m->turretCount=0;m->x=water->homeX+2;m->y=water->homeY;m->carried=1;
+ m->shotCount=1;m->shots[0]=(RescueShot){.x=(uint8_t)(m->x+1),.y=(uint8_t)m->y,.dx=-1,.dy=0,.elapsed=149};
+ rescue_model_tick(m,1);
+ assert(m->x==water->homeX&&m->y==water->homeY&&m->carried==0&&m->shotCount==0);
+ assert(rescue_model_take_sounds(m)==RESCUE_SOUND_WIPEOUT);assert(!rescue_model_take_sounds(m));
+ rescue_model_load(m);
  m->level=0;rescue_model_load(m);
  const RescueLevelData *home=rescue_model_level(m);assert(rescue_model_passable(m,home->homeX,home->homeY));
  bool moved=false;

@@ -38,7 +38,7 @@ Help → Graphics → Hide other penguins reduces the work needed to draw a crow
 
 ![Graphics settings with Hide other penguins and Battery saver off](visual/graphics.png)
 
-Help → Graphics → Battery saver keeps your preference on the SD card. On New 3DS it uses the normal CPU clock and 30 FPS. Turn it off for the faster CPU and up to 60 FPS. Original 3DS already uses the normal clock and 30 FPS.
+Help → Graphics → Battery saver keeps your preference on the SD card. On New 3DS it uses the normal CPU clock with L2 cache and 30 FPS. Normal mode allows the faster CPU and up to 60 FPS during activity, then saves automatically after two quiet seconds. Input restores the active profile immediately. Original 3DS uses the normal clock and 30 FPS in both modes. A CPU clock request failure is shown in Graphics; the frame cap still applies.
 
 ## Updates
 

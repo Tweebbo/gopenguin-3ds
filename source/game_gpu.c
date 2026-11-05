@@ -5,6 +5,8 @@
 #include "viewport.h"
 #include <citro2d.h>
 #include <stdlib.h>
+#include <string.h>
+#include <3ds.h>
 
 struct GameBank {MovieBank *bank;};
 
@@ -14,10 +16,40 @@ GameBank *game_bank_load(const char *path,size_t limit,const char **error){
  return b;
 }
 void game_bank_free(GameBank *b){if(!b)return;movie_bank_free(b->bank);free(b);}
+
 SWLScene *game_bank_scene(GameBank *b){return b?movie_bank_scene(b->bank):NULL;}
 MovieMeta *game_bank_meta(GameBank *b){return b?movie_bank_meta(b->bank):NULL;}
 size_t game_bank_texture_bytes(const GameBank *b){return b?movie_bank_bytes(b->bank):0;}
 bool game_bank_text(GameBank *b,const char *path,const char *value){return b&&movie_bank_text(b->bank,path,value);}
+
+struct GameBankJob {Thread thread;char path[256];size_t limit;MovieBank *bank;const char *error;bool done;};
+static void bank_worker(void *arg){GameBankJob *j=arg;j->bank=movie_bank_load_staged(j->path,j->limit,&j->error);__atomic_store_n(&j->done,true,__ATOMIC_RELEASE);}
+GameBankJob *game_bank_job_start(const char *path,size_t limit){
+ GameBankJob *j=calloc(1,sizeof *j);if(!j)return NULL;
+ snprintf(j->path,sizeof j->path,"%s",path);j->limit=limit;
+ /* Same core as the main thread, lower priority: it runs while the frame loop waits for vblank. */
+ s32 priority=0x30;svcGetThreadPriority(&priority,CUR_THREAD_HANDLE);
+ j->thread=threadCreate(bank_worker,j,64*1024,priority+1,-2,false);
+ if(!j->thread)bank_worker(j);
+ return j;
+}
+/* The worker has read and inflated the bank; its texture pages are then imported one per frame here (main thread,
+   linear heap) so finishing a load never blocks a whole frame. game_bank_job_finish commits whatever is left. */
+bool game_bank_job_done(GameBankJob *j){
+ if(!j)return true;
+ if(!__atomic_load_n(&j->done,__ATOMIC_ACQUIRE))return false;
+ return !j->bank||movie_bank_import_next(j->bank)!=0;
+}
+GameBank *game_bank_job_finish(GameBankJob *j,const char **error){
+ if(!j){if(error)*error="Out of memory.";return NULL;}
+ if(j->thread){threadJoin(j->thread,U64_MAX);threadFree(j->thread);}
+ MovieBank *m=j->bank;const char *failure=j->error;free(j);
+ /* Texture import (linear heap) stays on the main thread. */
+ if(m&&!movie_bank_commit(m,&failure)){movie_bank_free(m);m=NULL;}
+ if(!m){if(error)*error=failure?failure:"Could not load the game.";return NULL;}
+ GameBank *b=calloc(1,sizeof *b);if(!b){movie_bank_free(m);if(error)*error="Out of memory.";return NULL;}
+ b->bank=m;return b;
+}
 
 typedef struct {GamePort *port;unsigned bank;SWLMatrix view;} Layer;
 static void line(void *user,float x0,float y0,float x1,float y1,float width,uint32_t rgb){
@@ -55,9 +87,14 @@ bool game_port_draw_top(GamePort *port,C3D_RenderTarget *target){
  if(!game_port_drawable(port))return false;
  const GameController *c=game_port_controller(port);SWLMatrix custom;
  if(c->backgroundRGB){uint32_t rgb=c->backgroundRGB;C2D_TargetClear(target,C2D_Color32(rgb>>16&255,rgb>>8&255,rgb&255,255));C2D_SceneBegin(target);}
- if(c->top_view&&c->top_view(game_port_game(port),&custom))return draw(port,target,400,240,custom,false);
+ bool ok;
+ if(c->top_view&&c->top_view(game_port_game(port),&custom))ok=draw(port,target,400,240,custom,false);
+ else{
  float w,h;game_port_stage(port,&w,&h);Viewport view=viewport_cover(400,240,w,h,w/2,0,1);
- return draw(port,target,400,240,(SWLMatrix){view.scale,0,0,view.scale,view.x,view.y},false);
+ ok=draw(port,target,400,240,(SWLMatrix){view.scale,0,0,view.scale,view.x,view.y},false);
+ }
+ if(c->draw_top)c->draw_top(game_port_game(port));
+ return ok;
 }
 
 bool game_port_draw_lower(GamePort *port,C3D_RenderTarget *target){

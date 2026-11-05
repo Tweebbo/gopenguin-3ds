@@ -98,15 +98,54 @@ bool ui_button(float x,float y,float w,float h,bool pressed,bool enabled){
  return pressed;
 }
 
+/* Minigame lower screens share the client's look: white cards with a blue stroke and a soft
+   shadow for buttons, glass navy bars for the HUD and the island sky behind everything. */
+/* Games already published in v1.3.9 (no nightPanel) keep their published look; the themed look applies only to the
+   games that were introduced with it. The host sets this before each lower-screen draw (ui_game_style). */
+static bool gameThemed;
+void ui_game_style(bool themed){gameThemed=themed;}
 bool ui_game_button(float x,float y,float w,float h,bool pressed,bool enabled){
- float r=fminf(7,h/3),dy=pressed&&enabled?1:0;
- ui_round(x,y+dy,w,h,r,0x182a38,255);
- ui_round(x+1.5f,y+1.5f+dy,w-3,h-3,r-1.5f,enabled?(pressed?0xffe68a:0xffffff):0xd7e2e9,255);
- return pressed&&enabled;
+ if(!gameThemed){
+  float r=fminf(7,h/3),dy=pressed&&enabled?1:0;
+  ui_round(x,y+dy,w,h,r,0x182a38,255);
+  ui_round(x+1.5f,y+1.5f+dy,w-3,h-3,r-1.5f,enabled?(pressed?0xffe68a:0xffffff):0xd7e2e9,255);
+  return pressed&&enabled;
+ }
+ float r=fminf(8,h/2.8f),dy=pressed&&enabled?1:0;
+ if(!enabled){ui_round(x,y,w,h,r,0x8fb3cc,255);ui_round(x+1,y+1,w-2,h-2,r-1,0xdfe9f0,255);return false;}
+ if(!pressed)ui_round(x,y+2,w,h,r,SHADOW,70);
+ ui_round(x,y+dy,w,h,r,pressed?0x1b78bd:0x3b97d6,255);
+ ui_round_gradient(x+1.5f,y+1.5f+dy,w-3,h-3,r-1.5f,pressed?0xc9ecff:0xffffff,pressed?0xa9dcf7:0xe3f3fd);
+ if(!pressed&&h>=16)ui_round(x+4,y+3,w-8,(h-6)*.4f,fminf(r,(h-6)*.2f),0xffffff,150);
+ return pressed;
+}
+static void glass_bar(float x,float y,float w,float h,bool top){
+ C2D_DrawRectangle(x,y,.5f,w,h,colour(0x0a5b9b,255),colour(0x0a5b9b,255),colour(0x05365f,255),colour(0x05365f,255));
+ C2D_DrawRectSolid(x,top?y+h-1:y,.5f,w,1,colour(0x4fc0ff,255));
+ C2D_DrawRectSolid(x,top?y:y+1,.5f,w,1,colour(0xffffff,40));
+ if(top)C2D_DrawRectangle(x,y+h,.5f,w,3,colour(SHADOW,70),colour(SHADOW,70),colour(SHADOW,0),colour(SHADOW,0));
+ else C2D_DrawRectangle(x,y-3,.5f,w,3,colour(SHADOW,0),colour(SHADOW,0),colour(SHADOW,70),colour(SHADOW,70));
 }
 void ui_game_fill(float x,float y,float w,float h,uint32_t rgb){
+ if(!gameThemed){
+  if(rgb==0xffffff&&w>=80&&h>=30){ui_round(x,y,w,h,7,0x182a38,255);ui_round(x+1.5f,y+1.5f,w-3,h-3,5.5f,rgb,255);}
+  else C2D_DrawRectSolid(x,y,.5f,w,h,colour(rgb,255));
+  return;
+ }
+ if(w>=320&&h>=240){
+  if(rgb==UI_GAME_PANEL){ui_background();return;}
+  if(rgb==UI_GAME_NIGHT){
+   C2D_DrawRectangle(0,0,.5f,320,240,colour(0x0d5a99,255),colour(0x0d5a99,255),colour(0x05284a,255),colour(0x05284a,255));
+   /* No decorative snow dots here: they sat under mission and book text and read as stray punctuation ("W,ow"). */
+   ui_logo(320-ui_logo_width(UI_LOGO_MEDIUM,1)-8,240-UI_LOGO_24_H-8,UI_LOGO_MEDIUM,1);
+   return;
+  }
+  C2D_DrawRectangle(x,y,.5f,w,h,colour(mix(rgb,0xffffff,.12f),255),colour(mix(rgb,0xffffff,.12f),255),colour(mix(rgb,0x000000,.18f),255),colour(mix(rgb,0x000000,.18f),255));
+  return;
+ }
+ if(w>=320&&h<=60&&(rgb==INK||rgb==0x062646||rgb==0x102040)){glass_bar(x,y,w,h,y<120);return;}
  if(rgb==0xffffff&&w>=80&&h>=30){
-  ui_round(x,y,w,h,7,0x182a38,255);ui_round(x+1.5f,y+1.5f,w-3,h-3,5.5f,rgb,255);
+  ui_round(x,y+1.5f,w,h,8,SHADOW,40);ui_round(x,y,w,h,8,CARD_STROKE,255);ui_round(x+1,y+1,w-2,h-2,7,rgb,255);
  }else C2D_DrawRectSolid(x,y,.5f,w,h,colour(rgb,255));
 }
 

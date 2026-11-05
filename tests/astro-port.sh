@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 web=${GOPENGUIN_WEB:-$HOME/gopenguin-dev/web}
-host=${HOST_INCLUDE:-$HOME/Tweebbo-Penguin-3DS/build/host-include}
+host=${HOST_INCLUDE:-$PWD/build/host-include}
 mkdir -p build
 cc -O2 -std=c11 -Wall -Wextra -Werror -Isource tests/game-astro.c source/game_astro_model.c -lm -o build/game-astro-test
 ASTRO_REFERENCE="$web" node tests/game-astro.mjs

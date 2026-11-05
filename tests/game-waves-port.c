@@ -30,7 +30,7 @@ int main(void){
  SWLScene *scene=game_bank_scene(game_port_bank(p,0));assert(scene);assert(render(scene)>0);
  WavesModel *m=game_waves_model(game_port_game(p));assert(m);
 
- tap(p,160,45);assert(m->mode==WAVES_FREESTYLE);
+ tap(p,120,45);assert(m->mode==WAVES_FREESTYLE);
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});assert(m->air);assert(m->vy<0);
  m->air=true;m->spin=360;m->flip=0;m->vy=0.1;m->y=waves_model_surface(m)+8;m->ride=0;m->soundCount=0;
  waves_model_update(m,10,false,false,false,false);
@@ -42,7 +42,7 @@ int main(void){
  for(unsigned wave=1;wave<3;wave++){m->time=24999;waves_model_update(m,10,false,false,false,false);assert(m->wave==wave+1);assert(m->phase==WAVES_PLAYING);}
  m->time=24999;waves_model_update(m,10,false,false,false,false);assert(m->phase==WAVES_RESULT&&m->success);
  tick(p,1);assert(m->phase==WAVES_RESULT);
- m->score=1234;tap(p,228,131);assert(f.zo==1);
+ m->score=1234;tap(p,232,194);assert(f.zo==1);
  char *reply[]={"510"};assert(game_port_packet(p,"zo",1,reply));assert(f.left==1&&f.coins==510);
  game_port_free(p);
  puts("PASS Catchin' Waves native controller: bank renders, menu starts, jump and trick, wipeout, three waves, result and authoritative payout");

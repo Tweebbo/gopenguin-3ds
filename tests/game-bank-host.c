@@ -32,3 +32,9 @@ SWLScene *game_bank_scene(GameBank *b){return b?b->scene:NULL;}
 MovieMeta *game_bank_meta(GameBank *b){return b?b->meta:NULL;}
 size_t game_bank_texture_bytes(const GameBank *b){return b?b->textures:0;}
 bool game_bank_text(GameBank *b,const char *path,const char *value){if(!b||!movie_meta_text(b->meta,path,value))return false;swl_invalidate(b->scene);return true;}
+
+/* Host builds load synchronously; the console runs game_bank_load on a worker thread. */
+struct GameBankJob {GameBank *bank;const char *error;};
+GameBankJob *game_bank_job_start(const char *path,size_t limit){GameBankJob *j=calloc(1,sizeof *j);if(j)j->bank=game_bank_load(path,limit,&j->error);return j;}
+bool game_bank_job_done(GameBankJob *j){(void)j;return true;}
+GameBank *game_bank_job_finish(GameBankJob *j,const char **error){if(!j){if(error)*error="Out of memory.";return NULL;}GameBank *b=j->bank;if(!b&&error)*error=j->error;free(j);return b;}

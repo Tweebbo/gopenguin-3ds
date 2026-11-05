@@ -30,7 +30,17 @@ int main(void){
  game_port_update(p,1.0f/24,&(GameInput){.down=GAME_KEY_A});
  tick(p,50,(GameInput){0});
  AquaModel *m=game_aqua_model(game_port_game(p));assert(m&&m->phase==AQUA_PLAYING);
- int tx=-1,ty=-1;for(unsigned y=2;y<m->height&&tx<0;y++)for(unsigned x=0;x<m->width&&tx<0;x++){unsigned t=m->map[y*m->width+x];if((t>=2&&t<=39)||t==1200){tx=(int)x;ty=(int)y;}}
+ /* Lower-screen pads: holding < moves left, Down moves down, the Claw pad stays held across frames. */
+ {m->grace=999;float x0=m->x,y0=m->y;
+  game_port_draw_bottom(p);game_port_touch(p,GAME_TOUCH_DOWN,40,190);tick(p,6,(GameInput){0});game_port_touch(p,GAME_TOUCH_UP,40,190);assert(m->x<x0);
+  game_port_draw_bottom(p);game_port_touch(p,GAME_TOUCH_DOWN,150,150);tick(p,6,(GameInput){0});game_port_touch(p,GAME_TOUCH_UP,150,150);assert(m->y>y0);
+  game_port_draw_bottom(p);game_port_touch(p,GAME_TOUCH_DOWN,260,218);tick(p,1,(GameInput){0});assert(game_aqua_claw_held(game_port_game(p)));game_port_touch(p,GAME_TOUCH_UP,260,218);tick(p,1,(GameInput){0});assert(!game_aqua_claw_held(game_port_game(p)));
+  /* One playfield over both screens: the touch screen continues 240 px below the top screen, 40 px in. */
+  {const GameController *c=game_port_controller(p);SWLMatrix top,low;assert(c->top_view(game_port_game(p),&top)&&c->lower_view(game_port_game(p),&low));
+   assert(fabsf(top.a-low.a)<1e-6f&&fabsf(low.x-(top.x-40))<1e-4f&&fabsf(low.y-(top.y-240))<1e-4f);
+   assert(c->lower_frame(game_port_game(p),1)==2&&swl_frames(sub,"root")==2);}
+  m->x=x0;m->y=y0;}
+ int tx=-1,ty=-1;for(unsigned y=2;y<m->height&&tx<0;y++)for(unsigned x=0;x<m->width&&tx<0;x++){unsigned t=m->map[y*m->width+x];if((t>=3&&t<=39)||t==1200){tx=(int)x;ty=(int)y;}}
  assert(tx>=0);m->x=tx*80+40;m->y=ty*80-80;m->grace=999;
  tick(p,4,(GameInput){.held=GAME_KEY_A});
  tick(p,2,(GameInput){0});

@@ -31,7 +31,8 @@ void jetpack_model_start(JetpackModel *m){m->level=0;m->lives=3;m->score=0;m->le
 void jetpack_model_load(JetpackModel *m){
  const JetpackLevelData *l=jetpack_model_level(m);
  m->width=l->width;m->height=l->height;
- memcpy(m->map,l->tiles,(size_t)l->width*l->height*sizeof(unsigned char));
+ /* Level tiles are bytes; the model map holds one unsigned per cell (a byte memcpy packed four cells into each). */
+ for(size_t i=0;i<(size_t)l->width*l->height;i++)m->map[i]=l->tiles[i];
  m->coins=0;m->phase=JETPACK_PLAYING;m->levelScore=0;reset_position(m);
 }
 void jetpack_model_next(JetpackModel *m){
