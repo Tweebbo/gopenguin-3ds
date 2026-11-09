@@ -51,6 +51,7 @@
 #include "overlay.h"
 #include "map.h"
 #include "books.h"
+#include "book_builders.h"
 #include "movie_bank.h"
 #include "social.h"
 #include "postcards.h"
@@ -239,6 +240,7 @@ static void crop(Texture *t,int sx,int sy,int sw,int sh,float x,float y,float sc
 typedef struct {RenderOrderItem items[CAST_COUNT+IGLOO_ITEMS+PUFFLES_LIMIT];unsigned count,next;float scale,ox,oy;} ActorOrder;
 static void make_order(ActorOrder *order,bool players,float scale,float ox,float oy);
 static bool actors_before(void *user,float depth);
+static void stadium_vuvuzelas_draw(float ox,float oy,float scale);
 static bool actors_needed(void *user,float depth);
 static void scene_draw_to(C3D_RenderTarget *target,unsigned width,unsigned height,float scaleX,float scaleY,float ox,float oy,ActorOrder *order){
  SWLGPUAtlas atlases[SWL_MAX_PAGES];for(unsigned i=0;i<swl_pages(scene);i++)atlases[i]=(SWLGPUAtlas){&sceneAtlas[i].tex,&sceneAtlas[i].sub};
@@ -306,22 +308,23 @@ static void icon(int i,float x,float y,float scale){crop(&icons,i*32,0,32,32,x,y
 static unsigned actor_base(const Actor *a){return a->action>=1&&a->action<=30?(unsigned)a->action:1;}
 static unsigned actor_outfit(const Actor *a){return penguin_outfit_frame(a->look,actor_base(a));}
 static bool outfit_ready(const Actor *a,unsigned action){
- if(!wear_pose_ready(asset_key(ASSET_AVATAR,1),action,1)||!wear_pose_ready(asset_key(ASSET_AVATAR,1),action,2))return false;
- for(unsigned i=0;i<6;i++)if(a->look[i]&&!wear_pose_ready(asset_key(ASSET_OUTFIT,a->look[i]),action,1))return false;
+ unsigned avatar=asset_key(ASSET_AVATAR,penguin_outfit_avatar(action));
+ if(!wear_pose_ready(avatar,action,1)||!wear_pose_ready(avatar,action,2))return false;
+ for(unsigned i=0;i<6;i++)if(a->look[i]&&!wear_pose_ready(asset_key(ASSET_OUTFIT,penguin_outfit_item(a->look[i],action)),action,1))return false;
  return true;
 }
 static unsigned actor_action(const Actor *a){unsigned action=actor_outfit(a);return action>30&&outfit_ready(a,action)?action:actor_base(a);}
 static void actor_want(const Actor *a){
  unsigned action=actor_outfit(a);const unsigned slots[]={5,3,2,4,1,0};
  if(action>30){
-  wear_want_pose(asset_key(ASSET_AVATAR,1),action,1);wear_want_pose(asset_key(ASSET_AVATAR,1),action,2);
-  for(unsigned i=0;i<6;i++)wear_want_pose(asset_key(ASSET_OUTFIT,a->look[slots[i]]),action,1);
+  unsigned avatar=asset_key(ASSET_AVATAR,penguin_outfit_avatar(action));wear_want_pose(avatar,action,1);wear_want_pose(avatar,action,2);
+  for(unsigned i=0;i<6;i++)wear_want_pose(asset_key(ASSET_OUTFIT,penguin_outfit_item(a->look[slots[i]],action)),action,1);
   if(outfit_ready(a,action))return;
  }
  for(unsigned i=0;i<6;i++)wear_want_pose(a->look[slots[i]],actor_base(a),1);
 }
 static void avatar_layer(unsigned action,unsigned layer,unsigned clock,float x,float y,float scale,u32 colour){
- SWLGPUAtlas atlas;SWLArt art;if(!wear_pose_view(asset_key(ASSET_AVATAR,1),action,layer,clock,&atlas,&art)||!art.w||!art.h)return;
+ SWLGPUAtlas atlas;SWLArt art;if(!wear_pose_view(asset_key(ASSET_AVATAR,penguin_outfit_avatar(action)),action,layer,clock,&atlas,&art)||!art.w||!art.h)return;
  Tex3DS_SubTexture sub={.width=art.w,.height=art.h,.left=atlas.sub->left+(float)art.x/atlas.texture->width,.top=atlas.sub->top-(float)art.y/atlas.texture->height,.right=atlas.sub->left+(float)(art.x+art.w)/atlas.texture->width,.bottom=atlas.sub->top-(float)(art.y+art.h)/atlas.texture->height};
  C2D_ImageTint tint;C2D_PlainImageTint(&tint,colour,1);C2D_DrawImageAt((C2D_Image){atlas.texture,&sub},x+art.left*scale,y+art.top*scale,.5f,&tint,art.width/art.w*scale,art.height/art.h*scale);
 }
@@ -330,7 +333,7 @@ static void actor(Actor *a,float x,float y,float scale){
  if(a->renderedAction!=action){a->renderedAction=action;a->clock=0;clock=0;}
  if(action>30){C2D_SetTintMode(C2D_TintMult);avatar_layer(action,1,clock,x,y,scale,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));C2D_SetTintMode(C2D_TintMult);avatar_layer(action,2,clock,x,y,scale,0xffffffff);}
  else{Sequence seq=sequences[action];unsigned n=seq.start+clock%seq.count;const PenguinFrame *f=&penguinFrames[n];C2D_SetTintMode(C2D_TintSolid);crop(&body[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));C2D_SetTintMode(C2D_TintMult);crop(&detail[0],f->x,f->y,f->w,f->h,x+f->left*scale,y+f->top*scale,scale,0xffffffff);}
- const unsigned slots[]={5,3,2,4,1,0};for(unsigned i=0;i<6;i++){unsigned id=a->look[slots[i]];wear_draw(action>30?asset_key(ASSET_OUTFIT,id):id,action,clock,x,y,scale);}
+ const unsigned slots[]={5,3,2,4,1,0};for(unsigned i=0;i<6;i++){unsigned id=a->look[slots[i]];wear_draw(action>30?asset_key(ASSET_OUTFIT,penguin_outfit_item(id,action)):id,action,clock,x,y,scale);}
 }
 static float actor_depth(unsigned index){return 901+index+1000*floorf(demo.actors[index].y);}
 static void make_order(ActorOrder *order,bool players,float scale,float ox,float oy){
@@ -491,6 +494,7 @@ static void top(void){
   if(overlay_ball(&overlay.balls[i],&x,&y))crop(&snowballTex,12,0,11,11,ox+(x-5.3f)*scale,oy+(y-5.3f)*scale,scale,0xffffffff);
   if(overlay_impact(&overlay.balls[i],&x,&y))crop(&snowballTex,24,0,11,9,ox+(x-5.3f)*scale,oy+(y-2.85f)*scale,scale,0xffffffff);
  }
+ stadium_vuvuzelas_draw(ox,oy,scale);
  if(!igloo.editing)name_tags_refresh();
  for(unsigned i=0;!igloo.editing&&i<demo.count;i++)if(room_actor_visible(i)){Actor *a=&demo.actors[i];name_tag_draw(i,ox+a->x*scale,oy+a->y*scale+2);}
 
@@ -536,7 +540,7 @@ static void buy(unsigned id){buy_kind(0,id);}
 static void book_page(void *unused,unsigned frame){
  (void)unused;
  if(newspaper.open){if(!newspaper_goto(&newspaper,frame))return;unsigned resource=newspaper_resource(&newspaper);if(resource!=book.resourceId){book.resourceId=resource;book.wanted=frame;}else if(book.bank){swl_target(movie_bank_scene(book.bank),"news#1",frame,NULL,false);book.page=frame;}return;}
- if(book.info&&frame&&frame<=book.info->frames&&frame!=book.page)book.wanted=frame;
+ if(book.info&&frame&&frame>=(book.info->first?book.info->first:1u)&&frame<=book.info->frames&&frame!=book.page)book.wanted=frame;
 }
 static void book_toggle_zoom(void){
  if(!book.bank)return;
@@ -551,10 +555,14 @@ static void book_adopt(void *unused,unsigned type){(void)unused;pets_adopt(type)
 static bool book_custom(void *unused,unsigned id,const char *path){
  if(newspaper.open){const char *notice=newspaper_notice(id);if(notice){modal_message(notice);return true;}return false;}
  (void)unused;(void)id;const char *name=strrchr(path,'.');name=name?name+1:path;SWLScene *movie=movie_bank_scene(book.bank);
- /* Custom T-shirt builder: page 3 of the 2010 Penguin Style, page 8 of the November 2011 edition shown now. */
- if((book.info->id==1&&book.page==3)||(book.info->id==28&&book.page==8)){
+ /* Custom T-shirt and hoodie builders: each archived page lists its own items (book_builders.h);
+  * the 2010 Penguin Style keeps its page 3 T-shirts. */
+ static const unsigned short legacyShirts[5][5]={{4241,4242,4158,4177,4176},{4245,4246,4163,4178,4179},{4247,4248,4168,4180,4181},{4243,4244,4174,4171,4175},{4249,4250,4253,4251,4252}};
+ const unsigned short (*builder)[5]=book.info->id==1&&book.page==3?legacyShirts:NULL;
+ for(unsigned i=0;!builder&&i<(unsigned)COUNT(bookBuilders);i++)if(bookBuilders[i].book==book.info->id&&bookBuilders[i].page==book.page)builder=bookBuilders[i].items;
+ if(builder){
   if((name[0]=='c'||name[0]=='s')&&name[1]>='0'&&name[1]<='4'&&!name[2]){if(*name=='c')book.colour=name[1]-'0';else book.symbol=name[1]-'0';swl_target(movie,"book.tshirtbuilt",book.colour*5+book.symbol+1,NULL,false);return true;}
-  if(!strcmp(name,"tshirtbuy_btn")){static const unsigned shirts[5][5]={{4241,4242,4158,4177,4176},{4245,4246,4163,4178,4179},{4247,4248,4168,4180,4181},{4243,4244,4174,4171,4175},{4249,4250,4253,4251,4252}};buy(shirts[book.colour][book.symbol]);return true;}
+  if(!strcmp(name,"tshirtbuy_btn")){buy(builder[book.colour][book.symbol]);return true;}
  }
  if(book.info->id==6&&book.page==2){
   if((name[0]=='i'||name[0]=='c'||name[0]=='s')&&name[1]>='0'&&name[1]<='4'&&!name[2]){if(*name=='i')book.item=name[1]-'0';else if(*name=='c')book.colour=name[1]-'0';else book.symbol=name[1]-'0';swl_target(movie,"book.itembuilt",book.item*15+book.colour*5+book.symbol+1,NULL,false);return true;}
@@ -568,7 +576,7 @@ static bool book_custom(void *unused,unsigned id,const char *path){
 }
 static void book_room(void *unused,const char *key){(void)unused;const IslandRoom *room=island_key(key);if(room){wantedRoom=room->id;wantedX=wantedY=-1;book.close=true;}}
 static const MovieHooks bookHooks={.custom=book_custom,.page=book_page,.buy=book_buy,.adopt=book_adopt,.close=book_close,.room=book_room};
-static void book_open(const char *key){for(unsigned i=0;i<BOOK_COUNT;i++)if(!strcmp(bookInfo[i].key,key)){book.info=&bookInfo[i];book.resourceId=book.mailUid=0;book.sender[0]=0;book.open=true;book.close=false;book.wanted=1;book.page=0;book.clock=0;book.zoom=false;book_camera_reset(&book.camera,380,240);demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;return;}modal_message("This catalogue is not available yet.");}
+static void book_open(const char *key){for(unsigned i=0;i<BOOK_COUNT;i++)if(!strcmp(bookInfo[i].key,key)){book.info=&bookInfo[i];book.resourceId=book.mailUid=0;book.sender[0]=0;book.open=true;book.close=false;book.wanted=bookInfo[i].first?bookInfo[i].first:1;book.page=0;book.clock=0;book.zoom=false;book_camera_reset(&book.camera,380,240);demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;return;}modal_message("This catalogue is not available yet.");}
 static void book_update(void){
 #ifdef GP_LAN_ONLY
  if(book.close&&newspaper.open){FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fputs("newspaper closed\n",trace);fclose(trace);}}
@@ -614,6 +622,24 @@ static void rockhopper_sync(void){
  lobbyUI.artDirty=true;
 }
 static bool rockhopper_near(void){Actor *npc=world_actor(&demo,ROCKHOPPER_ID);if(!npc)return false;float dx=npc->x-demo.actors[0].x,dy=npc->y-demo.actors[0].y;return dx*dx+dy*dy<70.0f*70.0f;}
+/* Stadium: the four free Penguin Cup vuvuzelas by the drinks table, drawn with their original catalogue
+ * icons (same spots as the PC). A beside one asks the original free-item question. */
+#define STADIUM_ROOM 802
+static const unsigned stadiumVuvuzelas[4]={5447,5448,5449,5450};
+static const float stadiumSpots[4][2]={{26,212},{48,207},{70,212},{92,207}};
+static int stadium_vuvuzela_near(void){
+ if(currentRoomId!=STADIUM_ROOM||demo.tab||book.open)return -1;
+ int best=-1;float bestDistance=90.0f*90.0f;
+ for(int i=0;i<4;i++){float dx=stadiumSpots[i][0]-demo.actors[0].x,dy=stadiumSpots[i][1]-demo.actors[0].y,d=dx*dx+dy*dy;if(d<bestDistance){bestDistance=d;best=i;}}
+ return best;
+}
+static bool stadium_vuvuzela_pick(void){int i=stadium_vuvuzela_near();if(i<0)return false;buy(stadiumVuvuzelas[i]);return true;}
+static void stadium_vuvuzelas_want(void){if(currentRoomId==STADIUM_ROOM&&!book.open)for(unsigned i=0;i<4;i++)wear_want(asset_key(ASSET_ICON,stadiumVuvuzelas[i]));}
+static void stadium_vuvuzelas_draw(float ox,float oy,float scale){
+ if(currentRoomId!=STADIUM_ROOM||game||book.open||igloo.editing)return;
+ const float size=30*scale;for(unsigned i=0;i<4;i++)wear_fit(asset_key(ASSET_ICON,stadiumVuvuzelas[i]),ox+stadiumSpots[i][0]*scale-size/2,oy+stadiumSpots[i][1]*scale-size/2,size,size);
+ int near=stadium_vuvuzela_near();if(near>=0){const char *hint="A: pick up a vuvuzela";float x=ox+stadiumSpots[near][0]*scale,y=oy+(stadiumSpots[near][1]-26)*scale;box(x-4,y-2,textWidth(10,hint)+8,16,0x003366);text(x,y,10,0xffffff,hint);}
+}
 static bool room_npc_action(void){
 #ifdef GP_NINJA_GAMES
  const char *game=demo.tab?NULL:room_npc_near(&roomNpc,demo.actors[0].x,demo.actors[0].y);if(game){game_start(game);return true;}
@@ -1583,7 +1609,7 @@ static void bottom(void){
   if(book.info->id==1||book.info->archive){box(3,29,88,18,0x0085c7);center(47,31,10,0xffffff,"Past issues");}
   if(!book.bank)center(160,105,12,0x003366,settings.assets[0]?(newspaper.open?"Loading newspaper...":book.resourceId?"Loading postcard...":"Loading catalogue..."):"Set a resources server in Help.");
   if(book.bank&&book.resourceId&&book.mailUid){button(4,207,98,22,"Reply",-1);button(110,207,98,22,"Delete",-1);button(216,207,100,22,"Delete sender",-1);}else if(book.bank&&book.resourceId&&postcardId){button(25,207,120,22,"Send: 10 coins",-1);button(175,207,120,22,"Cancel",-1);}
-  else if(!book.resourceId){button_state(7,207,75,21,"Previous",-1,book.bank&&!book.wanted&&book.page>1);button_state(238,207,75,21,"Next",-1,book.bank&&!book.wanted&&book.page<book.info->frames);button_state(90,207,140,21,book.zoom?"Overview (L/R)":"Zoom (L/R)",-1,book.bank!=NULL);}
+  else if(!book.resourceId){button_state(7,207,75,21,"Previous",-1,book.bank&&!book.wanted&&book.page>(book.info->first?book.info->first:1u));button_state(238,207,75,21,"Next",-1,book.bank&&!book.wanted&&book.page<book.info->frames);button_state(90,207,140,21,book.zoom?"Overview (L/R)":"Zoom (L/R)",-1,book.bank!=NULL);}
   float footer=book.resourceId?230:228;rect(0,footer,320,240-footer,0x003366);char label[90];snprintf(label,sizeof label,"%u / %u  %s    B: close",newspaper.open?newspaper.page:book.page,newspaper.open?NEWSPAPER_PAGES:book.info->frames,book.wanted?"Loading...":book.zoom?"Drag / Circle Pad":"Tap an item");button_label(160,(footer+240)/2,10,0xffffff,label);return;
  }
  if(demo.tab==0){
@@ -1691,7 +1717,7 @@ static void touch(int x,int y){
  if(demo.tab==6&&!book.open){if(y>=185){if(x<100&&bookListPage)bookListPage--;if(x>=221&&(bookListPage+1)*6<BOOK_COUNT)bookListPage++;}else if(y>=34&&y<184){unsigned col=x>=164,row=(unsigned)(y-34)/50,i=bookListPage*6+row*2+col;if(row<3&&i<BOOK_COUNT)book_open(bookInfo[i].key);}return;}
  if(book.open){
   if(book.poster){if(y>=204){if(x<160)book_room(NULL,"forest");else book.close=true;}return;}
-  if(!book.resourceId&&y>=207&&y<228){if(x<85){if(book.page>1&&!book.wanted)book_page(NULL,book.page-1);}else if(x>=235){if(book.page<book.info->frames&&!book.wanted)book_page(NULL,book.page+1);}else book_toggle_zoom();return;}
+  if(!book.resourceId&&y>=207&&y<228){if(x<85){if(book.page>(book.info->first?book.info->first:1u)&&!book.wanted)book_page(NULL,book.page-1);}else if(x>=235){if(book.page<book.info->frames&&!book.wanted)book_page(NULL,book.page+1);}else book_toggle_zoom();return;}
   if((book.info->id==1||book.info->archive)&&x<92&&y>=29&&y<=48){book.close=true;demo.tab=6;bookListPage=2;return;}
   if(book.bank&&book.resourceId&&!newspaper.open&&y>=207&&y<230){
    if(book.mailUid){
@@ -1869,7 +1895,7 @@ int main(int argc,char **argv){
    }
    if(lobby_locked()&&!modal.open){if(down&KEY_B)lobby_close();}
    else if(igloo.editing&&!modal.open){editor_drag(held,hidKeysUp());if(down&KEY_X)editor_remove();if(down&KEY_Y)editor_turn(0,1);if(down&KEY_L)editor_turn(-1,0);if(down&KEY_R)editor_turn(1,0);if(down&KEY_A){editor_cancel_drag();editor.inventory=!editor.inventory;}if(down&KEY_B){if(editor.inventory)editor.inventory=false;else editor_save();}}
-   else if(!modal.open&&!book.open){if(down&KEY_X)action(25);if(down&KEY_Y)action(26);if(down&KEY_B){if(demo.tab)demo.tab=0;else action(17);}if(down&KEY_A){if(rockhopper_near())rockhopper_open();else if(!room_npc_action())chat();}if(down&KEY_L)history_open();else if(down&KEY_R)chat();}else if(down&KEY_B){if(modal.open)modal.open=false;else if(book.open)book.close=true;}
+   else if(!modal.open&&!book.open){if(down&KEY_X)action(25);if(down&KEY_Y)action(26);if(down&KEY_B){if(demo.tab)demo.tab=0;else action(17);}if(down&KEY_A){if(rockhopper_near())rockhopper_open();else if(stadium_vuvuzela_pick()){}else if(!room_npc_action())chat();}if(down&KEY_L)history_open();else if(down&KEY_R)chat();}else if(down&KEY_B){if(modal.open)modal.open=false;else if(book.open)book.close=true;}
    if(book.open&&book.poster&&!modal.open&&(down&KEY_A))book_room(NULL,"forest");
    if(book.open&&!book.poster&&!modal.open&&(down&(KEY_L|KEY_R)))book_toggle_zoom();
    if(down&KEY_SELECT){if(demo.tab==1&&pnet_state()==PNET_OFFLINE)mapList=!mapList;else demo.stats=!demo.stats;}
@@ -2046,7 +2072,7 @@ int main(int argc,char **argv){
   if(styles.preparing||igloo.awaitingStyle){demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;}
   if(!game){bool holdTube=tubeArmed;sceneClock+=dt;while(sceneClock>=1/swl_rate(scene)){epf_access_tick(&epfAccess,&epfHooks);if(holdTube)holdTube=false;else room_tube_tick(&roomTube,&tubeHooks);sceneOK=swl_tick(scene)&&sceneOK;sceneClock-=1/swl_rate(scene);}interpolation=sceneClock*swl_rate(scene);swl_begin(scene);}
   if(!game){
-  wear_begin();if(roomBank&&!book.open){if(igloo.layout.floor)wear_want_pose(asset_key(ASSET_FLOOR,igloo.layout.floor),iglooGeometry->floorFrame,1);for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];wear_want_pose(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame);}}if(igloo.editing&&editor.inventory){editor_inventory();for(unsigned n=editor.page*6;n<editor.count&&n<(editor.page+1)*6;n++)wear_want(asset_key(ASSET_FURNITURE_ICON,editor.items[n]));}if(!book.open&&demo.tab==7){Actor *a=selected_actor();if(a){if(a->look[7])wear_want(asset_key(ASSET_PHOTO,a->look[7]));for(unsigned i=0;i<6;i++)wear_want(asset_key(ASSET_PAPER,a->look[i]));if(a->look[6])wear_want(asset_key(ASSET_ICON,a->look[6]));}}if(!book.open&&demo.tab==2)inventory_prepare(&inventoryUI,clientData,&profile,&demo.actors[0]);for(unsigned i=0;!book.open&&i<demo.count;i++)if(room_actor_visible(i))actor_want(&demo.actors[i]);
+  wear_begin();if(roomBank&&!book.open){if(igloo.layout.floor)wear_want_pose(asset_key(ASSET_FLOOR,igloo.layout.floor),iglooGeometry->floorFrame,1);for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];wear_want_pose(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame);}}if(igloo.editing&&editor.inventory){editor_inventory();for(unsigned n=editor.page*6;n<editor.count&&n<(editor.page+1)*6;n++)wear_want(asset_key(ASSET_FURNITURE_ICON,editor.items[n]));}if(!book.open&&demo.tab==7){Actor *a=selected_actor();if(a){if(a->look[7])wear_want(asset_key(ASSET_PHOTO,a->look[7]));for(unsigned i=0;i<6;i++)wear_want(asset_key(ASSET_PAPER,a->look[i]));if(a->look[6])wear_want(asset_key(ASSET_ICON,a->look[6]));}}if(!book.open&&demo.tab==2)inventory_prepare(&inventoryUI,clientData,&profile,&demo.actors[0]);for(unsigned i=0;!book.open&&i<demo.count;i++)if(room_actor_visible(i))actor_want(&demo.actors[i]);stadium_vuvuzelas_want();
   if(!book.open)for(unsigned i=0;i<puffles.count;i++)if(pet_shown(&puffles.pets[i])||(demo.tab==13&&puffles.pets[i].owner==pnet_id()&&puffles.pets[i].id==petSelected)){unsigned art=asset_key(ASSET_PUFFLE,puffles.pets[i].type+1);wear_want_pose(art,puffles.pets[i].frame,1);wear_want_pose(art,puffles.pets[i].wanted,1);}
   }
   C3D_FrameBegin(C3D_FRAME_SYNCDRAW);game_transition();
