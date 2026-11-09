@@ -173,6 +173,8 @@ bool puffles_care(Puffles *p,unsigned id,unsigned item){
 }
 bool puffles_take_coins(Puffles *p,unsigned *coins){if(!p->coinsChanged)return false;if(coins)*coins=p->coins;p->coinsChanged=false;return true;}
 float puffles_interpolation(const Puffles *p){float alpha=p->accumulator*24;return alpha<1?alpha:1;}
+/* Farther than a penguin walks in about two seconds of puffle steps: treat it as a jump, not a walk. */
+#define PUFFLE_SNAP_DISTANCE 200.0f
 void puffles_step(Puffles *p,const Demo *world,float elapsed){
  if(!isfinite(elapsed)||elapsed<=0)return;
  float dt=fminf(elapsed,.25f);if(p->snapshotPending){float before=p->snapshotAge;p->snapshotAge+=dt;if(before<15&&p->snapshotAge>=15){fail(p,"The puffle list timed out. Please try again.");p->snapshotPending=false;p->snapshotAge=0;}}
@@ -196,6 +198,10 @@ void puffles_step(Puffles *p,const Demo *world,float elapsed){
    if(pet->reaction){pet->reactionTicks++;if(pet->reactionTicks>puffle_action_lengths[pet->type][pet->reaction-1])pet->reaction=0;else frame=puffle_action_frames[pet->reaction-1];}
    if(!pet->reaction&&pet->walking){const Actor *owner=actor(world,pet->owner);if(owner){
     float dx=owner->x-20-pet->x,dy=owner->y+8-pet->y,distance=hypotf(dx,dy);
+    /* The owner jumped (back from a minigame, a respawn or a teleport in the same room): puffles walk
+     * in a straight line with no room geometry, so a long walk crossed walls. Arrive beside the owner,
+     * as on entering a room. */
+    if(distance>PUFFLE_SNAP_DISTANCE){place(pet,owner->x-20,owner->y+8);pet->oldX=pet->x;pet->oldY=pet->y;pet->following=false;pet->settled=0;dx=dy=distance=0;}
     // Circle Pad and D-pad movement leaves walking false and only sets the walk action.
     bool moving=owner->walking||(owner->action>=9&&owner->action<=16);
     if(distance>12||(moving&&distance>1))pet->following=true;

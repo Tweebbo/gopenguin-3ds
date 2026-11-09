@@ -13,6 +13,7 @@ typedef struct {
  unsigned score,lives,segment,segmentTick,pose,poseTick,phaseTick;
  CartPhase phase;CartStance stance;CartMove move;CartKey key;
  CartTrick trick,lastTrick;unsigned moveTick,bonus,safe;
+ CartKey moveKey; /* LEFT or RIGHT that started the current move */
  unsigned track[CART_MAX_TRACK],length;
 } CartModel;
 
@@ -20,5 +21,6 @@ void cart_model_init(CartModel *model,const unsigned *track,unsigned length);
 void cart_model_press(CartModel *model,CartKey key);
 void cart_model_release(CartModel *model,CartKey key);
 void cart_model_step(CartModel *model);
+void cart_repeat_direction(CartModel *model,bool left,bool right);
 unsigned cart_model_tile(const CartModel *model);
 unsigned cart_model_coins(const CartModel *model);

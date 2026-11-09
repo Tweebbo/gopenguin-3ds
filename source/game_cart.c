@@ -107,6 +107,7 @@ static void frame(void *game,float seconds,const GameInput *input){
  // Arrow keys and the space bar: D-Pad or Circle Pad, and A (or B) for space.
  bool keys[5]={(input->held&GAME_KEY_LEFT)||input->stickX<-.5f,(input->held&GAME_KEY_UP)||input->stickY>.5f,(input->held&GAME_KEY_DOWN)||input->stickY<-.5f,(input->held&GAME_KEY_RIGHT)||input->stickX>.5f,(input->held&(GAME_KEY_A|GAME_KEY_B))!=0};
  for(unsigned i=0;i<5;i++)press(c,i,keys[i]||c->touchPad==(int)i);
+ cart_repeat_direction(m,c->held[0],c->held[3]);
 }
 
 // Lower-screen pads, like the web touch layout.

@@ -1,1 +1,1 @@
-Optional update: smaller future application downloads reuse unchanged game resources on SD. The complete 1.3.8 update is required first. Preparation can continue while playing; choose Install now when ready. Your saved penguin is retained. See gopenguin.lol/changelog/.
+Fix update: Astro Barrier and Puffle Rescue open again, and Puffle Rescue no longer flickers. Cart Surfer controls no longer lock up, the custom T-shirt in Penguin Style can be bought again, and puffles no longer cross walls after a minigame. Your saved penguin is retained. See gopenguin.lol/changelog.

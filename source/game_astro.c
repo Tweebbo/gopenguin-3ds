@@ -231,8 +231,32 @@ static void draw_bottom(void *game){
 
 static bool packet(void *game,const char *command,unsigned count,char *const *args){(void)game;(void)command;(void)count;(void)args;return false;}
 /* Upper screen: the whole cabinet monitor and its bezel, as the original stage frames it. */
-static bool top_view(void *game,SWLMatrix *view){Astro *a=game;a->lowerPass=false;*view=(SWLMatrix){.552f,0,0,.552f,200-388*.552f,-6};return true;}
-static bool lower_view(void *game,SWLMatrix *view){Astro *a=game;a->lowerPass=true;*view=(SWLMatrix){1,0,0,1,0,0};return true;}
+static bool top_view(void *game,SWLMatrix *view){
+ Astro *a=game;a->lowerPass=false;
+ if(a->scene&&swl_frames(a->scene,"root")<2){
+  swl_transform(a->scene,"root#1",(SWLMatrix){1,0,0,1,-9,-9});
+  swl_visible(a->scene,"root.astroBarrier",true);
+  swl_visible(a->scene,"root#121",true);
+  swl_visible(a->scene,"root#122",true);
+  swl_visible(a->scene,"root#130",true);
+  swl_transform(a->scene,"root#130",(SWLMatrix){1,0,0,1,136,364});
+  game_port_snap(a->port);
+ }
+ *view=(SWLMatrix){.552f,0,0,.552f,200-388*.552f,-6};return true;
+}
+static bool lower_view(void *game,SWLMatrix *view){
+ Astro *a=game;a->lowerPass=true;
+ if(a->scene&&swl_frames(a->scene,"root")<2){
+  bool panel=!(a->model.phase==ASTRO_TITLE||a->model.phase==ASTRO_OVER||a->model.phase==ASTRO_WON);
+  swl_transform(a->scene,"root#1",(SWLMatrix){1.65f,0,0,.5f,-9.f,-8.5f});
+  swl_visible(a->scene,"root.astroBarrier",false);
+  swl_visible(a->scene,"root#121",false);
+  swl_visible(a->scene,"root#122",false);
+  swl_visible(a->scene,"root#130",panel);
+  swl_transform(a->scene,"root#130",(SWLMatrix){.8f,0,0,.8f,a->knobX-500.85f*.8f,STICK_Y-50.4f*.8f});
+ }
+ *view=(SWLMatrix){1,0,0,1,0,0};return true;
+}
 static unsigned lower_frame(void *game,unsigned bank){(void)game;return bank?0:2;}
 /* Joystick socket and shaft under the original knob art (root depth 3 of the panel frame). */
 static void overlay(void *game,unsigned bank,float depth,const GameCanvas *canvas){

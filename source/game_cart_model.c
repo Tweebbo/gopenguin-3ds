@@ -25,7 +25,7 @@ void cart_model_press(CartModel *m,CartKey key){
  m->key=key;
  if(key==CART_LEFT||key==CART_RIGHT){
   if(m->stance==CART_JUMPING){m->trick=CART_SPIN;pose(m,key==CART_LEFT?15:16);}
-  else{m->move=m->stance==CART_SURFING?CART_SLIDE:m->stance==CART_WHEELIE?CART_GRIND:CART_LEAN;pose(m,(m->move==CART_SLIDE?7:m->move==CART_GRIND?12:2)+(key==CART_RIGHT));}
+  else{m->moveKey=key;m->move=m->stance==CART_SURFING?CART_SLIDE:m->stance==CART_WHEELIE?CART_GRIND:CART_LEAN;pose(m,(m->move==CART_SLIDE?7:m->move==CART_GRIND?12:2)+(key==CART_RIGHT));}
   return;
  }
  CartTrick trick=CART_NO_TRICK;unsigned p=0;
@@ -42,14 +42,19 @@ static unsigned js_round_ratio(unsigned tick,unsigned divisor,unsigned points){
  double v=(double)tick/divisor*points;unsigned r=(unsigned)v;return v-r>=.5?r+1:r;
 }
 void cart_model_release(CartModel *m,CartKey key){
- if(key!=m->key||m->phase!=CART_PLAYING)return;
+ if(m->phase!=CART_PLAYING)return;
+ /* Releasing the direction that started a lean, slide or grind always ends it, even when another key
+  * (Up, Down or Space pressed during the move) became the current key. Otherwise the move stayed on
+  * with nothing held, and the cart crashed when the move timed out. */
+ bool owner=key==m->key,mover=m->move&&key==m->moveKey;
+ if(!owner&&!mover)return;
  if(m->move){
   CartMove move=m->move;
   if(move!=CART_LEAN&&(m->moveTick>10||m->bonus))m->score+=js_round_ratio(m->moveTick,move==CART_GRIND?28:32,move==CART_GRIND?80:40)+m->bonus;
   m->move=CART_NO_MOVE;m->moveTick=m->bonus=0;
   if(move!=CART_SLIDE)neutral(m);else pose(m,5);
  }
- m->key=CART_NO_KEY;
+ if(owner)m->key=CART_NO_KEY;
 }
 
 void cart_model_step(CartModel *m){
@@ -76,4 +81,15 @@ void cart_model_step(CartModel *m){
   if(cart_model_tile(m)==1)m->safe=m->segment;
   m->segment++;m->segmentTick=1;
  }
+}
+
+/* A held Left or Right acts like the keyboard's key repeat in the original: a press that arrived during a
+ * trick (ignored then) or a direction still held after another key took over is applied again as soon as
+ * the model accepts it. Without this, holding the corner direction from before a trick ended crashed the
+ * cart in the corner although the player was holding the right key. */
+void cart_repeat_direction(CartModel *m,bool left,bool right){
+ if(m->phase!=CART_PLAYING||m->trick||left==right)return;
+ CartKey key=left?CART_LEFT:CART_RIGHT;
+ if(m->key==key)return;
+ cart_model_press(m,key);
 }

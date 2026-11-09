@@ -20,6 +20,12 @@ int main(void){
  assert(packet(&p,&w,"pw",2,mine));step(&p,&w,1);w.actors[0].x+=100;w.actors[0].walking=true;p.poseReady=ready;resident=1;blue->frame=1;step(&p,&w,5);assert(blue->frame==1&&blue->wanted>=9);resident=blue->wanted;step(&p,&w,1);assert(blue->frame>=9);
  // A lost reply must not disable the puffle buttons until reconnection.
  p.poseReady=NULL;static char sent;(void)sent;p.action=PUFFLE_WALK;p.actionAge=0;step(&p,&w,400);assert(p.action==PUFFLE_IDLE&&strstr(p.error,"timed out"));
+ // Back from a minigame in the same room the owner reappears far away: the puffle arrives beside it
+ // instead of walking a straight line across the walls.
+ p.error[0]=0;assert(packet(&p,&w,"pw",2,mine));w.actors[0].walking=false;w.actors[0].x=100;w.actors[0].y=100;step(&p,&w,30);
+ w.actors[0].x=650;w.actors[0].y=420;step(&p,&w,1);assert(hypotf(blue->x-630,blue->y-428)<.01f);
+ // A short walk is still followed step by step.
+ w.actors[0].x+=60;step(&p,&w,1);assert(blue->x<689&&blue->x>630);
  // The drawn position must always follow its own tick clock.
  p.accumulator=.5f/24;assert(fabsf(puffles_interpolation(&p)-.5f)<.001f);
  puts("PASS puffle arrival, igloo home, held poses, action timeout and interpolation");return 0;

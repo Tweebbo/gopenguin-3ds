@@ -551,7 +551,8 @@ static void book_adopt(void *unused,unsigned type){(void)unused;pets_adopt(type)
 static bool book_custom(void *unused,unsigned id,const char *path){
  if(newspaper.open){const char *notice=newspaper_notice(id);if(notice){modal_message(notice);return true;}return false;}
  (void)unused;(void)id;const char *name=strrchr(path,'.');name=name?name+1:path;SWLScene *movie=movie_bank_scene(book.bank);
- if(book.info->id==1&&book.page==3){
+ /* Custom T-shirt builder: page 3 of the 2010 Penguin Style, page 8 of the November 2011 edition shown now. */
+ if((book.info->id==1&&book.page==3)||(book.info->id==28&&book.page==8)){
   if((name[0]=='c'||name[0]=='s')&&name[1]>='0'&&name[1]<='4'&&!name[2]){if(*name=='c')book.colour=name[1]-'0';else book.symbol=name[1]-'0';swl_target(movie,"book.tshirtbuilt",book.colour*5+book.symbol+1,NULL,false);return true;}
   if(!strcmp(name,"tshirtbuy_btn")){static const unsigned shirts[5][5]={{4241,4242,4158,4177,4176},{4245,4246,4163,4178,4179},{4247,4248,4168,4180,4181},{4243,4244,4174,4171,4175},{4249,4250,4253,4251,4252}};buy(shirts[book.colour][book.symbol]);return true;}
  }

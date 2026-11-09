@@ -26,6 +26,8 @@ struct SWLScene {
  Instance *instances;SWLHit *hits;uint16_t instanceHash[INSTANCE_HASH];unsigned instanceCount,hitCount;
  SWLSound sound;void *soundUser;SWLText text;void *textUser;SWLArt *glyphs;unsigned glyphCount;SWLStats stats;
  char viewPath[SWL_PATH];unsigned viewFrame;
+ /* View frame each draw list was built with: interpolation only pairs lists of the same view. */
+ unsigned drawView,oldView;
 };
 static const SWLColor identity={{1,1,1,1},{0,0,0,0}};
 static uint32_t u32(const uint8_t *p){return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
@@ -162,7 +164,11 @@ static bool append(SWLScene *s,unsigned type,unsigned layer,float depth,SWLMatri
  if(s->drawCount>=SWL_MAX_DRAWS)return fail(s,"Draw command budget exceeded");
  if(!finite_matrix(matrix)||!finite_color(color))return fail(s,"Composed transform exceeds budget");
  Draw *d=&s->draw[s->drawCount++];*d=(Draw){.matrix=matrix,.color=color,.token=token,.art=art,.depth=depth,.previous=-1,.type=type,.layer=layer};
- if(type==DRAW){s->stats.draws++;unsigned slot=(token^art*2654435761u)&(DRAW_HASH-1);while(s->oldHash[slot]){unsigned i=s->oldHash[slot]-1;if(s->old[i].token==token&&s->old[i].art==art){d->previous=(int)i;break;}slot=(slot+1)&(DRAW_HASH-1);}}
+ if(type==DRAW)s->stats.draws++;
+ /* Dual-screen games draw root frame 1 on the upper screen and frame 2 on the lower one, so the list
+  * before this one belongs to the other screen. Interpolating against it blended the two layouts and
+  * made sprites flicker (Astro Barrier, Puffle Rescue); those games then draw at the model rate. */
+ if(type==DRAW&&s->oldView==s->drawView){unsigned slot=(token^art*2654435761u)&(DRAW_HASH-1);while(s->oldHash[slot]){unsigned i=s->oldHash[slot]-1;if(s->old[i].token==token&&s->old[i].art==art){d->previous=(int)i;break;}slot=(slot+1)&(DRAW_HASH-1);}}
  return true;
 }
 static bool walk(SWLScene *s,uint32_t id,const char *path,SWLMatrix matrix,SWLColor color,unsigned depth,unsigned layer,float renderDepth,bool masking);
@@ -223,7 +229,7 @@ static bool walk(SWLScene *s,uint32_t id,const char *path,SWLMatrix matrix,SWLCo
 }
 static bool prepare(SWLScene *s){
  if(s->building)return true;
- s->building=true;Draw *tmp=s->old;s->old=s->draw;s->draw=tmp;s->oldCount=s->drawCount;s->drawCount=0;s->stats.draws=s->stats.masks=s->stats.colorGroups=0;s->maskDepth=s->colorDepth=0;
+ s->building=true;s->error=NULL;Draw *tmp=s->old;s->old=s->draw;s->draw=tmp;s->oldCount=s->drawCount;s->oldView=s->drawView;s->drawView=s->viewFrame;s->drawCount=0;s->stats.draws=s->stats.masks=s->stats.colorGroups=0;s->maskDepth=s->colorDepth=0;
  memset(s->oldHash,0,sizeof s->oldHash);for(unsigned i=0;i<s->oldCount;i++)if(s->old[i].type==DRAW){Draw *d=&s->old[i];unsigned slot=(d->token^d->art*2654435761u)&(DRAW_HASH-1);while(s->oldHash[slot]){Draw *old=&s->old[s->oldHash[slot]-1];if(old->token==d->token&&old->art==d->art)break;slot=(slot+1)&(DRAW_HASH-1);}if(!s->oldHash[slot])s->oldHash[slot]=(uint16_t)(i+1);}
  bool ok=false;for(unsigned pass=0;pass<32;pass++){
   s->dirty=false;s->drawCount=0;s->stats.draws=s->stats.masks=s->stats.colorGroups=0;s->maskDepth=s->colorDepth=0;
@@ -238,7 +244,7 @@ void swl_begin(SWLScene *s){(void)s;}
 bool swl_view_frame(SWLScene *s,const char *path,unsigned frame){
  if(!s||!path||strlen(path)>=SWL_PATH)return false;
  if(s->viewFrame==frame&&(!frame||!strcmp(s->viewPath,path)))return true;
- s->viewFrame=frame;snprintf(s->viewPath,sizeof s->viewPath,"%s",path);s->dirty=true;return true;
+ s->viewFrame=frame;snprintf(s->viewPath,sizeof s->viewPath,"%s",path);s->error=NULL;s->dirty=true;return true;
 }
 bool swl_prepare(SWLScene *s){return !s->dirty||prepare(s);}
 bool swl_goto(SWLScene *s,const char *path,unsigned frame,const char *label,bool playing){return goto_internal(s,path,frame,label,playing,true);}
