@@ -4,7 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-struct MovieMeta {json_t *root,*controls,*assignments,*symbols,*textValues;unsigned frames;char clip[SWL_PATH];struct {char path[SWL_PATH];unsigned count;} secrets[32];unsigned nSecrets;};
+/* Laid-out text by (path, field, value): wrapping measures every line prefix through the
+   font JSON, which cost 15-30 ms per frame on an Old 3DS for one long animated field. */
+typedef struct {char path[SWL_PATH];unsigned id;char *value;SWLArt *glyphs;int count;} GlyphCache;
+#define GLYPH_CACHE 12
+struct MovieMeta {GlyphCache glyphCache[GLYPH_CACHE];unsigned glyphNext;json_t *root,*controls,*assignments,*symbols,*textValues;unsigned frames;char clip[SWL_PATH];struct {char path[SWL_PATH];unsigned count;} secrets[32];unsigned nSecrets;};
 static unsigned number(json_t *root,const char *key){json_t *n=json_object_get(root,key);json_int_t value=json_integer_value(n);return json_is_integer(n)&&value>=0&&value<=0x7fffffff?(unsigned)value:0;}
 static const char *string(json_t *root,const char *key){const char *s=json_string_value(json_object_get(root,key));return s?s:"";}
 static bool commands_valid(json_t *commands){if(!json_is_array(commands)||json_array_size(commands)>32)return false;for(size_t i=0;i<json_array_size(commands);i++){json_t *c=json_array_get(commands,i);unsigned op=number(c,"op");if(!json_is_object(c)||!((op>=1&&op<=4)||(op>=10&&op<=14)||op==24)||strlen(string(c,"target"))>=SWL_PATH||strlen(string(c,"room"))>=48)return false;json_t *frame=json_object_get(c,"frame");if(frame&&!json_is_integer(frame)&&!json_is_string(frame))return false;if(json_is_string(frame)&&strlen(json_string_value(frame))>=64)return false;}return true;}
@@ -28,7 +32,7 @@ MovieMeta *movie_meta_load(const void *bytes,size_t length){
  return m;
 bad:movie_meta_free(m);return NULL;
 }
-void movie_meta_free(MovieMeta *m){if(m){json_decref(m->root);json_decref(m->textValues);free(m);}}
+void movie_meta_free(MovieMeta *m){if(m){for(unsigned i=0;i<GLYPH_CACHE;i++){free(m->glyphCache[i].value);free(m->glyphCache[i].glyphs);}json_decref(m->root);json_decref(m->textValues);free(m);}}
 unsigned movie_meta_frames(const MovieMeta *m){return m->frames;}
 unsigned movie_meta_number(const MovieMeta *m,const char *section,const char *key){return number(json_object_get(m->root,section),key);}
 static int base64_value(unsigned char c){if(c>='A'&&c<='Z')return c-'A';if(c>='a'&&c<='z')return c-'a'+26;if(c>='0'&&c<='9')return c-'0'+52;if(c=='+')return 62;if(c=='/')return 63;return -1;}
@@ -48,7 +52,7 @@ static json_t *glyph(json_t *style,unsigned code){char key[12];snprintf(key,size
 static float kern(json_t *style,unsigned a,unsigned b){char key[24];snprintf(key,sizeof key,"%u:%u",a,b);return (float)decimal(json_object_get(style,"kern"),key);}
 static unsigned decode(const unsigned char **cursor){const unsigned char *p=*cursor;unsigned n=*p++;if(n>=0xc2&&n<=0xdf&&(*p&0xc0)==0x80){n=((n&31)<<6)|(*p++&63);}else if(n>=0x80)n='?';*cursor=p;return n;}
 static float line_width(json_t *style,const unsigned *codes,unsigned first,unsigned end){float width=0;for(unsigned i=first;i<end;i++){if(i>first)width+=kern(style,codes[i-1],codes[i]);width+=(float)decimal(glyph(style,codes[i]),"advance");}return width;}
-int movie_meta_glyphs(MovieMeta *m,const SWLScene *scene,const char *path,unsigned id,SWLArt *out,unsigned capacity){
+static int layout_glyphs(MovieMeta *m,const SWLScene *scene,const char *path,unsigned id,SWLArt *out,unsigned capacity){
  char key[20];snprintf(key,sizeof key,"%u",id);json_t *fonts=json_object_get(m->root,"nativeFonts"),*field=json_object_get(json_object_get(fonts,"fields"),key);
  if(!field)return -1;
  const char *value=json_string_value(json_object_get(m->textValues,path));
@@ -80,6 +84,31 @@ int movie_meta_glyphs(MovieMeta *m,const SWLScene *scene,const char *path,unsign
   first=end;if(first<count&&(codes[first]=='\n'||codes[first]==' '))first++;line++;
  }
  return (int)used;
+}
+static const char *text_value(MovieMeta *m,const char *path){
+ const char *value=json_string_value(json_object_get(m->textValues,path));
+ if(!value){const char *key;json_t *v;json_object_foreach(m->textValues,key,v){size_t a=strlen(key),b=strlen(path);if(*key=='.'&&b>=a&&!strcmp(path+b-a,key)){value=json_string_value(v);break;}}}
+ return value;
+}
+int movie_meta_glyphs(MovieMeta *m,const SWLScene *scene,const char *path,unsigned id,SWLArt *out,unsigned capacity){
+ if(!m||!path)return -1;
+ const char *value=text_value(m,path);if(!value||strlen(path)>=SWL_PATH)return layout_glyphs(m,scene,path,id,out,capacity);
+ for(unsigned i=0;i<GLYPH_CACHE;i++){GlyphCache *c=&m->glyphCache[i];
+  if(c->value&&c->id==id&&!strcmp(c->path,path)&&!strcmp(c->value,value)){
+   if(c->count<0)return c->count;
+   if((unsigned)c->count>capacity)return (int)capacity+1;
+   if(c->count)memcpy(out,c->glyphs,(size_t)c->count*sizeof *out);
+   return c->count;
+  }
+ }
+ int count=layout_glyphs(m,scene,path,id,out,capacity);
+ if(count>(int)capacity)return count;
+ GlyphCache *c=&m->glyphCache[m->glyphNext++%GLYPH_CACHE];
+ SWLArt *copy=count>0?malloc((size_t)count*sizeof *copy):NULL;char *text=strdup(value);
+ if((count>0&&!copy)||!text){free(copy);free(text);return count;}
+ free(c->value);free(c->glyphs);c->value=text;c->glyphs=copy;c->count=count;c->id=id;snprintf(c->path,sizeof c->path,"%s",path);
+ if(count>0)memcpy(copy,out,(size_t)count*sizeof *copy);
+ return count;
 }
 static void parent(char *path){char *last=NULL;for(char *p=path;*p;p++)if(*p=='.'||*p=='#')last=p;if(last)*last=0;else *path=0;}
 static bool target(char *out,const char *scope,const char *relative,const char *root){snprintf(out,SWL_PATH,"%s",scope);const char *part=relative;while(*part){const char *end=strchr(part,'.');size_t n=end?(size_t)(end-part):strlen(part);if(n==7&&!memcmp(part,"_parent",7))parent(out);else if(n==5&&!memcmp(part,"_root",5))snprintf(out,SWL_PATH,"%s",root);else if(n&&!(n==4&&!memcmp(part,"this",4))){size_t used=strlen(out);if(used+n+2>=SWL_PATH)return false;if(used)out[used++]='.';memcpy(out+used,part,n);out[used+n]=0;}if(!end)break;part=end+1;}return true;}

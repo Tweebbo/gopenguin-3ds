@@ -1,5 +1,14 @@
 # Release notes
 
+## 1.4.4
+
+- Ice Fishing no longer slows down while the puffle swims across with the level tip. Long animated text is laid out once instead of every frame, which also keeps the PSA missions at a steady frame rate on Old 3DS.
+- Find on a penguin's card answers when your buddy is offline or playing a game, instead of doing nothing.
+
+Install the optional update from Help > Account > Updates. Your saved penguin is retained.
+
+See the [full changelog](https://gopenguin.lol/changelog/).
+
 ## 1.4.2
 
 - Penguin Style from January 2013 to December 2014 and the Monster Maker catalogue from the 2011 Halloween Party are in the catalogue list, with their original covers and pages. Pages download when you open them.

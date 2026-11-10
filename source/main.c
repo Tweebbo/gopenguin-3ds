@@ -1977,7 +1977,7 @@ int main(int argc,char **argv){
    if(!strcmp(packet.command,"ms")&&packet.count>=2){modal_message(!strcmp(packet.args[1],"1")?"Your postcard has been sent.":!strcmp(packet.args[1],"2")?"You need more coins.":"This penguin mailbox is full.");if(!strcmp(packet.args[1],"1"))book.close=true;}
    if(packet.count&&social_ignored(&social,(unsigned)strtoul(packet.args[0],NULL,10))&&(!strcmp(packet.command,"sm")||!strcmp(packet.command,"se")||!strcmp(packet.command,"ss")||!strcmp(packet.command,"sj")||!strcmp(packet.command,"sl"))){pnet_message_free(&packet);continue;}
    if(!strcmp(packet.command,"ba"))pnet_send("b#gb",0,NULL);
-   if(!strcmp(packet.command,"bf")&&social.foundRoom){const IslandRoom *room=island_room(social.foundRoom);if(room){char prompt[140];snprintf(prompt,sizeof prompt,"Your buddy is in %s. Go there?",room->title);modal_message(prompt);modal.confirm=true;modal.room=room->id;}else modal_message("Your buddy is in an igloo.");}
+   if(!strcmp(packet.command,"bf")){if(!social.foundRoom)modal_message("Your buddy is not online right now.");else{const IslandRoom *room=island_room(social.foundRoom);if(room){char prompt[140];snprintf(prompt,sizeof prompt,"Your buddy is in %s. Go there?",room->title);modal_message(prompt);modal.confirm=true;modal.room=room->id;}else modal_message(social.foundRoom>2000?"Your buddy is in an igloo.":"Your buddy is playing a game.");}}
    unsigned room=world_apply(&demo,&packet,pnet_id());profile_apply(&profile,&packet,pnet_id());
    if(!strcmp(packet.command,"cdu")&&packet.count==2){char *end;unsigned long earned=strtoul(packet.args[0],&end,10);if(*packet.args[0]&&!*end&&earned<=100)mining_reply(&mining,(unsigned)earned);}
    if(!strcmp(packet.command,"jr")&&room){
