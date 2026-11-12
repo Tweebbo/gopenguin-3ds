@@ -20,6 +20,7 @@ void offline_load(OfflineShop *s,const char *path){
   if(sscanf(line,"coins %u",&a)==1)s->coins=a;
   else if(sscanf(line,"igloo %u",&a)==1&&a)s->igloo=a;
   else if(sscanf(line,"floor %u",&a)==1)s->floor=a;
+  else if(sscanf(line,"music %u",&a)==1&&a<=1000000)s->music=a;
   else if(sscanf(line,"item %u",&a)==1&&a&&s->nItems<OFFLINE_ITEMS&&!offline_has_item(s,a))s->items[s->nItems++]=a;
   else if(sscanf(line,"owned-igloo %u",&a)==1&&a){if(!igloos){s->nIgloos=0;igloos=true;}if(s->nIgloos<OFFLINE_IGLOOS&&!offline_has_igloo(s,a))s->igloos[s->nIgloos++]=a;}
   else if(sscanf(line,"furniture %u %u",&a,&b)==2&&a&&b&&s->nFurniture<OFFLINE_FURNITURE)s->furniture[s->nFurniture++]=(OfflineFurniture){a,b};
@@ -30,7 +31,7 @@ void offline_load(OfflineShop *s,const char *path){
 bool offline_save(const OfflineShop *s,const char *path){
  char temp[256];if(snprintf(temp,sizeof temp,"%s.tmp",path)>=(int)sizeof temp)return false;
  FILE *f=fopen(temp,"w");if(!f)return false;
- fprintf(f,"# GoPenguin offline preview store. Delete this file to reset it.\ncoins %u\nigloo %u\nfloor %u\n",s->coins,s->igloo,s->floor);
+ fprintf(f,"# GoPenguin offline preview store. Delete this file to reset it.\ncoins %u\nigloo %u\nfloor %u\nmusic %u\n",s->coins,s->igloo,s->floor,s->music);
  for(unsigned n=0;n<s->nItems;n++)fprintf(f,"item %u\n",s->items[n]);
  for(unsigned n=0;n<s->nIgloos;n++)fprintf(f,"owned-igloo %u\n",s->igloos[n]);
  for(unsigned n=0;n<s->nFurniture;n++)fprintf(f,"furniture %u %u\n",s->furniture[n].id,s->furniture[n].count);
@@ -63,6 +64,11 @@ bool offline_furniture_packet(const OfflineShop *s,char *packet,size_t cap){
  return true;
 }
 bool offline_igloo_packet(const OfflineShop *s,char *packet,size_t cap){
- int n=snprintf(packet,cap,"%%xt%%gm%%-1%%%u%%%u%%0%%%u%%%s%%",OFFLINE_OWNER,s->igloo,s->floor,s->layout);return n>0&&(size_t)n<cap;
+ int n=snprintf(packet,cap,"%%xt%%gm%%-1%%%u%%%u%%%u%%%u%%%s%%",OFFLINE_OWNER,s->igloo,s->music,s->floor,s->layout);return n>0&&(size_t)n<cap;
 }
 bool offline_set_layout(OfflineShop *s,const char *layout){if(strlen(layout)>=OFFLINE_LAYOUT||!valid_layout(layout))return false;strcpy(s->layout,layout);return true;}
+bool offline_set_music(OfflineShop *s,unsigned music){if(music>1000000)return false;s->music=music;return true;}
+bool offline_set_style(OfflineShop *s,unsigned type){
+ if(!type||!offline_has_igloo(s,type))return false;
+ s->igloo=type;s->floor=0;s->layout[0]=0;return true;
+}

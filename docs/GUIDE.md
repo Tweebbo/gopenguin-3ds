@@ -31,6 +31,15 @@ Buy furniture in Books → Furniture Catalogue, or touch **Open Furniture Catalo
 
 ![The igloo editor with a selected chair and the furniture list button](visual/igloo-editor.png)
 
+## Playing offline
+
+Open **Help → Account** and touch **Play offline**. GoPenguin stops connecting and you can explore the island, shop in the catalogues and decorate your igloo without a connection.
+
+- Offline mode has its own coins (10,000 to start), clothing, furniture, igloo styles, flooring and music. They are saved on the SD card and stay on this console.
+- In your igloo, **Styles** changes the igloo style (your furniture returns to storage and the flooring is removed), **Music** chooses the music, and **Furnish igloo** places your furniture.
+- Minigames can be played offline, but they pay no coins.
+- Touch **Go online** in the same place to return to your online penguin. Nothing you bought or built offline is sent to your online penguin, and your online penguin is not changed while you play offline.
+
 ## Games
 
 Card-Jitsu and Card-Jitsu Fire are available from the Sensei in the Dojo and Fire Dojo, or from Help → Games. Get a starter deck from the game menu when needed.

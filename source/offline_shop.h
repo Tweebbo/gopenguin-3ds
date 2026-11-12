@@ -15,7 +15,7 @@
 
 typedef struct {unsigned id,count;} OfflineFurniture;
 typedef struct {
- unsigned coins,igloo,floor,nItems,nFurniture,nIgloos;
+ unsigned coins,igloo,floor,music,nItems,nFurniture,nIgloos;
  unsigned items[OFFLINE_ITEMS],igloos[OFFLINE_IGLOOS];
  OfflineFurniture furniture[OFFLINE_FURNITURE];
  char layout[OFFLINE_LAYOUT];
@@ -35,3 +35,8 @@ bool offline_furniture_packet(const OfflineShop *shop,char *packet,size_t cap);
 bool offline_igloo_packet(const OfflineShop *shop,char *packet,size_t cap);
 /** Stores a saved layout (the `g#ur` furniture list joined with commas). */
 bool offline_set_layout(OfflineShop *shop,const char *layout);
+/** Chooses the igloo music (0 is no music). */
+bool offline_set_music(OfflineShop *shop,unsigned music);
+/** Activates an owned igloo style. As online, the furniture returns to storage
+ *  and the flooring is removed; the music is kept. False if the style is not owned. */
+bool offline_set_style(OfflineShop *shop,unsigned type);

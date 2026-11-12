@@ -440,22 +440,21 @@ static bool enter_pending_igloo(void){
 #endif
  return true;
 }
-// Offline preview economy (offline_shop.c): without a session, purchases and the owner's igloo use
-// a local store on SD; its replies are queued as server packets for the normal handlers.
+// Offline mode (offline_shop.c): the player chose Play offline in Account, or a LAN test build has no
+// server. The network is stopped; purchases and the owner's igloo use a local store on SD whose
+// replies are queued as server packets for the normal handlers. Nothing in it is sent to a server.
 #define OFFLINE_SHOP_FILE DATA_DIR "/offline.txt"
-static OfflineShop offlineShop;static bool offlineShopReady;
+static OfflineShop offlineShop;static bool offlineShopReady,offlineMode;
 static char *localPackets[8];static unsigned localCount;
-static bool offline_active(void){return offlineShopReady&&pnet_state()==PNET_OFFLINE&&!settings.session[0];}
+static bool offline_active(void){return offlineShopReady&&offlineMode&&pnet_state()==PNET_OFFLINE;}
 static unsigned local_player(void){return offline_active()?OFFLINE_OWNER:pnet_id();}
 static void local_push(const char *text){char *copy=localCount<8?strdup(text):NULL;if(copy)localPackets[localCount++]=copy;}
 static bool local_receive(PNetMessage *m){while(localCount){char *text=localPackets[0];memmove(localPackets,localPackets+1,--localCount*sizeof *localPackets);if(pnet_parse(text,m)){m->storage=text;return true;}free(text);}return false;}
-#ifdef GP_LAN_ONLY
 static void offline_begin(void){
- offline_load(&offlineShop,OFFLINE_SHOP_FILE);offlineShopReady=true;
+ offline_load(&offlineShop,OFFLINE_SHOP_FILE);offlineShopReady=offlineMode=true;
  profile.coins=offlineShop.coins;profile.revision++;
  char *packet=malloc(OFFLINE_ITEMS*12+32);if(packet&&offline_inventory_packet(&offlineShop,packet,OFFLINE_ITEMS*12+32))local_push(packet);free(packet);
 }
-#endif
 static bool offline_igloo_apply(void){
  static char packet[OFFLINE_LAYOUT+96];PNetMessage m;
  if(!offline_igloo_packet(&offlineShop,packet,sizeof packet)||!pnet_parse(packet,&m))return false;
@@ -886,12 +885,15 @@ static void penguin_draw(void){
  float dy=ui_button(8,118,304,28,ui_touching(8,118,304,28),true)?1:0;
  transfer_symbol(19,119+dy,true);button_label(192,132+dy,11,0xffffff,"Transfer penguin");
  account_button(8,152,148,28,"Change name",2);button(164,152,148,28,"Updates",-1);
- button(8,184,304,20,"Back to Help",-1);
+ button(8,184,148,20,offlineMode?"Go online":"Play offline",-1);button(164,184,148,20,"Back to Help",-1);
 }
+static void offline_enter(void);
+static void offline_leave(void);
 static void penguin_touch(int x,int y){
+ if(offlineMode&&y<180){modal_message("Go online first. Offline mode keeps your online penguin unchanged.");return;}
  if(y>=118&&y<146)demo.tab=22;
  else if(y>=152&&y<180){if(x<160)penguin_rename();else{demo.tab=20;if(gp_update_view().state==GP_UPD_IDLE)gp_update_check();}}
- else if(y>=184&&y<204)demo.tab=4;
+ else if(y>=184&&y<204){if(x>=164)demo.tab=4;else if(offlineMode)offline_leave();else confirm_command("Play offline? Coins, items and igloo changes made offline stay on this console. They never reach your online penguin.","offline-enter",0);}
 }
 static void transfer_draw(void){
  text(12,34,12,0x003366,"Play with the same penguin");
@@ -1090,6 +1092,13 @@ static void editor_drag(u32 held,u32 up){
 }
 static void header(const char *title){ui_header();unsigned size=15;while(size>10&&textWidth(size,title)>282)size--;FontBounds b=font_ink(size,title);text(31-b.left,13.5f-(b.top+b.bottom)/2.0f,size,0xffffff,title);}
 static void styles_open(void){
+ if(offline_active()){
+  // Offline preview: the owned styles come from the local store; there is one layout slot.
+  if(!roomBank||igloo.layout.owner!=OFFLINE_OWNER||igloo.dirty||igloo.awaitingSave){modal_message("Enter your igloo and save your furniture before changing its style.");return;}
+  igloo.nTypes=0;for(unsigned n=0;n<offlineShop.nIgloos&&igloo.nTypes<COUNT(igloo.types);n++)igloo.types[igloo.nTypes++]=offlineShop.igloos[n];
+  igloo.typesReady=igloo.slotsReady=igloo.activeKnown=true;igloo.awaitingTypes=false;
+  igloo.editing=editor.inventory=false;styles.page=0;demo.tab=11;return;
+ }
  if(!roomBank||pnet_state()!=PNET_ONLINE||!igloo_styles_request(&igloo,pnet_id())){modal_message("Enter your igloo and save your furniture before changing its style.");return;}
  char owner[20];snprintf(owner,sizeof owner,"%u",pnet_id());
  igloo.editing=editor.inventory=false;styles.page=0;demo.tab=11;
@@ -1118,7 +1127,7 @@ static void styles_touch(int x,int y){
 }
 static void styles_update(void){
  if(!styles.preparing)return;
- if(pnet_state()!=PNET_ONLINE||osGetTime()-styles.started>60000){styles.preparing=false;modal_message("The igloo could not be prepared. Reconnect or try again.");return;}
+ if((pnet_state()!=PNET_ONLINE&&!offline_active())||osGetTime()-styles.started>60000){styles.preparing=false;modal_message("The igloo could not be prepared. Reconnect or try again.");return;}
  char path[256];unsigned key=asset_key(ASSET_MOVIE,200000+styles.type);
  if(styles.type==1)snprintf(path,sizeof path,"romfs:/data/basic-igloo.gpk");
  else if(!asset_cache_request(key,path,sizeof path)){if(asset_cache_status(key)==ASSET_UNAVAILABLE){styles.preparing=false;modal_message("This igloo's artwork is unavailable. Your current igloo was kept.");}return;}
@@ -1126,6 +1135,12 @@ static void styles_update(void){
  bool valid=bank&&geometry;igloo_geometry_free(geometry);movie_bank_free(bank);sceneOK=room_textures(currentRoom);styles.preparing=false;
  if(!sceneOK){modal_message("Could not restore the current igloo artwork.");return;}
  if(!valid){modal_message(error?error:"This igloo's artwork is invalid. Your current igloo was kept.");return;}
+ if(offline_active()){
+  if(igloo.dirty||igloo.awaitingSave||!offline_set_style(&offlineShop,styles.type)){modal_message("This igloo style is not in your offline store.");return;}
+  if(!offline_save(&offlineShop,OFFLINE_SHOP_FILE)){offline_load(&offlineShop,OFFLINE_SHOP_FILE);modal_message("The offline store could not be saved on SD.");return;}
+  if(!offline_igloo_apply()){modal_message("The offline igloo could not be loaded.");return;}
+  wantedIgloo=true;demo.tab=0;message("Your igloo style has been changed. Your furniture is in storage.");return;
+ }
  if(!igloo_style_prepare(&igloo,pnet_id(),styles.type)){modal_message("The igloo state changed. Refresh the stored igloo list.");return;}
  unsigned location=0;for(unsigned n=0;n<igloo.nSlots;n++)if(igloo.slots[n].id==igloo.activeSlot)location=igloo.slots[n].location;
  char slot[20],type[20],place[20],music[20],owner[20];snprintf(slot,sizeof slot,"%u",igloo.activeSlot);snprintf(type,sizeof type,"%u",styles.type);snprintf(place,sizeof place,"%u",location);snprintf(music,sizeof music,"%u",igloo.targetMusic);snprintf(owner,sizeof owner,"%u",pnet_id());
@@ -1178,7 +1193,7 @@ static void pets_touch(int x,int y){
 static void features_packet(const PNetMessage *packet,unsigned newRoom){
  if(pnet_id()&&puffles.mine!=pnet_id()){puffles_init(&puffles,pets_send,NULL);petRoom=0;}
  if(newRoom&&newRoom!=petRoom){unsigned owner=newRoom>2000?newRoom-2000:0;puffles_room(&puffles,pnet_id(),owner);petRoom=newRoom;wantedPetOwner=owner?owner:pnet_id();}
- if(igloo_floor_purchase(&igloo,packet,pnet_id())&&roomBank){floorPresent=false;swl_invalidate(scene);}
+ if(igloo_floor_purchase(&igloo,packet,local_player())&&roomBank){floorPresent=false;swl_invalidate(scene);}
  if(!strcmp(packet->command,"au"))igloo.typesReady=false;
  if(igloo.styleVerified||igloo.styleFailed){bool verified=igloo.styleVerified;igloo.styleVerified=igloo.styleFailed=false;wantedIgloo=true;styles.preparing=false;message(verified?"Your igloo style has been changed.":"The igloo change could not be verified. Reloading the server layout.");}
  if(!strcmp(packet->command,"gm")&&roomBank&&igloo.layout.type!=renderedIglooType&&!waitingIgloo)wantedIgloo=true;
@@ -1199,7 +1214,7 @@ static void audio_focus(APT_HookType type,void *unused){
  }
 }
 static void music_open(void){
- if(!roomBank||pnet_state()!=PNET_ONLINE||igloo.layout.owner!=pnet_id()||igloo.dirty||igloo.awaitingSave||igloo.awaitingStyle||styles.preparing){modal_message("Enter your igloo and save your changes before choosing music.");return;}
+ if(!roomBank||(pnet_state()!=PNET_ONLINE&&!offline_active())||igloo.layout.owner!=local_player()||igloo.dirty||igloo.awaitingSave||igloo.awaitingStyle||styles.preparing){modal_message("Enter your igloo and save your changes before choosing music.");return;}
  igloo.editing=false;musicPage=0;demo.tab=15;
 }
 static void music_draw(void){
@@ -1217,6 +1232,12 @@ static void music_touch(int x,int y){
  if(y<60||y>=186)return;
  unsigned index=musicPage*6+(unsigned)(y-60)/21,id=0;if(index>=count)return;
  const char *name;if(index&&!gp_audio_igloo_track(index-1,&id,&name))return;
+ if(offline_active()){
+  if(igloo.dirty||igloo.awaitingSave||!offline_set_music(&offlineShop,id)){modal_message("Save your igloo changes before choosing music.");return;}
+  if(!offline_save(&offlineShop,OFFLINE_SHOP_FILE)){offline_load(&offlineShop,OFFLINE_SHOP_FILE);modal_message("The offline store could not be saved on SD.");return;}
+  if(!offline_igloo_apply()){modal_message("The offline igloo could not be loaded.");return;}
+  gp_audio_music(igloo.layout.music);message("Your igloo music has been saved.");return;
+ }
  if(!igloo_music_prepare(&igloo,pnet_id(),id)){modal_message("Save your igloo changes before choosing music.");return;}
  char track[20],owner[20];snprintf(track,sizeof track,"%u",id);snprintf(owner,sizeof owner,"%u",pnet_id());
  if(!pnet_send("g#um",1,(const char *[]){track})||!pnet_send_to('r',"gm",1,(const char *[]){owner})){igloo.awaitingMusic=false;modal_message("Could not send the music change. Please try again.");return;}musicStarted=osGetTime();
@@ -1716,6 +1737,7 @@ static void touch(int x,int y){
    bool confirm=modal.confirm&&x>=25&&x<145;
    if(confirm&&(!strcmp(modal.command,"lobby-table")||!strcmp(modal.command,"lobby-waddle")))lobby_join(!strcmp(modal.command,"lobby-table")?LOBBY_TABLE:LOBBY_WADDLE,(unsigned)strtoul(modal.argument,NULL,10));
    else if(confirm&&!strcmp(modal.command,"open-update"))demo.tab=20;
+   else if(confirm&&!strcmp(modal.command,"offline-enter")){modal.open=false;offline_enter();return;}
    else if(confirm&&!strcmp(modal.command,"igloo-style")){styles.type=(unsigned)strtoul(modal.argument,NULL,10);styles.preparing=true;styles.started=osGetTime();}
    else if(confirm&&!strcmp(modal.command,"puffle-adopt")){unsigned type=(unsigned)strtoul(modal.argument,NULL,10);char name[13]="";if(keyboard(name,sizeof name,"Puffle name",false))puffles_adopt(&puffles,type,name);}
    else if(confirm&&!strcmp(modal.command,"l#ms")){char card[20];snprintf(card,sizeof card,"%u",postcardId);pnet_send("l#ms",2,(const char *[]){modal.argument,card});}
@@ -1827,6 +1849,25 @@ static void performance_record(u64 now,unsigned draw_ms,bool updating){
  FrameSummary stats=frame_metrics_summary(&performance.frames);
  if(performance.used<130000){GPUpdateView update=gp_update_view();int n=snprintf(performance.csv+performance.used,131072-performance.used,"%llu,%s,%s,%s,%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%u,%u,%.3f,%.3f,%u,%u,%u,%u\n",(unsigned long long)now,GOPENGUIN_VERSION,isNew3DS?"New3DS-New2DS":"Old3DS-2DS",performance.phase,stats.count,stats.fps,stats.mean_ms,stats.p50_ms,stats.p95_ms,stats.p99_ms,stats.max_ms,stats.count?(double)performance.drawTotal/stats.count:0,(unsigned)linearSpaceFree(),asset_cache_pending(),C3D_GetDrawingTime(),C3D_GetProcessingTime(),(unsigned)update.state,update.done,update.total,update.background);if(n>0&&(size_t)n<131072-performance.used){performance.used+=(size_t)n;if(++performance.rows%10==0)performance_flush();}}
  performance.frames=(FrameMetrics){0};performance.drawTotal=0;performance.window=now;
+}
+static bool offline_busy(void){return game||gameQueued||book.open||igloo.editing||igloo.awaitingSave||igloo.awaitingStyle||igloo.awaitingMusic||styles.preparing||lobbyUI.open;}
+/** Stops the network and plays against the local store. The online session stays in settings. */
+static void offline_enter(void){
+ if(offline_busy()){modal_message("Finish your game or igloo changes before playing offline.");return;}
+ pnet_stop();while(localCount)free(localPackets[--localCount]);
+ profile_init(&profile,true);memset(&social,0,sizeof social);memset(&igloo,0,sizeof igloo);inventoryUI.stamp=0;demo.count=1;
+ offline_begin();demo.tab=0;wantedRoom=100;wantedX=wantedY=-1;
+ message("Offline mode. Go online from Help > Account.");
+}
+/** Leaves offline mode and reconnects the online penguin; nothing from the local store is sent. */
+static void offline_leave(void){
+ if(offline_busy()){modal_message("Finish your game or igloo changes before going online.");return;}
+ offlineMode=offlineShopReady=false;while(localCount)free(localPackets[--localCount]);
+ profile_init(&profile,false);memset(&social,0,sizeof social);memset(&igloo,0,sizeof igloo);inventoryUI.stamp=0;demo.count=1;
+ demo.tab=0;wantedRoom=100;wantedX=wantedY=-1;
+ if(settings.restoreRequired||!settings.network.api[0]||!settings.network.world[0]){message("Your penguin needs to be restored from Account before going online.");return;}
+ if(settings.session[0]?pnet_start(&settings.network,settings.session,"","",false):pnet_start_guest(&settings.network))message("Connecting to GoPenguin...");
+ else message("Could not connect. Check your connection and try again.");
 }
 int main(int argc,char **argv){
  gp_update_init(argc>0?argv[0]:NULL);
