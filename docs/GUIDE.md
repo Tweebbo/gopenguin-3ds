@@ -18,6 +18,19 @@ Letters appear when you touch a key. Send and Close act when you release on the 
 - Talk to Captain Rockhopper in Town to receive his free background. You do not need to send a suggestion.
 - While seated, turn with the C-Stick, or hold B and use the Circle Pad, D-Pad or map.
 
+## Furnishing your igloo
+
+Stand in your own igloo and touch **Furnish igloo**, either in the igloo row or next to the chat bar. The bottom screen becomes the editor.
+
+- Touch a piece to pick it up and drag it to a new spot. The nearest piece within reach is selected, so small items are easier to grab.
+- **X** returns the selected piece to your furniture. **L** and **R** rotate it, **Y** changes its style, and **B** saves.
+- **A** opens your furniture list. The category button switches between all, room, wall, floor and puffle furniture.
+- Each copy you buy appears in the list, and the editor shows how many copies are left and how many items the igloo holds (99 maximum).
+
+Buy furniture in Books → Furniture Catalogue, or touch **Open Furniture Catalogue** when your list is empty.
+
+![The igloo editor with a selected chair and the furniture list button](visual/igloo-editor.png)
+
 ## Games
 
 Card-Jitsu and Card-Jitsu Fire are available from the Sensei in the Dojo and Fire Dojo, or from Help → Games. Get a starter deck from the game menu when needed.

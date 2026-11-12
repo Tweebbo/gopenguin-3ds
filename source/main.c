@@ -37,6 +37,7 @@
 #include "book_camera.h"
 #include "room_dance.h"
 #include "client_data.h"
+#include "furniture_sort_data.h"
 #include "profile.h"
 #include "membership.h"
 #include "../vendor/qrcodegen/qrcodegen.h"
@@ -1005,9 +1006,23 @@ static void igloo_list_touch(int x,int y){
  if(y>=61&&y<181){unsigned index=iglooPage*6+(unsigned)(y-61)/20;if(index<igloo.nOpen)open_igloo(igloo.open[index].owner);}
 }
 static unsigned furniture_type(unsigned id){Product p;return client_product(clientData,1,id,&p)?p.type:1;}
+static unsigned furniture_section(unsigned id){unsigned lo=0,hi=FURNITURE_SORT_COUNT;while(lo<hi){unsigned mid=lo+(hi-lo)/2,row=furnitureSort[mid][0];if(row==id)return furnitureSort[mid][1];if(row<id)lo=mid+1;else hi=mid;}return 0;}
 static void editor_cancel_drag(void){if(editor.dragging&&editor.selected>=0&&(unsigned)editor.selected<igloo.layout.count){IglooFurniture *f=&igloo.layout.items[editor.selected];f->x=editor.oldX;f->y=editor.oldY;}editor.dragging=false;}
+static void editor_reload_igloo(void){
+ if(offline_active()){if(offline_igloo_apply())igloo.ready=true;return;}
+ unsigned owner=local_player();if(!owner||!igloo_request(&igloo,owner))return;
+ char id[20];snprintf(id,sizeof id,"%u",owner);
+ if(pnet_send_to('r',"gm",1,(const char *[]){id}))igloo.wantedOwner=owner;
+}
 static void editor_open(void){
- if(!roomBank||(pnet_state()!=PNET_ONLINE&&!offline_active())||!igloo_begin_edit(&igloo,local_player())){message("You can edit your own igloo while connected.");return;}
+ const char *error=NULL;
+ if(!roomBank)error="Your igloo is still loading. Try again in a moment.";
+ else if(pnet_state()!=PNET_ONLINE&&!offline_active())error="Connect to GoPenguin to furnish your igloo.";
+ else if(!igloo.ready){editor_reload_igloo();error="Your igloo is still loading. Try again in a moment.";}
+ else if(igloo.layout.owner!=local_player())error="You can only furnish your own igloo.";
+ else if(igloo.awaitingSave||igloo.awaitingStyle||igloo.awaitingMusic)error="Wait for your igloo to finish saving.";
+ else if(!igloo_begin_edit(&igloo,local_player()))error="Your igloo is not ready to edit. Try again in a moment.";
+ if(error){message(error);return;}
  editor.selected=-1;editor.dragging=editor.inventory=false;editor.page=editor.category=editor.revision=0;editor.search[0]=0;demo.tab=0;demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;if(offline_active()){char *packet=malloc(OFFLINE_FURNITURE*24+32);if(packet&&offline_furniture_packet(&offlineShop,packet,OFFLINE_FURNITURE*24+32))local_push(packet);free(packet);}else pnet_send("g#gf",0,NULL);
 }
 static void editor_remove(void){if(igloo.awaitingSave)return;editor_cancel_drag();if(editor.selected>=0&&igloo_remove(&igloo,(unsigned)editor.selected)){for(unsigned n=(unsigned)editor.selected;n<igloo.layout.count;n++)furnitureTime[n]=furnitureTime[n+1];editor.selected=-1;}}
@@ -1039,31 +1054,34 @@ static int furniture_compare(const void *a,const void *b){unsigned x=*(const uns
 static bool furniture_matches(const char *name){if(!*editor.search)return true;size_t length=strlen(editor.search);for(;*name;name++)if(!strncasecmp(name,editor.search,length))return true;return false;}
 static void editor_inventory(void){
  if(editor.revision==igloo.revision+1)return;
- editor.count=0;for(unsigned n=0;n<igloo.nOwned;n++){unsigned id=igloo.owned[n].id;Product p;bool known=client_product(clientData,1,id,&p);if(editor.category&&(!known||p.type!=editor.category))continue;if(!furniture_matches(known?p.name:""))continue;editor.items[editor.count++]=id;}
+ editor.count=0;for(unsigned n=0;n<igloo.nOwned;n++){unsigned id=igloo.owned[n].id;Product p;bool known=client_product(clientData,1,id,&p);if(editor.category&&(!known||furniture_section(id)!=editor.category))continue;if(!furniture_matches(known?p.name:""))continue;editor.items[editor.count++]=id;}
  qsort(editor.items,editor.count,sizeof *editor.items,furniture_compare);if(editor.page*6>=editor.count)editor.page=editor.count?(editor.count-1)/6:0;editor.revision=igloo.revision+1;
 }
 static void editor_draw(void){
  if(editor.inventory){
   editor_inventory();const char *categories[]={"All furniture","Room furniture","Wall furniture","Floor furniture","Puffle furniture"};button(4,29,108,22,categories[editor.category],-1);button(117,29,108,22,"Search",-1);button(230,29,86,22,"Clear",-1);
   for(unsigned n=0;n<6&&editor.page*6+n<editor.count;n++){unsigned id=editor.items[editor.page*6+n],amount=igloo_available(&igloo,id);float x=4+n%3*105,y=55+n/3*65;box(x,y,102,62,amount?0xffffff:0xc9dce8);wear_fit(asset_key(ASSET_FURNITURE_ICON,id),x+25,y+3,52,39);Product p;char label[32];snprintf(label,sizeof label,"%.16s",client_product(clientData,1,id,&p)?p.name:"Furniture");center(x+51,y+44,10,0x003366,label);snprintf(label,sizeof label,"%u",amount);text(x+6,y+5,10,0x003366,label);}
-  if(!igloo.ownedReady)center(160,108,11,0x003366,"Loading your furniture...");else if(!editor.count)center(160,108,11,0x003366,*editor.search?"No furniture matches your search.":"No furniture in this category.");
+  if(!igloo.ownedReady)center(160,108,11,0x003366,"Loading your furniture...");else if(!editor.count){center(160,96,11,0x003366,*editor.search?"No furniture matches your search.":igloo.nOwned?"No furniture in this category.":"You do not own any furniture yet.");if(!*editor.search)button(60,122,200,28,"Open Furniture Catalogue",-1);}
   char label[96];snprintf(label,sizeof label,"%u / %u   %s",editor.page+1,editor.count?(editor.count+5)/6:1,editor.search);center(160,190,10,0x003366,label);button(2,207,76,31,"Previous",-1);button(82,207,76,31,"Back",-1);button(162,207,76,31,"Next",-1);button(242,207,76,31,"Save",-1);return;
  }
  ActorOrder order;make_order(&order,false,.35f,27,28);scene_draw_to(sceneBottom,320,240,.35f,.35f,27,28,&order);
- if(editor.selected>=0&&(unsigned)editor.selected<igloo.layout.count){IglooFurniture *f=&igloo.layout.items[editor.selected];float x=27+f->x*.35f,y=28+f->y*.35f;C2D_DrawCircleSolid(x,y,.5f,5,rgb(0x003366));C2D_DrawCircleSolid(x,y,.5f,3,rgb(0x00ccff));Product p;char label[80];snprintf(label,sizeof label,"%.25s  %u / %u",client_product(clientData,1,f->id,&p)?p.name:"Furniture",f->rotation,f->frame);box(20,181,280,22,0xffffff);center(160,185,10,0x003366,label);}
- else {box(15,181,290,22,0xffffff);center(160,185,10,0x003366,"Drag furniture. X: return item. B: save.");}
+ if(editor.selected>=0&&(unsigned)editor.selected<igloo.layout.count){IglooFurniture *f=&igloo.layout.items[editor.selected];float x=27+f->x*.35f,y=28+f->y*.35f;C2D_DrawCircleSolid(x,y,.5f,5,rgb(0x003366));C2D_DrawCircleSolid(x,y,.5f,3,rgb(0x00ccff));Product p;char label[80];snprintf(label,sizeof label,"%.16s  %u left  %u / 99",client_product(clientData,1,f->id,&p)?p.name:"Furniture",igloo_available(&igloo,f->id),igloo.layout.count);box(20,181,280,22,0xffffff);center(160,185,10,0x003366,label);}
+ else {char label[80];snprintf(label,sizeof label,"Drag furniture. X: return. B: save.  %u / 99 items",igloo.layout.count);box(15,181,290,22,0xffffff);center(160,185,10,0x003366,label);}
  button(2,207,60,31,"Furniture",-1);button(66,207,60,31,"Rotate <",-1);button(130,207,60,31,"Rotate >",-1);button(194,207,60,31,"Variation",-1);button(258,207,60,31,igloo.awaitingSave?"Saving...":"Save",-1);
 }
+static void editor_pick(unsigned index,float wx,float wy){IglooFurniture *f=&igloo.layout.items[index];editor.selected=(int)index;editor.oldX=f->x;editor.oldY=f->y;editor.pressX=wx;editor.pressY=wy;editor.moved=false;editor.dragging=true;}
 static void editor_touch(int x,int y){
  if(igloo.awaitingSave)return;
  if(editor.inventory){editor_inventory();if(y>=207){if(x<80){if(editor.page)editor.page--;}else if(x<160)editor.inventory=false;else if(x<240){if((editor.page+1)*6<editor.count)editor.page++;}else editor_save();return;}
+  if(igloo.ownedReady&&!editor.count&&!*editor.search&&y>=122&&y<150&&x>=60&&x<260){if(igloo.dirty){message("Save your igloo before opening the catalogue.");return;}editor.inventory=false;igloo.editing=false;book_open("furniture");return;}
   if(y>=29&&y<51){if(x<113){editor.category=(editor.category+1)%5;editor.page=editor.revision=0;}else if(x<226){if(keyboard(editor.search,sizeof editor.search,"Search your furniture",false))editor.page=editor.revision=0;}else{editor.search[0]=0;editor.page=editor.revision=0;}return;}
   if(x>=4&&x<316&&y>=55&&y<182){unsigned index=editor.page*6+(unsigned)(y-55)/65*3+(unsigned)(x-4)/105;if(index>=editor.count)return;unsigned id=editor.items[index];if(!igloo_available(&igloo,id)){message("All copies of this furniture are in your igloo.");return;}if(igloo.layout.count==IGLOO_ITEMS){message("Your igloo can hold up to 99 furniture items.");return;}unsigned type=furniture_type(id);for(int wy=40;wy<460;wy+=10)for(int wx=40;wx<740;wx+=10)if(igloo_geometry_legal(iglooGeometry,type,wx,wy)){if(igloo_add(&igloo,id,wx,wy)){editor.selected=(int)igloo.layout.count-1;furnitureTime[editor.selected]=0;editor.inventory=false;}return;}message("There is no suitable area for this furniture.");}return;
  }
  if(y>=207){editor_cancel_drag();if(x<64){editor.inventory=true;editor.page=0;}else if(x<128)editor_turn(-1,0);else if(x<192)editor_turn(1,0);else if(x<256)editor_turn(0,1);else editor_save();return;}
  if(x<27||x>=293||y<28||y>=181)return;
  float wx=(x-27)/.35f,wy=(y-28)/.35f;ActorOrder order;make_order(&order,false,1,0,0);editor.selected=-1;
- for(unsigned n=order.count;n>0;n--){unsigned index=order.items[n-1].tag-CAST_COUNT;IglooFurniture *f=&igloo.layout.items[index];if(wear_pose_contains(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame,(unsigned)(furnitureTime[index]*24),f->x,f->y,1,wx,wy)){editor.selected=(int)index;editor.oldX=f->x;editor.oldY=f->y;editor.pressX=wx;editor.pressY=wy;editor.moved=false;editor.dragging=true;break;}}
+ for(unsigned n=order.count;n>0;n--){unsigned index=order.items[n-1].tag-CAST_COUNT;IglooFurniture *f=&igloo.layout.items[index];if(wear_pose_contains(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame,(unsigned)(furnitureTime[index]*24),f->x,f->y,1,wx,wy)){editor_pick(index,wx,wy);break;}}
+ if(editor.selected<0){float best=30;for(unsigned n=0;n<igloo.layout.count;n++){IglooFurniture *f=&igloo.layout.items[n];float distance=hypotf(f->x-wx,f->y-wy);if(distance<best){best=distance;editor_pick(n,wx,wy);}}}
 }
 static void editor_drag(u32 held,u32 up){
  if(!editor.dragging||igloo.awaitingSave||editor.selected<0||(unsigned)editor.selected>=igloo.layout.count)return;
@@ -1078,7 +1096,7 @@ static void styles_open(void){
  pnet_send_to('r',"gm",1,(const char *[]){owner});pnet_send("g#go",0,NULL);pnet_send("g#gail",1,(const char *[]){owner});
 }
 static void styles_draw(void){
- text(12,33,12,0x003366,"Stored igloos");
+ text(12,33,12,0x003366,"Stored igloos");button(196,30,116,20,"Furnish igloo",-1);
  if(!igloo.typesReady||!igloo.slotsReady){center(160,100,11,0x003366,"Loading your igloos...");return;}
  for(unsigned n=0;n<6&&styles.page*6+n<igloo.nTypes;n++){
   unsigned type=igloo.types[styles.page*6+n];Product p;char label[90];snprintf(label,sizeof label,"%.34s%s",client_product(clientData,2,type,&p)?p.name:"Igloo",type==igloo.layout.type?" (active)":"");
@@ -1090,6 +1108,7 @@ static void styles_draw(void){
 }
 static void styles_touch(int x,int y){
  if(styles.preparing||igloo.awaitingStyle)return;
+ if(y>=30&&y<50&&x>=196){demo.tab=0;editor_open();return;}
  if(y>=187){if(x<85&&styles.page)styles.page--;else if(x>=236&&(styles.page+1)*6<igloo.nTypes)styles.page++;else if(x>=122&&x<198)styles_open();return;}
  if(y<60||y>=186||!igloo.typesReady||!igloo.slotsReady)return;
  unsigned n=styles.page*6+(unsigned)(y-60)/21;if(n>=igloo.nTypes)return;
@@ -1584,7 +1603,7 @@ static void games_touch(int x,int y){
 }
 /** Lower-screen header: the room in Room, otherwise the open section. */
 static const char *section_title(void){
- static const char *const sections[]={"Room","Map","Me","People","Help","Chat","Books","Player","Mail","Postcards","Public igloos","Igloo styles","Puffles","Puffles","Puffles","Igloo music","Games","Lobby","Account","Membership","Updates","Device code","Transfer penguin","Graphics"};
+ static const char *const sections[]={"Room","Map","Me","People","Help","Chat","Books","Player","Mail","Postcards","Public igloos","Igloo styles","Puffles","Puffles","Puffles","Igloo music","Games","Lobby","Account","Membership","Updates","Device code","Transfer penguin","Graphics","Furnishing"};
  if(demo.tab==0&&currentRoom)return currentRoom->title;
  return demo.tab<COUNT(sections)?sections[demo.tab]:"Penguin";
 }
@@ -1594,7 +1613,7 @@ static void bottom(void){
  ui_frame();ui_background();header(book.open?book.info->title:section_title());
  if(modal.open){modal_draw();return;}
  if(lobbyUI.open||lobbyUI.moving||lobbyUI.leavePending){lobby_draw();return;}
- if(igloo.editing){editor_draw();header("Edit igloo");return;}
+ if(igloo.editing){editor_draw();header("Furnish igloo");return;}
  if(chatHistory.open&&!book.open){header("Chat history");const ChatLogWidgets widgets={box,text,history_width,history_button};chat_log_view_draw(&chatHistory,&chatLog,&widgets);return;}
 
  if(book.open){
@@ -1615,7 +1634,7 @@ static void bottom(void){
  if(demo.tab==0){
   box(6,33,181,119,0xffffff);if(roomBank){ActorOrder order;make_order(&order,false,175.0f/760,9,36);scene_draw_to(sceneBottom,320,240,175.0f/760,110.0f/480,9,36,&order);}else image(&minimap,9,36,175,110,0xffffffff);
   for(unsigned i=0;i<demo.count;i++)if(room_actor_visible(i)){Actor *a=&demo.actors[i];C2D_DrawCircleSolid(9+a->x*175/760,36+a->y*110/480,.5f,i?2:3,rgb(colours[(unsigned)a->colour<16?(unsigned)a->colour:0]));}
- if(roomBank){button(7,154,101,17,"Public igloos",-1);if(igloo.layout.owner==pnet_id())button(112,154,75,17,"Styles",-1);}else text(12,154,10,0x003366,"L: history  R: write");
+ if(roomBank){if(igloo.layout.owner==local_player()){button(7,154,58,17,"Igloos",-1);button(69,154,76,17,"Furnish igloo",-1);button(149,154,42,17,"Styles",-1);}else button(7,154,101,17,"Public igloos",-1);}else text(12,154,10,0x003366,"L: history  R: write");
   const char *actions[]={"Wave","Dance","Sit","Snowball","Chat","Zoom"};const int ico[]={-1,-1,-1,3,0,6},poses[]={25,26,17};
   for(int i=0;i<6;i++){
    float x=193+i%2*62,y=34+i/2*34;
@@ -1626,7 +1645,7 @@ static void bottom(void){
    button_label(x+29.5f,y+25+dy,11,0xffffff,actions[i]);
   }
   ui_button(193,139,121,26,false,false);icon(9,198,140,.75f);button_label(270,152,11,0x003366,"Membership");
-  bool owner=roomBank&&igloo.layout.owner==local_player();box(7,173,owner?166:240,28,0xffffff);icon(0,10,174,.8f);text(41,179,11,0x003366,"Say something...");if(owner)button(177,173,70,28,"Music",-1);button(253,173,60,28,owner?"Edit":"Igloo",-1);
+  bool owner=roomBank&&igloo.layout.owner==local_player();box(7,173,owner?166:240,28,0xffffff);icon(0,10,174,.8f);text(41,179,11,0x003366,"Say something...");if(owner)button(177,173,66,28,"Music",-1);button(owner?247:253,173,owner?66:60,28,owner?"Furnish":"Igloo",-1);
  }else if(demo.tab==1){
   if(mapList){for(unsigned i=0;i<10;i++){unsigned index=mapPage*10+i;if(index>=ISLAND_ROOMS)break;const IslandRoom *r=&islandRooms[index];box(7+i%2*156,34+i/2*29,150,26,r==currentRoom?0x0085c7:0xffffff);center(82+i%2*156,40+i/2*29,11,r==currentRoom?0xffffff:0x003366,r->title);}box(7,183,71,20,0xffffff);center(42,186,11,0x003366,"Previous");box(242,183,71,20,0xffffff);center(277,186,11,0x003366,"Next");char page[40];snprintf(page,sizeof page,"%u / %u",mapPage+1,(ISLAND_ROOMS+9)/10);center(160,186,11,0x003366,page);}
   // Full width between the header and the tabs, from a raster made at this size (map-bottom, 1:1).
@@ -1657,11 +1676,17 @@ static void bottom(void){
  }else if(demo.tab==7){player_draw();
  }else if(demo.tab==4){
   button(8,32,148,24,"Puffles",-1);button(164,32,148,24,"Games",-1);
-  float dy=ui_button(8,62,304,56,ui_touching(8,62,304,56),true)?1:0;
-  icon(2,19,74+dy,1);text(61,73+dy,13,0xffffff,"Account");
-  text(61,95+dy,9,0xffffff,"Transfer your penguin or change its name.");
-  button(8,130,148,28,settings.audio?"Audio: on":"Audio: off",-1);button(164,130,148,28,"Graphics",-1);
-  button(8,164,148,28,"Catalogues",-1);char label[32];snprintf(label,sizeof label,"Mail (%u)",social.unread);button(164,164,148,28,label,-1);
+  float dy=ui_button(8,62,304,48,ui_touching(8,62,304,48),true)?1:0;
+  icon(2,19,74+dy,.9f);text(61,70+dy,13,0xffffff,"Account");
+  text(61,90+dy,9,0xffffff,"Transfer your penguin or change its name.");
+  button(8,114,148,28,settings.audio?"Audio: on":"Audio: off",-1);button(164,114,148,28,"Graphics",-1);
+  button(8,146,148,28,"Catalogues",-1);char label[32];snprintf(label,sizeof label,"Mail (%u)",social.unread);button(164,146,148,28,label,-1);
+  button(8,178,304,24,"Furnishing your igloo",-1);
+ }else if(demo.tab==24){
+  text(12,34,13,0x003366,"Furnishing your igloo");
+  const char *lines[]={"Stand in your own igloo. Touch Furnish igloo.","Touch a piece to drag it. X returns it. L and R","rotate it, Y changes its style, and B saves.","A opens your furniture. Every copy you buy in","Books > Furniture Catalogue appears here.","You can also open that catalogue from an empty","furniture list."};
+  for(unsigned i=0;i<COUNT(lines);i++)text(12,58+i*14,10,0x003366,lines[i]);
+  button(8,184,148,22,"Furniture Catalogue",-1);button(164,184,148,22,"Back to Help",-1);
  }else{
   box(9,33,90,22,0xffffff);center(54,37,11,0x003366,"Safe chat");box(104,33,90,22,0xffffff);center(149,37,11,0x003366,"Emotes");box(199,33,112,22,0xffffff);center(255,37,11,0x003366,safeParent?"Up":"Give tour");
   if(emoteMenu){for(unsigned i=0;i<30;i++){float x=9+i%6*51,y=58+i/6*29;box(x,y,48,27,0xffffff);const EmoteArt *f=&emoteArt[i];float k=fminf(42.0f/f->w,24.0f/f->h);crop(&emotes,f->x,f->y,f->w,f->h,x+(48-f->w*k)/2,y+(27-f->h*k)/2,k,0xffffffff);}}
@@ -1745,8 +1770,8 @@ static void touch(int x,int y){
    }else demo_target(&demo,wx,wy);
    return;
   }
-  if(roomBank&&x<187&&y>=154&&y<171){if(x>=112&&igloo.layout.owner==pnet_id())styles_open();else igloo_list_open();return;}
-  if(y>=173&&y<=201){if(x>=253){if(roomBank&&igloo.layout.owner==local_player())editor_open();else open_igloo(pnet_id());}else if(x>=177&&roomBank&&igloo.layout.owner==pnet_id())music_open();else chat();return;}
+  if(roomBank&&y>=154&&y<171&&x<191){if(igloo.layout.owner==local_player()){if(x<67)igloo_list_open();else if(x<147)editor_open();else styles_open();}else if(x<108)igloo_list_open();return;}
+  if(y>=173&&y<=201){if(x>=(roomBank&&igloo.layout.owner==local_player()?247:253)){if(roomBank&&igloo.layout.owner==local_player())editor_open();else open_igloo(pnet_id());}else if(x>=177&&roomBank&&igloo.layout.owner==local_player())music_open();else chat();return;}
   if(x>=193&&x<314&&y>=34&&y<134){int n=(y-34)/34*2+(x-193)/62;if(n==0)action(25);if(n==1)action(26);if(n==2)action(17);if(n==3)snowball();if(n==4)demo.tab=5;if(n==5)demo.zoom=!demo.zoom;}
   if(x>=193&&x<314&&y>=139&&y<165){membership_open();return;}
  }
@@ -1774,10 +1799,12 @@ static void touch(int x,int y){
    if(x<160){if(pnet_state()!=PNET_ONLINE){modal_message("Connect to GoPenguin to manage puffles.");return;}demo.tab=12;petPage=0;puffles_request(&puffles,pnet_id());}
    else{demo.tab=16;gamePage=0;missionMenu=false;}
   }
-  else if(y>=62&&y<118)penguin_open();
-  else if(y>=130&&y<158){if(x<160)toggle_audio();else demo.tab=23;}
-  else if(y>=164&&y<192){if(x<160){demo.tab=6;bookListPage=0;}else{demo.tab=8;mailPage=0;pnet_send("l#mg",1,(const char *[]){"0"});}}
+  else if(y>=62&&y<110)penguin_open();
+  else if(y>=114&&y<142){if(x<160)toggle_audio();else demo.tab=23;}
+  else if(y>=146&&y<174){if(x<160){demo.tab=6;bookListPage=0;}else{demo.tab=8;mailPage=0;pnet_send("l#mg",1,(const char *[]){"0"});}}
+  else if(y>=178&&y<202)demo.tab=24;
  }
+ else if(demo.tab==24){if(y>=184&&y<206){if(x<160)book_open("furniture");else demo.tab=4;}}
  else if(demo.tab==5){if(y>=33&&y<55){if(x<100)emoteMenu=false;else if(x<195)emoteMenu=true;else if(safeParent){SafeMessage parent;if(client_safe(clientData,safeParent,&parent))safeParent=parent.parent;safePage=0;}else if(demo.actors[0].look[0]!=428)modal_message("You need to wear your Tour Guide hat to give a tour.");else{actor_say(&demo.actors[0],client_tour(clientData,currentRoomId));char id[20];snprintf(id,sizeof id,"%u",currentRoomId);pnet_send("u#sl",1,(const char *[]){id});demo.tab=0;}return;}if(emoteMenu&&x>=9&&y>=58&&y<203){unsigned id=(unsigned)(y-58)/29*6+(unsigned)(x-9)/51+1;if(id<=30){demo.actors[0].emote=id;demo.actors[0].chat[0]=0;demo.actors[0].bubbleTime=125.0f/24;char number[12];snprintf(number,sizeof number,"%u",id);pnet_send("u#se",1,(const char *[]){number});demo.tab=0;}}else if(!emoteMenu&&y>=58&&y<190){SafeMessage choices[6];unsigned total=client_safe_children(clientData,safeParent,safePage*6,choices,6),index=(unsigned)(y-58)/22;if(index<6&&safePage*6+index<total){SafeMessage choice=choices[index];if(client_safe_children(clientData,choice.id,0,NULL,0)){safeParent=choice.id;safePage=0;}else{actor_say(&demo.actors[0],choice.name);char id[20];snprintf(id,sizeof id,"%u",choice.id);pnet_send("u#ss",1,(const char *[]){id});demo.tab=0;}}}else if(!emoteMenu&&y>=192){unsigned total=client_safe_children(clientData,safeParent,0,NULL,0);if(x<75&&safePage)safePage--;if(x>=246&&(safePage+1)*6<total)safePage++;}}
 }
 static struct {bool checked,enabled;char *csv;size_t used;u64 last,window;FrameMetrics frames;unsigned drawTotal;char phase[40];} performance;
