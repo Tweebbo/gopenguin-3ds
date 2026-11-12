@@ -1807,7 +1807,10 @@ static void touch(int x,int y){
  else if(demo.tab==24){if(y>=184&&y<206){if(x<160)book_open("furniture");else demo.tab=4;}}
  else if(demo.tab==5){if(y>=33&&y<55){if(x<100)emoteMenu=false;else if(x<195)emoteMenu=true;else if(safeParent){SafeMessage parent;if(client_safe(clientData,safeParent,&parent))safeParent=parent.parent;safePage=0;}else if(demo.actors[0].look[0]!=428)modal_message("You need to wear your Tour Guide hat to give a tour.");else{actor_say(&demo.actors[0],client_tour(clientData,currentRoomId));char id[20];snprintf(id,sizeof id,"%u",currentRoomId);pnet_send("u#sl",1,(const char *[]){id});demo.tab=0;}return;}if(emoteMenu&&x>=9&&y>=58&&y<203){unsigned id=(unsigned)(y-58)/29*6+(unsigned)(x-9)/51+1;if(id<=30){demo.actors[0].emote=id;demo.actors[0].chat[0]=0;demo.actors[0].bubbleTime=125.0f/24;char number[12];snprintf(number,sizeof number,"%u",id);pnet_send("u#se",1,(const char *[]){number});demo.tab=0;}}else if(!emoteMenu&&y>=58&&y<190){SafeMessage choices[6];unsigned total=client_safe_children(clientData,safeParent,safePage*6,choices,6),index=(unsigned)(y-58)/22;if(index<6&&safePage*6+index<total){SafeMessage choice=choices[index];if(client_safe_children(clientData,choice.id,0,NULL,0)){safeParent=choice.id;safePage=0;}else{actor_say(&demo.actors[0],choice.name);char id[20];snprintf(id,sizeof id,"%u",choice.id);pnet_send("u#ss",1,(const char *[]){id});demo.tab=0;}}}else if(!emoteMenu&&y>=192){unsigned total=client_safe_children(clientData,safeParent,0,NULL,0);if(x<75&&safePage)safePage--;if(x>=246&&(safePage+1)*6<total)safePage++;}}
 }
-static struct {bool checked,enabled;char *csv;size_t used;u64 last,window;FrameMetrics frames;unsigned drawTotal;char phase[40];} performance;
+static struct {bool checked,enabled;char *csv;size_t used;unsigned rows;u64 last,window;FrameMetrics frames;unsigned drawTotal;char phase[40];} performance;
+/** True once more than ms have passed since start. The frame clock is read before
+ *  input, so a start stamped later in the same frame must not wrap to a huge u64. */
+static bool elapsed_after(u64 now,u64 start,u64 ms){return now>start&&now-start>ms;}
 static void performance_flush(void){if(performance.csv&&performance.used){FILE *log=fopen(DATA_DIR "/performance.csv","wb");if(log){fwrite(performance.csv,1,performance.used,log);fclose(log);}}}
 static void performance_record(u64 now,unsigned draw_ms,bool updating){
  if(!performance.checked){FILE *flag=fopen(DATA_DIR "/performance-enabled","r");performance.enabled=flag!=NULL;if(flag)fclose(flag);performance.checked=true;if(performance.enabled){performance.csv=malloc(131072);if(performance.csv)performance.used=(size_t)snprintf(performance.csv,131072,"timestamp_ms,version,family,phase,frames,fps,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,draw_ms,linear_free,cache_pending,gpu_ms,cpu_submit_ms,update_state,update_done,update_total,update_background\n");else performance.enabled=false;}}
@@ -1816,13 +1819,13 @@ static void performance_record(u64 now,unsigned draw_ms,bool updating){
  game_port_test_tracing(!performanceEnabled);
 #endif
  if(!performance.enabled)return;
- const char *next=updating?"updater":game?queuedGame.key:roomBank?"igloo":currentRoom?currentRoom->key:"loading";
+ const char *next=updating?"updater":game?queuedGame.key:roomBank?(igloo.editing?(editor.inventory?"igloo-furniture":"igloo-editor"):"igloo"):currentRoom?currentRoom->key:"loading";
  if(!performance.last){performance.last=performance.window=now;snprintf(performance.phase,sizeof performance.phase,"%s",next);return;}
- if(strcmp(performance.phase,next)){performance.window=now;performance.frames=(FrameMetrics){0};performance.drawTotal=0;snprintf(performance.phase,sizeof performance.phase,"%s",next);}
+ if(strcmp(performance.phase,next)){performance_flush();performance.window=now;performance.frames=(FrameMetrics){0};performance.drawTotal=0;snprintf(performance.phase,sizeof performance.phase,"%s",next);}
  u64 delta=(now-performance.last)*1000;performance.last=now;frame_metrics_add(&performance.frames,delta>UINT32_MAX?UINT32_MAX:(uint32_t)delta);performance.drawTotal+=draw_ms;
  if(now-performance.window<1000)return;
  FrameSummary stats=frame_metrics_summary(&performance.frames);
- if(performance.used<130000){GPUpdateView update=gp_update_view();int n=snprintf(performance.csv+performance.used,131072-performance.used,"%llu,%s,%s,%s,%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%u,%u,%.3f,%.3f,%u,%u,%u,%u\n",(unsigned long long)now,GOPENGUIN_VERSION,isNew3DS?"New3DS-New2DS":"Old3DS-2DS",performance.phase,stats.count,stats.fps,stats.mean_ms,stats.p50_ms,stats.p95_ms,stats.p99_ms,stats.max_ms,stats.count?(double)performance.drawTotal/stats.count:0,(unsigned)linearSpaceFree(),asset_cache_pending(),C3D_GetDrawingTime(),C3D_GetProcessingTime(),(unsigned)update.state,update.done,update.total,update.background);if(n>0&&(size_t)n<131072-performance.used)performance.used+=(size_t)n;}
+ if(performance.used<130000){GPUpdateView update=gp_update_view();int n=snprintf(performance.csv+performance.used,131072-performance.used,"%llu,%s,%s,%s,%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%u,%u,%.3f,%.3f,%u,%u,%u,%u\n",(unsigned long long)now,GOPENGUIN_VERSION,isNew3DS?"New3DS-New2DS":"Old3DS-2DS",performance.phase,stats.count,stats.fps,stats.mean_ms,stats.p50_ms,stats.p95_ms,stats.p99_ms,stats.max_ms,stats.count?(double)performance.drawTotal/stats.count:0,(unsigned)linearSpaceFree(),asset_cache_pending(),C3D_GetDrawingTime(),C3D_GetProcessingTime(),(unsigned)update.state,update.done,update.total,update.background);if(n>0&&(size_t)n<131072-performance.used){performance.used+=(size_t)n;if(++performance.rows%10==0)performance_flush();}}
  performance.frames=(FrameMetrics){0};performance.drawTotal=0;performance.window=now;
 }
 int main(int argc,char **argv){
@@ -2050,7 +2053,7 @@ int main(int argc,char **argv){
   if(kickStop){kickStop=false;pnet_stop();}
   if(kickResume&&osGetTime()>=kickResume){kickResume=0;if(settings.network.api[0]&&settings.network.world[0]&&settings.session[0])pnet_start(&settings.network,settings.session,"","",false);}
   rockhopper_sync();
-  if(igloo.editing){if(igloo.saveVerified){igloo.saveVerified=false;igloo.editing=editor.inventory=false;editor.selected=-1;message("Your igloo has been saved.");}else if(igloo.saveFailed||(igloo.awaitingSave&&now-editor.saveAt>15000)){igloo.awaitingSave=igloo.saveFailed=false;message("The igloo could not be verified. Try Save again.");}}
+  if(igloo.editing){if(igloo.saveVerified){igloo.saveVerified=false;igloo.editing=editor.inventory=false;editor.selected=-1;message("Your igloo has been saved.");}else if(igloo.saveFailed||(igloo.awaitingSave&&elapsed_after(now,editor.saveAt,15000))){igloo.awaitingSave=igloo.saveFailed=false;message("The igloo could not be verified. Try Save again.");}}
   networkState=pnet_state();
   if(networkState==PNET_ONLINE&&demo.actors[0].name[0]&&strcmp(settings.name,demo.actors[0].name)){snprintf(settings.name,sizeof settings.name,"%s",demo.actors[0].name);settings_save(&settings,SETTINGS_FILE);}
   if(epfQuery&&networkState==PNET_ONLINE&&pnet_send("f#epfga",0,NULL))epfQuery=false;
@@ -2066,8 +2069,8 @@ int main(int argc,char **argv){
   mining.room=currentRoomId;
   if(mining_update(&mining,dt,miningEnabled,miner->look,(unsigned)miner->action,miner->walking,miner->x,miner->y)&&!pnet_send("r#cdu",0,NULL))mining.pending=0;
   demo_index(&demo);puffles.poseReady=pets_pose_ready;puffles_step(&puffles,&demo,dt);if(*puffles.error){modal_message(puffles.error);puffles.error[0]=0;}
-  if(igloo.awaitingStyle&&now-styles.started>15000){igloo.awaitingStyle=false;igloo.slotsReady=igloo.activeKnown=false;modal_message("The igloo change timed out. Refresh to check the server state before retrying.");}
-  if(igloo.awaitingMusic&&now-musicStarted>15000){igloo.awaitingMusic=false;modal_message("The music change timed out. Reopen your igloo to check its saved music.");}
+  if(igloo.awaitingStyle&&elapsed_after(now,styles.started,15000)){igloo.awaitingStyle=false;igloo.slotsReady=igloo.activeKnown=false;modal_message("The igloo change timed out. Refresh to check the server state before retrying.");}
+  if(igloo.awaitingMusic&&elapsed_after(now,musicStarted,15000)){igloo.awaitingMusic=false;modal_message("The music change timed out. Reopen your igloo to check its saved music.");}
   if(*profile.error){if(game)message(profile.error);else modal_message(profile.error);profile.error[0]=0;}
   if(!game){if(profile.inventoryRevision!=roomInventoryStamp)room_inventory();room_hover(held);}gp_audio_update();lobby_update(dt);
   if(room_tube_locked(&roomTube)&&(lobby_locked()||game||gameQueued||book.open||modal.open||demo.tab!=0||wantedRoom||waitingIgloo||wantedIgloo||(pnet_id()&&networkState!=PNET_ONLINE)))room_tube_cancel(&roomTube,&tubeHooks);
