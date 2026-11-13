@@ -47,6 +47,7 @@
 #include "room_npc.h"
 #endif
 #include "inventory_ui.h"
+#include "deck_view.h"
 #include "paper_registration.h"
 #include "emotes.h"
 #include "overlay.h"
@@ -155,6 +156,7 @@ static unsigned iglooPage;
 static BookInfo resourceInfo={.frames=1,.key="",.title="POSTCARD"};
 static InventoryUI inventoryUI;
 static InventoryWidgets inventoryWidgets;
+static DeckView deckView;
 static json_t *shellText;
 static struct {bool open,confirm;unsigned purchase,kind,room;char command[20],argument[32];char text[1024];} modal;
 static ChatKeyboard chatKeyboard;
@@ -862,6 +864,44 @@ static void device_touch(int x,int y){
 }
 static bool account_backup_session(void){
  return settings_backup_session(&settings,DATA_DIR "/previous-session.txt");
+}
+static void deck_open(void){
+ deckView.page=0;demo.tab=25;
+ if(pnet_state()!=PNET_ONLINE){deckView.pending=false;return;}
+ deckView.pending=pnet_send("ni#gcd",0,NULL);
+}
+static void inventory_award(unsigned id,const char *name){
+ if(id==DECK_VIEW_ITEM){deck_open();return;}
+ char line[120];snprintf(line,sizeof line,"%.60s is an award. It stays in your inventory.",name&&*name?name:"This item");message(line);
+}
+static void deck_draw(void){
+ text(12,33,13,0x003366,"Starter Deck");
+ if(!deckView.known){
+  center(160,95,11,0x003366,deckView.pending?"Loading your cards...":pnet_state()==PNET_ONLINE?"Your cards could not be loaded.":"Go online to see your Card-Jitsu cards.");
+  if(!deckView.pending&&pnet_state()==PNET_ONLINE)button(110,118,100,24,"Try again",-1);
+ }else{
+  char line[96];snprintf(line,sizeof line,"%u cards: %u Fire, %u Water, %u Snow",deckView.total,deckView.fire,deckView.water,deckView.snow);
+  text(12,51,10,0x003366,line);
+  unsigned pages=deck_view_pages(&deckView);if(deckView.page>=pages)deckView.page=pages-1;
+  for(unsigned row=0;row<DECK_VIEW_ROWS;row++){
+   unsigned index=deckView.page*DECK_VIEW_ROWS+row;if(index>=deckView.kinds)break;const DeckCard *c=&deckView.cards[index];float y=66+row*19;
+   unsigned chip=c->element=='f'?0xe2541c:c->element=='w'?0x2f7fd0:c->element=='s'?0x3f93bd:0x9a8b70;
+   box(9,y,302,17,0xffffff);box(11,y+2,26,13,chip);char value[8];snprintf(value,sizeof value,"%u",c->value);center(24,y+2,9,0xffffff,value);
+   char label[64];snprintf(label,sizeof label,"%.34s%s",c->name,c->power?" *":"");text(42,y+2,9,0x003366,label);
+   char extra[32];if(c->count>1)snprintf(extra,sizeof extra,"%s x%u",deck_view_colour(c->colour),c->count);else snprintf(extra,sizeof extra,"%s",deck_view_colour(c->colour));
+   text(306-textWidth(9,extra),y+2,9,0x5a6b7d,extra);
+  }
+  if(!deckView.kinds)center(160,100,11,0x003366,"You have no cards yet. Ask Sensei for a starter deck.");
+  char pageLine[24];snprintf(pageLine,sizeof pageLine,"%u / %u",deckView.page+1,pages);
+  button(9,182,64,20,"Previous",-1);center(160,185,10,0x003366,pageLine);button(247,182,64,20,"Next",-1);
+ }
+ center(160,166,9,0x003366,"Play Card-Jitsu at the Dojo: touch a mat or Sensei.");
+ button(222,30,89,20,"Inventory",-1);
+}
+static void deck_touch(int x,int y){
+ if(y>=30&&y<50&&x>=222){demo.tab=2;return;}
+ if(!deckView.known){if(!deckView.pending&&pnet_state()==PNET_ONLINE&&y>=118&&y<142&&x>=110&&x<210)deck_open();return;}
+ if(y>=182&&y<202){unsigned pages=deck_view_pages(&deckView);if(x<73&&deckView.page)deckView.page--;if(x>=247&&deckView.page+1<pages)deckView.page++;}
 }
 static void penguin_rename(void){
  if(!settings.session[0]){modal_message("Connect to GoPenguin before changing your penguin name.");return;}
@@ -1689,7 +1729,7 @@ static void games_touch(int x,int y){
 }
 /** Lower-screen header: the room in Room, otherwise the open section. */
 static const char *section_title(void){
- static const char *const sections[]={"Room","Map","Me","People","Help","Chat","Books","Player","Mail","Postcards","Public igloos","Igloo styles","Puffles","Puffles","Puffles","Igloo music","Games","Lobby","Account","Membership","Updates","Device code","Transfer penguin","Graphics","Furnishing"};
+ static const char *const sections[]={"Room","Map","Me","People","Help","Chat","Books","Player","Mail","Postcards","Public igloos","Igloo styles","Puffles","Puffles","Puffles","Igloo music","Games","Lobby","Account","Membership","Updates","Device code","Transfer penguin","Graphics","Furnishing","Me"};
  if(demo.tab==0&&currentRoom)return currentRoom->title;
  return demo.tab<COUNT(sections)?sections[demo.tab]:"Penguin";
 }
@@ -1738,6 +1778,7 @@ static void bottom(void){
   else{if(islandMapLow.loaded)crop(&islandMapLow,0,0,320,MAP_LOW_VISIBLE,0,MAP_LOW_TOP,1,0xffffffff);if(pnet_state()==PNET_OFFLINE)text(318-textWidth(10,"Select: all 46 rooms"),9,10,0xffffff,"Select: all 46 rooms");}
  }else if(demo.tab==2){
   inventory_draw(&inventoryUI,clientData,&profile,&demo.actors[0],&inventoryWidgets);
+ }else if(demo.tab==25){deck_draw();
  }else if(demo.tab==3){people_draw();
  }else if(demo.tab==6){books_draw();
  }else if(demo.tab==8){mail_draw();
@@ -1864,6 +1905,7 @@ static void touch(int x,int y){
  }
  else if(demo.tab==1){if(mapList){if(y>=183){if(x<80&&mapPage)mapPage--;if(x>=242&&(mapPage+1)*10<ISLAND_ROOMS)mapPage++;}else if(y>=34&&y<179){unsigned index=mapPage*10+(unsigned)(y-34)/29*2+(x>=163);if(index<ISLAND_ROOMS){wantedRoom=islandRooms[index].id;wantedX=wantedY=-1;demo.tab=0;}}}else{float scale=320.0f/555,mx=x/scale,my=(y-MAP_LOW_TOP)/scale;if(y<MAP_LOW_TOP||y>=MAP_LOW_TOP+MAP_LOW_VISIBLE)return;for(unsigned i=0;i<COUNT(mapButtons);i++){const MapButton *b=&mapButtons[i];if(mx<b->x1||mx>b->x2||my<b->y1||my>b->y2)continue;if(b->id==65535)igloo_list_open();else{if(b->id){wantedRoom=b->id;wantedX=wantedY=-1;}demo.tab=0;}break;}}}
  else if(demo.tab==2)inventory_touch(&inventoryUI,clientData,&profile,&demo.actors[0],&inventoryWidgets,x,y);
+ else if(demo.tab==25)deck_touch(x,y);
  else if(demo.tab==3)people_touch(x,y);
  else if(demo.tab==7)player_touch(x,y);
  else if(demo.tab==8)mail_touch(x,y);
@@ -1967,7 +2009,7 @@ int main(int argc,char **argv){
  
  gp_audio_init("romfs:/audio",settings.audio);aptHook(&audioHook,audio_focus,NULL);puffles_init(&puffles,pets_send,NULL);
  const char *sceneError=NULL;demo_init(&demo,NULL);lobby_init(&lobby,game_send,NULL);
- inventoryWidgets=(InventoryWidgets){box,text,center,portrait,portrait_hit,keyboard,message,item_colour,penguin_rename};
+ inventoryWidgets=(InventoryWidgets){box,text,center,portrait,portrait_hit,keyboard,message,item_colour,penguin_rename,inventory_award};
  bool ok=clientData&&gpuOK&&load(&icons,"icons")&&load(&emotes,"emotes")&&load(&fontTexture,"font")&&load(&paperBody,"paper-body")&&load(&paperDetail,"paper-detail")&&load(&bookCovers,"book-covers")&&load(&snowballTex,"snowball");
  if(fontTexture.loaded)C3D_TexSetFilter(&fontTexture.tex,GPU_NEAREST,GPU_NEAREST);
  for(int i=0;i<PENGUIN_PAGES;i++){char name[30];snprintf(name,sizeof name,"penguin-body-%d",i);ok=load(&body[i],name)&&ok;snprintf(name,sizeof name,"penguin-detail-%d",i);ok=load(&detail[i],name)&&ok;}
@@ -2112,6 +2154,7 @@ int main(int argc,char **argv){
    if(!strcmp(packet.command,"mr")){pnet_send("l#mst",0,NULL);pnet_send("l#mg",1,(const char *[]){"0"});}
    if(!strcmp(packet.command,"ms")&&packet.count>=2){modal_message(!strcmp(packet.args[1],"1")?"Your postcard has been sent.":!strcmp(packet.args[1],"2")?"You need more coins.":"This penguin mailbox is full.");if(!strcmp(packet.args[1],"1"))book.close=true;}
    if(packet.count&&social_ignored(&social,(unsigned)strtoul(packet.args[0],NULL,10))&&(!strcmp(packet.command,"sm")||!strcmp(packet.command,"se")||!strcmp(packet.command,"ss")||!strcmp(packet.command,"sj")||!strcmp(packet.command,"sl"))){pnet_message_free(&packet);continue;}
+   if(!strcmp(packet.command,"gcd")&&deckView.pending){deckView.pending=false;if(!deck_view_parse(&deckView,packet.count,packet.args))deckView.known=false;}
    if(!strcmp(packet.command,"ba"))pnet_send("b#gb",0,NULL);
    if(!strcmp(packet.command,"bf")){if(!social.foundRoom)modal_message("Your buddy is not online right now.");else{const IslandRoom *room=island_room(social.foundRoom);if(room){char prompt[140];snprintf(prompt,sizeof prompt,"Your buddy is in %s. Go there?",room->title);modal_message(prompt);modal.confirm=true;modal.room=room->id;}else modal_message(social.foundRoom>2000?"Your buddy is in an igloo.":"Your buddy is playing a game.");}}
    unsigned room=world_apply(&demo,&packet,pnet_id());profile_apply(&profile,&packet,pnet_id());

@@ -12,6 +12,8 @@ typedef struct {
  void (*notice)(const char *);
  unsigned (*colour)(unsigned);
  void (*rename)(void);
+ /* Items that are not worn (awards such as the Starter Deck). NULL keeps them inert. */
+ void (*award)(unsigned id,const char *name);
 } InventoryWidgets;
 typedef struct {unsigned filtered[INVENTORY_LIMIT],count,page,filter,stamp;bool filters;char query[41],selected[64];} InventoryUI;
 void inventory_prepare(InventoryUI *ui,const ClientData *data,const GPProfile *profile,const Actor *actor);

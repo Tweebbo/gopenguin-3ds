@@ -38,6 +38,6 @@ void inventory_touch(InventoryUI *ui,const ClientData *data,const GPProfile *pro
  if(ui->filters){if(x>=144&&y>=37&&y<197){ui->filter=(unsigned)(y-37)/16;if(ui->filter>9)ui->filter=9;ui->page=0;ui->stamp=0;}ui->filters=false;return;}
  if(x>=149&&y>=34&&y<58){if(x<235)ui->filters=true;else{if(*ui->query)ui->query[0]=0;else w->keyboard(ui->query,sizeof ui->query,"Search your clothing",false);ui->page=0;ui->stamp=0;}return;}
  if(x>=149&&y>=184&&y<204){if(x<183&&ui->page)ui->page--;if(x>=279&&(ui->page+1)*6<ui->count)ui->page++;return;}
- if(x>=149&&x<312&&y>=62&&y<170){unsigned index=ui->page*6+(unsigned)(y-62)/36*2+(unsigned)(x-149)/83;if(index<ui->count){Product item;if(client_product(data,0,ui->filtered[index],&item)){snprintf(ui->selected,sizeof ui->selected,"%.63s",item.name);equip(item.type,worn(actor,&item)&&item.type!=1?0:item.id,profile,actor,w);}}return;}
+ if(x>=149&&x<312&&y>=62&&y<170){unsigned index=ui->page*6+(unsigned)(y-62)/36*2+(unsigned)(x-149)/83;if(index<ui->count){Product item;if(client_product(data,0,ui->filtered[index],&item)){snprintf(ui->selected,sizeof ui->selected,"%.63s",item.name);if(item.type<1||item.type>9){if(w->award)w->award(item.id,item.name);return;}equip(item.type,worn(actor,&item)&&item.type!=1?0:item.id,profile,actor,w);}}return;}
  int slot=w->portraitHit(actor,x,y);if(slot>=0&&slot<8&&actor->look[slot])equip((unsigned)slot+2,0,profile,actor,w);
 }
