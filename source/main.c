@@ -134,7 +134,8 @@ static Mining mining;
 static float furnitureTime[IGLOO_ITEMS];
 static SWLArt lastFloorArt;
 static bool floorPresent;
-static struct {int selected;bool dragging,moved,inventory;int oldX,oldY;float pressX,pressY;unsigned page,category,revision,count,items[IGLOO_OWNED];char search[61];u64 saveAt;} editor={.selected=-1};
+static struct {int selected;bool dragging,moved,inventory,zoom,panning;int oldX,oldY;float pressX,pressY,viewX,viewY,panX,panY;unsigned page,category,revision,count,nudge,items[IGLOO_OWNED];char search[61];u64 saveAt;} editor={.selected=-1};
+static void editor_marker(float scale,float ox,float oy);
 static unsigned wantedRoom,mapPage;
 static unsigned activeTrigger=~0u;
 #ifdef GP_NINJA_GAMES
@@ -495,6 +496,7 @@ static void top(void){
   if(overlay_impact(&overlay.balls[i],&x,&y))crop(&snowballTex,24,0,11,9,ox+(x-5.3f)*scale,oy+(y-2.85f)*scale,scale,0xffffffff);
  }
  stadium_vuvuzelas_draw(ox,oy,scale);
+ if(igloo.editing&&!editor.inventory)editor_marker(scale,ox,oy);
  if(!igloo.editing)name_tags_refresh();
  for(unsigned i=0;!igloo.editing&&i<demo.count;i++)if(room_actor_visible(i)){Actor *a=&demo.actors[i];name_tag_draw(i,ox+a->x*scale,oy+a->y*scale+2);}
 
@@ -1009,6 +1011,28 @@ static void igloo_list_touch(int x,int y){
 }
 static unsigned furniture_type(unsigned id){Product p;return client_product(clientData,1,id,&p)?p.type:1;}
 static unsigned furniture_section(unsigned id){unsigned lo=0,hi=FURNITURE_SORT_COUNT;while(lo<hi){unsigned mid=lo+(hi-lo)/2,row=furnitureSort[mid][0];if(row==id)return furnitureSort[mid][1];if(row<id)lo=mid+1;else hi=mid;}return 0;}
+// Placement as in the Tweebbo Build Desk: the bottom screen shows the whole igloo or a close view
+// (Zoom) that pans with the stylus; the selection carries a green (allowed) or red (not allowed)
+// frame and footprint, a release outside the allowed area snaps to the nearest allowed spot, new
+// pieces appear in a free spot near the penguin or the middle of the wall, and the D-Pad nudges.
+enum {EDIT_TOP=24,EDIT_BOTTOM=179};
+static void editor_view(float *scale,float *ox,float *oy){
+ if(!editor.zoom){*scale=.35f;*ox=27;*oy=28;return;}
+ const float s=.7f,w=320/s,h=(EDIT_BOTTOM-EDIT_TOP)/s;
+ float cx=fminf(fmaxf(editor.viewX,w/2),760-w/2),cy=fminf(fmaxf(editor.viewY,h/2),480-h/2);
+ *scale=s;*ox=160-cx*s;*oy=(EDIT_TOP+EDIT_BOTTOM)/2.0f-cy*s;
+}
+static bool furniture_legal_at(const IglooFurniture *f,int x,int y){return igloo_geometry_legal(iglooGeometry,furniture_type(f->id),x,y);}
+static void editor_focus(int index){if(index>=0&&(unsigned)index<igloo.layout.count){editor.viewX=igloo.layout.items[index].x;editor.viewY=igloo.layout.items[index].y-30;}}
+static void outline(float x0,float y0,float x1,float y1,unsigned colour){rect(x0,y0,x1-x0,2,colour);rect(x0,y1-2,x1-x0,2,colour);rect(x0,y0,2,y1-y0,colour);rect(x1-2,y0,2,y1-y0,colour);}
+static void editor_marker(float s,float ox,float oy){
+ for(unsigned n=0;n<igloo.layout.count;n++){IglooFurniture *f=&igloo.layout.items[n];if(!furniture_legal_at(f,f->x,f->y))C2D_DrawCircleSolid(ox+f->x*s,oy+f->y*s,.5f,4,rgb(0xd62828));}
+ if(editor.selected<0||(unsigned)editor.selected>=igloo.layout.count)return;
+ IglooFurniture *f=&igloo.layout.items[editor.selected];unsigned colour=furniture_legal_at(f,f->x,f->y)?0x2fbf4a:0xd62828;
+ float x=ox+f->x*s,y=oy+f->y*s,b[4];
+ if(wear_pose_bounds(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame,(unsigned)(furnitureTime[editor.selected]*24),b))outline(x+b[0]*s-2,y+b[1]*s-2,x+b[2]*s+2,y+b[3]*s+2,colour);
+ C2D_DrawEllipseSolid(x-7,y-2.5f,.5f,14,5,rgb(colour));
+}
 static void editor_cancel_drag(void){if(editor.dragging&&editor.selected>=0&&(unsigned)editor.selected<igloo.layout.count){IglooFurniture *f=&igloo.layout.items[editor.selected];f->x=editor.oldX;f->y=editor.oldY;}editor.dragging=false;}
 static void editor_reload_igloo(void){
  if(offline_active()){if(offline_igloo_apply())igloo.ready=true;return;}
@@ -1025,7 +1049,11 @@ static void editor_open(void){
  else if(igloo.awaitingSave||igloo.awaitingStyle||igloo.awaitingMusic)error="Wait for your igloo to finish saving.";
  else if(!igloo_begin_edit(&igloo,local_player()))error="Your igloo is not ready to edit. Try again in a moment.";
  if(error){message(error);return;}
- editor.selected=-1;editor.dragging=editor.inventory=false;editor.page=editor.category=editor.revision=0;editor.search[0]=0;demo.tab=0;demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;if(offline_active()){char *packet=malloc(OFFLINE_FURNITURE*24+32);if(packet&&offline_furniture_packet(&offlineShop,packet,OFFLINE_FURNITURE*24+32))local_push(packet);free(packet);}else pnet_send("g#gf",0,NULL);
+ editor.selected=-1;editor.dragging=editor.inventory=editor.zoom=editor.panning=false;editor.viewX=380;editor.viewY=240;editor.nudge=0;editor.page=editor.category=editor.revision=0;editor.search[0]=0;demo.tab=0;
+ // Pieces outside their area (older layouts or other clients) move to the nearest allowed spot.
+ unsigned moved=0;for(unsigned n=0;n<igloo.layout.count;n++){IglooFurniture *f=&igloo.layout.items[n];int x,y;if(furniture_legal_at(f,f->x,f->y))continue;if(igloo_geometry_nearest(iglooGeometry,furniture_type(f->id),f->x,f->y,760,&x,&y)&&igloo_place(&igloo,n,x,y,f->rotation,f->frame))moved++;}
+ if(moved){char note[100];snprintf(note,sizeof note,"%u piece%s moved inside the allowed area. Save to keep %s.",moved,moved==1?"":"s",moved==1?"it":"them");message(note);}
+demo.actors[0].walking=false;demo.actors[0].tx=demo.actors[0].x;demo.actors[0].ty=demo.actors[0].y;if(offline_active()){char *packet=malloc(OFFLINE_FURNITURE*24+32);if(packet&&offline_furniture_packet(&offlineShop,packet,OFFLINE_FURNITURE*24+32))local_push(packet);free(packet);}else pnet_send("g#gf",0,NULL);
 }
 static void editor_remove(void){if(igloo.awaitingSave)return;editor_cancel_drag();if(editor.selected>=0&&igloo_remove(&igloo,(unsigned)editor.selected)){for(unsigned n=(unsigned)editor.selected;n<igloo.layout.count;n++)furnitureTime[n]=furnitureTime[n+1];editor.selected=-1;}}
 static void editor_turn(int rotation,int variation){
@@ -1066,10 +1094,15 @@ static void editor_draw(void){
   if(!igloo.ownedReady)center(160,108,11,0x003366,"Loading your furniture...");else if(!editor.count){center(160,96,11,0x003366,*editor.search?"No furniture matches your search.":igloo.nOwned?"No furniture in this category.":"You do not own any furniture yet.");if(!*editor.search)button(60,122,200,28,"Open Furniture Catalogue",-1);}
   char label[96];snprintf(label,sizeof label,"%u / %u   %s",editor.page+1,editor.count?(editor.count+5)/6:1,editor.search);center(160,190,10,0x003366,label);button(2,207,76,31,"Previous",-1);button(82,207,76,31,"Back",-1);button(162,207,76,31,"Next",-1);button(242,207,76,31,"Save",-1);return;
  }
- ActorOrder order;make_order(&order,false,.35f,27,28);scene_draw_to(sceneBottom,320,240,.35f,.35f,27,28,&order);
- if(editor.selected>=0&&(unsigned)editor.selected<igloo.layout.count){IglooFurniture *f=&igloo.layout.items[editor.selected];float x=27+f->x*.35f,y=28+f->y*.35f;C2D_DrawCircleSolid(x,y,.5f,5,rgb(0x003366));C2D_DrawCircleSolid(x,y,.5f,3,rgb(0x00ccff));Product p;char label[80];snprintf(label,sizeof label,"%.16s  %u left  %u / 99",client_product(clientData,1,f->id,&p)?p.name:"Furniture",igloo_available(&igloo,f->id),igloo.layout.count);box(20,181,280,22,0xffffff);center(160,185,10,0x003366,label);}
- else {char label[80];snprintf(label,sizeof label,"Drag furniture. X: return. B: save.  %u / 99 items",igloo.layout.count);box(15,181,290,22,0xffffff);center(160,185,10,0x003366,label);}
- button(2,207,60,31,"Furniture",-1);button(66,207,60,31,"Rotate <",-1);button(130,207,60,31,"Rotate >",-1);button(194,207,60,31,"Variation",-1);button(258,207,60,31,igloo.awaitingSave?"Saving...":"Save",-1);
+ float s,ox,oy;editor_view(&s,&ox,&oy);
+ ActorOrder order;make_order(&order,false,s,ox,oy);scene_draw_to(sceneBottom,320,240,s,s,ox,oy,&order);
+ editor_marker(s,ox,oy);if(editor.zoom)rect(0,EDIT_BOTTOM,320,28,0xdbeefa);
+ if(editor.selected>=0&&(unsigned)editor.selected<igloo.layout.count){IglooFurniture *f=&igloo.layout.items[editor.selected];Product p;char label[80];
+  if(editor.dragging&&editor.moved&&!furniture_legal_at(f,f->x,f->y))snprintf(label,sizeof label,"Not here: it will move to the nearest free spot.");
+  else snprintf(label,sizeof label,"%.16s  %u left  %u / 99",client_product(clientData,1,f->id,&p)?p.name:"Furniture",igloo_available(&igloo,f->id),igloo.layout.count);
+  box(20,181,280,22,0xffffff);center(160,185,10,0x003366,label);}
+ else {char label[80];snprintf(label,sizeof label,editor.zoom?"Drag to look around. %u / 99 items":"Touch a piece to move it. %u / 99 items",igloo.layout.count);box(15,181,290,22,0xffffff);center(160,185,10,0x003366,label);}
+ button(2,207,60,31,"Furniture",-1);button(66,207,60,31,"Rotate",-1);button(130,207,60,31,"Variation",-1);button(194,207,60,31,editor.zoom?"Full view":"Zoom",-1);button(258,207,60,31,igloo.awaitingSave?"Saving...":"Save",-1);
 }
 static void editor_pick(unsigned index,float wx,float wy){IglooFurniture *f=&igloo.layout.items[index];editor.selected=(int)index;editor.oldX=f->x;editor.oldY=f->y;editor.pressX=wx;editor.pressY=wy;editor.moved=false;editor.dragging=true;}
 static void editor_touch(int x,int y){
@@ -1077,18 +1110,49 @@ static void editor_touch(int x,int y){
  if(editor.inventory){editor_inventory();if(y>=207){if(x<80){if(editor.page)editor.page--;}else if(x<160)editor.inventory=false;else if(x<240){if((editor.page+1)*6<editor.count)editor.page++;}else editor_save();return;}
   if(igloo.ownedReady&&!editor.count&&!*editor.search&&y>=122&&y<150&&x>=60&&x<260){if(igloo.dirty){message("Save your igloo before opening the catalogue.");return;}editor.inventory=false;igloo.editing=false;book_open("furniture");return;}
   if(y>=29&&y<51){if(x<113){editor.category=(editor.category+1)%5;editor.page=editor.revision=0;}else if(x<226){if(keyboard(editor.search,sizeof editor.search,"Search your furniture",false))editor.page=editor.revision=0;}else{editor.search[0]=0;editor.page=editor.revision=0;}return;}
-  if(x>=4&&x<316&&y>=55&&y<182){unsigned index=editor.page*6+(unsigned)(y-55)/65*3+(unsigned)(x-4)/105;if(index>=editor.count)return;unsigned id=editor.items[index];if(!igloo_available(&igloo,id)){message("All copies of this furniture are in your igloo.");return;}if(igloo.layout.count==IGLOO_ITEMS){message("Your igloo can hold up to 99 furniture items.");return;}unsigned type=furniture_type(id);for(int wy=40;wy<460;wy+=10)for(int wx=40;wx<740;wx+=10)if(igloo_geometry_legal(iglooGeometry,type,wx,wy)){if(igloo_add(&igloo,id,wx,wy)){editor.selected=(int)igloo.layout.count-1;furnitureTime[editor.selected]=0;editor.inventory=false;}return;}message("There is no suitable area for this furniture.");}return;
+  if(x>=4&&x<316&&y>=55&&y<182){unsigned index=editor.page*6+(unsigned)(y-55)/65*3+(unsigned)(x-4)/105;if(index>=editor.count)return;unsigned id=editor.items[index];if(!igloo_available(&igloo,id)){message("All copies of this furniture are in your igloo.");return;}if(igloo.layout.count==IGLOO_ITEMS){message("Your igloo can hold up to 99 furniture items.");return;}unsigned type=furniture_type(id);int ax,ay,px,py;static int occupied[2*IGLOO_ITEMS];unsigned used=0;
+   for(unsigned n=0;n<igloo.layout.count;n++){IglooFurniture *o=&igloo.layout.items[n];if((furniture_type(o->id)==2)!=(type==2))continue;occupied[2*used]=o->x;occupied[2*used+1]=o->y;used++;}
+   if(type!=2&&igloo_geometry_legal(iglooGeometry,type,(int)demo.actors[0].x,(int)demo.actors[0].y)){ax=(int)demo.actors[0].x;ay=(int)demo.actors[0].y;}
+   else if(!igloo_geometry_center(iglooGeometry,type,&ax,&ay)){message("There is no suitable area for this furniture.");return;}
+   if(!igloo_geometry_spawn(iglooGeometry,type,ax,ay,occupied,used,&px,&py)){message("There is no suitable area for this furniture.");return;}
+   if(igloo_add(&igloo,id,px,py)){editor.selected=(int)igloo.layout.count-1;furnitureTime[editor.selected]=0;editor.inventory=false;editor_focus(editor.selected);}return;}return;
  }
- if(y>=207){editor_cancel_drag();if(x<64){editor.inventory=true;editor.page=0;}else if(x<128)editor_turn(-1,0);else if(x<192)editor_turn(1,0);else if(x<256)editor_turn(0,1);else editor_save();return;}
- if(x<27||x>=293||y<28||y>=181)return;
- float wx=(x-27)/.35f,wy=(y-28)/.35f;ActorOrder order;make_order(&order,false,1,0,0);editor.selected=-1;
+ if(y>=207){editor_cancel_drag();editor.panning=false;if(x<64){editor.inventory=true;editor.page=0;}else if(x<128)editor_turn(1,0);else if(x<192)editor_turn(0,1);else if(x<256){editor.zoom=!editor.zoom;if(editor.zoom){if(editor.selected>=0)editor_focus(editor.selected);else{editor.viewX=380;editor.viewY=240;}}}else editor_save();return;}
+ if(editor.zoom?(y<EDIT_TOP||y>=EDIT_BOTTOM):(x<27||x>=293||y<28||y>=181))return;
+ float s,ox,oy;editor_view(&s,&ox,&oy);
+ float wx=(x-ox)/s,wy=(y-oy)/s;ActorOrder order;make_order(&order,false,1,0,0);editor.selected=-1;
  for(unsigned n=order.count;n>0;n--){unsigned index=order.items[n-1].tag-CAST_COUNT;IglooFurniture *f=&igloo.layout.items[index];if(wear_pose_contains(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame,(unsigned)(furnitureTime[index]*24),f->x,f->y,1,wx,wy)){editor_pick(index,wx,wy);break;}}
- if(editor.selected<0){float best=30;for(unsigned n=0;n<igloo.layout.count;n++){IglooFurniture *f=&igloo.layout.items[n];float distance=hypotf(f->x-wx,f->y-wy);if(distance<best){best=distance;editor_pick(n,wx,wy);}}}
+ if(editor.selected<0){float best=10.5f/s;for(unsigned n=0;n<igloo.layout.count;n++){IglooFurniture *f=&igloo.layout.items[n];float distance=hypotf(f->x-wx,f->y-wy);if(distance<best){best=distance;editor_pick(n,wx,wy);}}}
+ if(editor.selected<0&&editor.zoom){editor.panning=true;editor.panX=x;editor.panY=y;}
 }
 static void editor_drag(u32 held,u32 up){
- if(!editor.dragging||igloo.awaitingSave||editor.selected<0||(unsigned)editor.selected>=igloo.layout.count)return;
- IglooFurniture *f=&igloo.layout.items[editor.selected];if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);float dx=(p.px-27)/.35f-editor.pressX,dy=(p.py-28)/.35f-editor.pressY;if(hypotf(dx,dy)>8)editor.moved=true;if(editor.moved){f->x=editor.oldX+(int)lroundf(dx);f->y=editor.oldY+(int)lroundf(dy);}}
- if(up&KEY_TOUCH){int x=f->x,y=f->y;bool moved=editor.moved;editor_cancel_drag();if(!moved)return;if(x<=20||x>=740||y<=20||y>=460||igloo_geometry_trash(iglooGeometry,x,y))editor_remove();else if(igloo_geometry_legal(iglooGeometry,furniture_type(f->id),x,y))igloo_place(&igloo,(unsigned)editor.selected,x,y,f->rotation,f->frame);else message("Place this furniture inside its allowed area.");}
+ if(igloo.awaitingSave||editor.inventory)return;
+ float s,ox,oy;editor_view(&s,&ox,&oy);
+ if(editor.panning){
+  if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);editor.viewX=fminf(fmaxf(editor.viewX-(p.px-editor.panX)/s,0),760);editor.viewY=fminf(fmaxf(editor.viewY-(p.py-editor.panY)/s,0),480);editor.panX=p.px;editor.panY=p.py;}
+  if(up&KEY_TOUCH)editor.panning=false;
+  return;
+ }
+ if(editor.selected<0||(unsigned)editor.selected>=igloo.layout.count)return;
+ IglooFurniture *f=&igloo.layout.items[editor.selected];
+ if(!editor.dragging){
+  // D-Pad or Circle Pad nudges the selection in small steps, only through allowed spots.
+  circlePosition c;hidCircleRead(&c);
+  int mx=((held&KEY_DRIGHT)?1:0)-((held&KEY_DLEFT)?1:0)+(c.dx>60?1:c.dx<-60?-1:0),my=((held&KEY_DDOWN)?1:0)-((held&KEY_DUP)?1:0)+(c.dy<-60?1:c.dy>60?-1:0);
+  if(!mx&&!my){editor.nudge=0;return;}
+  if(editor.nudge++%2)return;
+  int x=f->x+(mx>0?3:mx<0?-3:0),y=f->y+(my>0?3:my<0?-3:0);
+  if(furniture_legal_at(f,x,y)&&igloo_place(&igloo,(unsigned)editor.selected,x,y,f->rotation,f->frame)&&editor.zoom){float sx=ox+x*s,sy=oy+y*s;if(sx<30||sx>290||sy<EDIT_TOP+20||sy>EDIT_BOTTOM-10)editor_focus(editor.selected);}
+  return;
+ }
+ if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);float dx=(p.px-ox)/s-editor.pressX,dy=(p.py-oy)/s-editor.pressY;if(hypotf(dx,dy)>8)editor.moved=true;if(editor.moved){f->x=editor.oldX+(int)lroundf(dx);f->y=editor.oldY+(int)lroundf(dy);}}
+ if(up&KEY_TOUCH){
+  int x=f->x,y=f->y,nx,ny;bool moved=editor.moved;editor_cancel_drag();if(!moved)return;
+  if(x<=20||x>=740||y<=20||y>=460||igloo_geometry_trash(iglooGeometry,x,y))editor_remove();
+  else if(furniture_legal_at(f,x,y))igloo_place(&igloo,(unsigned)editor.selected,x,y,f->rotation,f->frame);
+  else if(igloo_geometry_nearest(iglooGeometry,furniture_type(f->id),x,y,90,&nx,&ny)){igloo_place(&igloo,(unsigned)editor.selected,nx,ny,f->rotation,f->frame);message("Moved to the nearest spot where it fits.");}
+  else message("Place this furniture inside its allowed area.");
+ }
 }
 static void header(const char *title){ui_header();unsigned size=15;while(size>10&&textWidth(size,title)>282)size--;FontBounds b=font_ink(size,title);text(31-b.left,13.5f-(b.top+b.bottom)/2.0f,size,0xffffff,title);}
 static void styles_open(void){

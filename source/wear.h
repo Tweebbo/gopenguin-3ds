@@ -11,6 +11,8 @@ void wear_draw_pose(unsigned id,unsigned rotation,unsigned variation,unsigned cl
 bool wear_pose_ready(unsigned id,unsigned rotation,unsigned variation);
 bool wear_pose_info(unsigned id,unsigned rotation,unsigned *rotations,unsigned *variations);
 bool wear_pose_view(unsigned id,unsigned rotation,unsigned variation,unsigned clock,SWLGPUAtlas *atlas,SWLArt *art);
+/** Local bounds (left, top, right, bottom) of a loaded pose, in unscaled stage units. */
+bool wear_pose_bounds(unsigned id,unsigned rotation,unsigned variation,unsigned clock,float b[4]);
 bool wear_pose_contains(unsigned id,unsigned rotation,unsigned variation,unsigned clock,float x,float y,float scale,float px,float py);
 void wear_fit(unsigned id,float x,float y,float width,float height);
 bool wear_contains(unsigned id,float x,float y,float scale,float px,float py);

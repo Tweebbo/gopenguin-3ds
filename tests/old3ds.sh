@@ -10,3 +10,5 @@ cc -O2 -std=c11 -Wall -Wextra -Werror tests/core.c source/demo.c source/actor_in
 build/old3ds-optimization/core-test
 cc -O2 -std=c11 -Wall -Wextra -Werror -Isource tests/chat-keyboard.c source/chat_keyboard.c -o build/old3ds-optimization/keyboard-test
 build/old3ds-optimization/keyboard-test
+cc -O2 -std=c11 -Wall -Wextra -Werror -Isource tests/igloo-placement.c source/igloo_geometry.c -o build/old3ds-optimization/igloo-placement-test
+build/old3ds-optimization/igloo-placement-test
