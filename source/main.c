@@ -1026,6 +1026,7 @@ static bool furniture_legal_at(const IglooFurniture *f,int x,int y){return igloo
 static void editor_focus(int index){if(index>=0&&(unsigned)index<igloo.layout.count){editor.viewX=igloo.layout.items[index].x;editor.viewY=igloo.layout.items[index].y-30;}}
 static void outline(float x0,float y0,float x1,float y1,unsigned colour){rect(x0,y0,x1-x0,2,colour);rect(x0,y1-2,x1-x0,2,colour);rect(x0,y0,2,y1-y0,colour);rect(x1-2,y0,2,y1-y0,colour);}
 static void editor_marker(float s,float ox,float oy){
+ if(!iglooGeometry)return;
  for(unsigned n=0;n<igloo.layout.count;n++){IglooFurniture *f=&igloo.layout.items[n];if(!furniture_legal_at(f,f->x,f->y))C2D_DrawCircleSolid(ox+f->x*s,oy+f->y*s,.5f,4,rgb(0xd62828));}
  if(editor.selected<0||(unsigned)editor.selected>=igloo.layout.count)return;
  IglooFurniture *f=&igloo.layout.items[editor.selected];unsigned colour=furniture_legal_at(f,f->x,f->y)?0x2fbf4a:0xd62828;
@@ -1098,7 +1099,7 @@ static void editor_draw(void){
  ActorOrder order;make_order(&order,false,s,ox,oy);scene_draw_to(sceneBottom,320,240,s,s,ox,oy,&order);
  editor_marker(s,ox,oy);if(editor.zoom)rect(0,EDIT_BOTTOM,320,28,0xdbeefa);
  if(editor.selected>=0&&(unsigned)editor.selected<igloo.layout.count){IglooFurniture *f=&igloo.layout.items[editor.selected];Product p;char label[80];
-  if(editor.dragging&&editor.moved&&!furniture_legal_at(f,f->x,f->y))snprintf(label,sizeof label,"Not here: it will move to the nearest free spot.");
+  if(editor.dragging&&editor.moved&&!furniture_legal_at(f,f->x,f->y))snprintf(label,sizeof label,"Not here: it will move to the nearest allowed spot.");
   else snprintf(label,sizeof label,"%.16s  %u left  %u / 99",client_product(clientData,1,f->id,&p)?p.name:"Furniture",igloo_available(&igloo,f->id),igloo.layout.count);
   box(20,181,280,22,0xffffff);center(160,185,10,0x003366,label);}
  else {char label[80];snprintf(label,sizeof label,editor.zoom?"Drag to look around. %u / 99 items":"Touch a piece to move it. %u / 99 items",igloo.layout.count);box(15,181,290,22,0xffffff);center(160,185,10,0x003366,label);}
@@ -1129,7 +1130,7 @@ static void editor_drag(u32 held,u32 up){
  if(igloo.awaitingSave||editor.inventory)return;
  float s,ox,oy;editor_view(&s,&ox,&oy);
  if(editor.panning){
-  if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);editor.viewX=fminf(fmaxf(editor.viewX-(p.px-editor.panX)/s,0),760);editor.viewY=fminf(fmaxf(editor.viewY-(p.py-editor.panY)/s,0),480);editor.panX=p.px;editor.panY=p.py;}
+  if(held&KEY_TOUCH){touchPosition p;hidTouchRead(&p);const float hw=160/s,hh=(EDIT_BOTTOM-EDIT_TOP)/(2*s);editor.viewX=fminf(fmaxf(editor.viewX-(p.px-editor.panX)/s,hw),760-hw);editor.viewY=fminf(fmaxf(editor.viewY-(p.py-editor.panY)/s,hh),480-hh);editor.panX=p.px;editor.panY=p.py;}
   if(up&KEY_TOUCH)editor.panning=false;
   return;
  }
