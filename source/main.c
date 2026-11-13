@@ -665,29 +665,55 @@ static void rockhopper_open(void){
  if(pnet_suggest(&settings.network,settings.session,pressed==SWKBD_BUTTON_MIDDLE?"bug":"suggestion",text,id))message("Sending your message to Captain Rockhopper...");
  else modal_message("Captain Rockhopper could not take your message right now. Try again.");
 }
+/* Room rows: you, Buddy, Sent (waiting) or an Add button on the right. */
+static const char *people_status(unsigned id){return id==pnet_id()?"You":id>=ROCKHOPPER_ID?"Crew":social_friend(&social,id)?"Buddy":social_sent(&social,id)?"Sent":NULL;}
 static void people_draw(void){
  const char *labels[]={"Room","Buddies","Ignored","Requests"};for(unsigned i=0;i<4;i++){box(5+i*79,32,76,23,i==peopleKind?0x0085c7:0xffffff);center(43+i*79,37,11,i==peopleKind?0xffffff:0x003366,labels[i]);}
+ if(social.nRequests){char n[8];snprintf(n,sizeof n,"%u",social.nRequests>99?99:social.nRequests);float w=fmaxf(14,textWidth(9,n)+6);box(5+3*79+76-w-1,30,w,13,0xd8342c);center(5+3*79+76-w/2-1,31,9,0xffffff,n);}
  unsigned count=peopleKind==0?demo.count:peopleKind==1?social.nFriends:peopleKind==2?social.nIgnored:social.nRequests;if(peoplePage*6>=count)peoplePage=count?(count-1)/6:0;
- for(unsigned row=0;row<6&&peoplePage*6+row<count;row++){unsigned index=peoplePage*6+row;const Buddy *b=peopleKind==1?&social.friends[index]:peopleKind==2?&social.ignored[index]:peopleKind==3?&social.requests[index]:NULL;const char *name=b?b->name:demo.actors[index].name;box(9,59+row*21,302,20,0xffffff);text(17,61+row*21,11,0x003366,name);center(283,61+row*21,10,0x003366,b&&!b->online?"Offline":peopleKind==3?"Reply":"Online");}
- if(!count)center(160,105,11,0x003366,peopleKind==3?"No buddy requests.":"No penguins here.");
- button(9,187,75,18,"Previous",-1);button(236,187,75,18,"Next",-1);char status[48];snprintf(status,sizeof status,"%u total",count);center(160,190,10,0x003366,status);
+ for(unsigned row=0;row<6&&peoplePage*6+row<count;row++){
+  unsigned index=peoplePage*6+row;const Buddy *b=peopleKind==1?&social.friends[index]:peopleKind==2?&social.ignored[index]:peopleKind==3?&social.requests[index]:NULL;const char *name=b?b->name:demo.actors[index].name;float y=59+row*21;
+  box(9,y,302,20,0xffffff);text(17,y+2,11,0x003366,name);
+  if(peopleKind==0){const char *status=people_status(demo.actors[index].id);if(status)center(283,y+2,10,0x003366,status);else button(256,y+1,53,18,"+ Add",-1);}
+  else if(peopleKind==3)button(256,y+1,53,18,"Reply",-1);
+  else center(283,y+2,10,0x003366,b&&!b->online?"Offline":"Online");
+ }
+ if(!count)center(160,105,11,0x003366,peopleKind==3?"No buddy requests.":peopleKind==1?"No buddies yet. Touch + Add next to a penguin.":"No penguins here.");
+ button(9,187,75,18,"Previous",-1);button(236,187,75,18,"Next",-1);
+ if(peopleKind==1)button(92,187,136,18,"Add by name",-1);
+ else{char status[48];snprintf(status,sizeof status,"%u total",count);center(160,190,10,0x003366,status);}
 }
+static void buddy_request(unsigned id,const char *name){
+ if(pnet_state()!=PNET_ONLINE){message("Connect to GoPenguin to add buddies.");return;}
+ if(id==pnet_id()||social_friend(&social,id)||social_sent(&social,id))return;
+ char prompt[140];snprintf(prompt,sizeof prompt,"Send a buddy request to %.48s?",name);confirm_command(prompt,"b#br",id);
+}
+static char buddySearch[25];
+static bool keyboard(char *value,size_t capacity,const char *hint,bool password);
+static void buddy_search(void){
+ if(pnet_state()!=PNET_ONLINE){message("Connect to GoPenguin to add buddies.");return;}
+ buddySearch[0]=0;if(!keyboard(buddySearch,sizeof buddySearch,"Penguin name",false))return;
+ if(pnet_send("gp#bn",1,(const char *[]){buddySearch})){char line[80];snprintf(line,sizeof line,"Looking for %.24s...",buddySearch);message(line);}
+}
+static void buddy_reply(const Buddy *b){char prompt[140];snprintf(prompt,sizeof prompt,"%.48s wants to be your buddy. Accept?",b->name);confirm_command(prompt,"buddy-request",b->id);}
 static void people_touch(int x,int y){
- if(y>=32&&y<55){peopleKind=(unsigned)x/79;if(peopleKind>3)peopleKind=3;peoplePage=0;if(peopleKind==1)pnet_send("b#gb",0,NULL);if(peopleKind==2)pnet_send("n#gn",0,NULL);return;}
+ if(y>=30&&y<55){peopleKind=(unsigned)x/79;if(peopleKind>3)peopleKind=3;peoplePage=0;if(peopleKind==1)pnet_send("b#gb",0,NULL);if(peopleKind==2)pnet_send("n#gn",0,NULL);return;}
  unsigned count=peopleKind==0?demo.count:peopleKind==1?social.nFriends:peopleKind==2?social.nIgnored:social.nRequests;
- if(y>=187){if(x<85&&peoplePage)peoplePage--;if(x>=236&&(peoplePage+1)*6<count)peoplePage++;return;}
+ if(y>=187){if(x<85&&peoplePage)peoplePage--;else if(x>=236&&(peoplePage+1)*6<count)peoplePage++;else if(peopleKind==1&&x>=92&&x<228)buddy_search();return;}
  if(y<59||y>=185)return;
  unsigned index=peoplePage*6+(unsigned)(y-59)/21;if(index>=count)return;
- if(peopleKind==3){Buddy b=social.requests[index];char prompt[140];snprintf(prompt,sizeof prompt,"%s wants to be your buddy. Accept?",b.name);confirm_command(prompt,"b#ba",b.id);social_dismiss(&social,b.id);}else open_player(peopleKind==0?demo.actors[index].id:peopleKind==1?social.friends[index].id:social.ignored[index].id);
+ if(peopleKind==3){buddy_reply(&social.requests[index]);return;}
+ if(peopleKind==0&&x>=254){const Actor *a=&demo.actors[index];if(!people_status(a->id)){buddy_request(a->id,a->name);return;}}
+ open_player(peopleKind==0?demo.actors[index].id:peopleKind==1?social.friends[index].id:social.ignored[index].id);
 }
 static void player_draw(void){
  Actor *a=selected_actor();if(!a){center(160,100,12,0x003366,"Loading penguin...");return;}
  box(8,33,304,22,0x0085c7);center(160,37,12,0xffffff,a->name);staff_badge(12,35,a->id);portrait(a);
- const Buddy *buddy=social_friend(&social,a->id);button(146,62,163,27,buddy?"Remove buddy":"Add buddy",-1);button(146,95,163,27,social_ignored(&social,a->id)?"Stop ignoring":"Ignore penguin",-1);button(146,128,163,27,"Send postcard",-1);button(146,161,79,27,"Find",-1);button(230,161,79,27,"Igloo",-1);
+ const Buddy *buddy=social_friend(&social,a->id);bool sentRequest=!buddy&&social_sent(&social,a->id);button_state(146,62,163,27,buddy?"Remove buddy":sentRequest?"Request sent":"Add buddy",-1,!sentRequest&&a->id!=pnet_id());button(146,95,163,27,social_ignored(&social,a->id)?"Stop ignoring":"Ignore penguin",-1);button(146,128,163,27,"Send postcard",-1);button(146,161,79,27,"Find",-1);button(230,161,79,27,"Igloo",-1);
 }
 static void player_touch(int x,int y){
  Actor *a=selected_actor();if(!a||x<146)return;char prompt[180];
- if(y>=62&&y<89){bool buddy=social_friend(&social,a->id)!=NULL;snprintf(prompt,sizeof prompt,buddy?"Remove %s from your buddy list?":"Add %s to your buddy list?",a->name);confirm_command(prompt,buddy?"b#rb":"b#br",a->id);}
+ if(y>=62&&y<89){bool buddy=social_friend(&social,a->id)!=NULL;if(!buddy&&(social_sent(&social,a->id)||a->id==pnet_id()))return;snprintf(prompt,sizeof prompt,buddy?"Remove %s from your buddy list?":"Add %s to your buddy list?",a->name);confirm_command(prompt,buddy?"b#rb":"b#br",a->id);}
  else if(y>=95&&y<122){bool ignored=social_ignored(&social,a->id);snprintf(prompt,sizeof prompt,ignored?"Stop ignoring %s?":"Ignore %s?",a->name);confirm_command(prompt,ignored?"n#rn":"n#an",a->id);}
  else if(y>=128&&y<155){postcardRecipient=a->id;postcardPage=0;demo.tab=9;}
  else if(y>=161&&y<188){if(x<230){char id[20];snprintf(id,sizeof id,"%u",a->id);pnet_send("b#bf",1,(const char *[]){id});}else{char command[40];snprintf(command,sizeof command,"igloo:%u",a->id);content(command);}}
@@ -748,7 +774,9 @@ static void content(const char *name){
  if(!strncmp(name,"unavailable:",12)){modal_message("This activity is not available yet.");return;}
  message(!strncmp(name,"game:",5)?"This game is being ported.":"This window is being ported.");
 }
-static bool keyboard(char *value,size_t capacity,const char *hint,bool password){SwkbdState keyboard;swkbdInit(&keyboard,SWKBD_TYPE_NORMAL,2,(int)capacity-1);swkbdSetHintText(&keyboard,hint);swkbdSetInitialText(&keyboard,value);swkbdSetValidation(&keyboard,SWKBD_NOTEMPTY_NOTBLANK,0,0);swkbdSetPasswordMode(&keyboard,password?SWKBD_PASSWORD_HIDE:SWKBD_PASSWORD_NONE);gp_audio_pause(true);bool accepted=swkbdInputText(&keyboard,value,capacity)==SWKBD_BUTTON_CONFIRM;gp_audio_pause(false);return accepted;}
+static bool keyboard(char *value,size_t capacity,const char *hint,bool password){SwkbdState keyboard;swkbdInit(&keyboard,SWKBD_TYPE_NORMAL,2,(int)capacity-1);swkbdSetHintText(&keyboard,hint);swkbdSetInitialText(&keyboard,value);swkbdSetValidation(&keyboard,SWKBD_NOTEMPTY_NOTBLANK,0,0);swkbdSetPasswordMode(&keyboard,password?SWKBD_PASSWORD_HIDE:SWKBD_PASSWORD_NONE);gp_audio_pause(true);bool accepted=swkbdInputText(&keyboard,value,capacity)==SWKBD_BUTTON_CONFIRM;gp_audio_pause(false);
+ /* The touch that opened the keyboard is still the last input state: refresh it, or the next tap is not a new press. */
+ hidScanInput();return accepted;}
 static void stop_position(void){Actor *a=&demo.actors[0];if(pnet_state()==PNET_ONLINE){char x[20],y[20];snprintf(x,sizeof x,"%d",(int)lroundf(a->x));snprintf(y,sizeof y,"%d",(int)lroundf(a->y));pnet_send("u#sp",2,(const char *[]){x,y});}actionPosition=true;}
 static void action(int frame){stop_position();demo_action(&demo,frame);char arg[16];snprintf(arg,sizeof arg,"%d",demo.actors[0].action);if(pnet_state()==PNET_ONLINE)pnet_send(frame==17?"u#sf":"u#sa",1,(const char *[]){arg});}
 static bool sitting(void){int action=demo.actors[0].action;return action>=17&&action<=24;}
@@ -1842,6 +1870,7 @@ static void touch(int x,int y){
   if(y>=174&&y<=200){
    bool confirm=modal.confirm&&x>=25&&x<145;
    if(confirm&&(!strcmp(modal.command,"lobby-table")||!strcmp(modal.command,"lobby-waddle")))lobby_join(!strcmp(modal.command,"lobby-table")?LOBBY_TABLE:LOBBY_WADDLE,(unsigned)strtoul(modal.argument,NULL,10));
+   else if(!strcmp(modal.command,"buddy-request")){unsigned id=(unsigned)strtoul(modal.argument,NULL,10);if(confirm||x>=175){pnet_send(confirm?"b#ba":"b#bd",1,(const char *[]){modal.argument});social_dismiss(&social,id);if(confirm)pnet_send("b#gb",0,NULL);}}
    else if(confirm&&!strcmp(modal.command,"open-update"))demo.tab=20;
    else if(confirm&&!strcmp(modal.command,"offline-enter")){modal.open=false;offline_enter();return;}
    else if(confirm&&!strcmp(modal.command,"igloo-style")){styles.type=(unsigned)strtoul(modal.argument,NULL,10);styles.preparing=true;styles.started=osGetTime();}
@@ -2155,7 +2184,27 @@ int main(int argc,char **argv){
    if(!strcmp(packet.command,"ms")&&packet.count>=2){modal_message(!strcmp(packet.args[1],"1")?"Your postcard has been sent.":!strcmp(packet.args[1],"2")?"You need more coins.":"This penguin mailbox is full.");if(!strcmp(packet.args[1],"1"))book.close=true;}
    if(packet.count&&social_ignored(&social,(unsigned)strtoul(packet.args[0],NULL,10))&&(!strcmp(packet.command,"sm")||!strcmp(packet.command,"se")||!strcmp(packet.command,"ss")||!strcmp(packet.command,"sj")||!strcmp(packet.command,"sl"))){pnet_message_free(&packet);continue;}
    if(!strcmp(packet.command,"gcd")&&deckView.pending){deckView.pending=false;if(!deck_view_parse(&deckView,packet.count,packet.args))deckView.known=false;}
-   if(!strcmp(packet.command,"ba"))pnet_send("b#gb",0,NULL);
+   if(!strcmp(packet.command,"ba")){pnet_send("b#gb",0,NULL);if(packet.count>=2){char line[100];snprintf(line,sizeof line,"%.48s accepted your buddy request!",packet.args[1]);message(line);}}
+   if(!strcmp(packet.command,"br")&&packet.count>=2&&!social_ignored(&social,(unsigned)strtoul(packet.args[0],NULL,10))){char line[100];snprintf(line,sizeof line,"%.40s wants to be your buddy. See People > Requests.",packet.args[1]);message(line);}
+   if(!strcmp(packet.command,"gpbuddy")&&packet.count>=2){
+    const char *s=packet.args[0],*name=packet.count>=3&&*packet.args[2]?packet.args[2]:"This penguin";char line[120];line[0]=0;
+    if(!strcmp(s,"sent"))snprintf(line,sizeof line,"Buddy request sent to %.40s.",name);
+    else if(!strcmp(s,"queued"))snprintf(line,sizeof line,"%.32s is not online. They will see your request next time.",name);
+    else if(!strcmp(s,"already"))snprintf(line,sizeof line,"You are already buddies.");
+    else if(!strcmp(s,"accepted"))snprintf(line,sizeof line,"%.40s is now your buddy!",name);
+    else if(!strcmp(s,"expired"))snprintf(line,sizeof line,"That buddy request is no longer waiting.");
+    else if(!strcmp(s,"busy"))snprintf(line,sizeof line,"Too many buddy requests. Wait a minute and try again.");
+    else if(!strcmp(s,"notfound"))snprintf(line,sizeof line,"That penguin could not be found.");
+    if(*line)message(line);
+   }
+   if(!strcmp(packet.command,"gpbn")){
+    if(packet.count>=2){unsigned id=(unsigned)strtoul(packet.args[0],NULL,10);const char *name=packet.args[1];bool on=packet.count>=3&&!strcmp(packet.args[2],"1");
+     if(id==pnet_id())message("That is your own penguin.");
+     else if(social_friend(&social,id)){char line[100];snprintf(line,sizeof line,"%.48s is already your buddy.",name);message(line);}
+     else if(id){char prompt[160];snprintf(prompt,sizeof prompt,"Send a buddy request to %.48s?%s",name,on?"":"\n(Offline now: they will see it next time.)");confirm_command(prompt,"b#br",id);}
+    }else if(packet.count==1&&!strcmp(packet.args[0],"busy"))message("Wait a moment before searching again.");
+    else{char line[100];snprintf(line,sizeof line,"No penguin is called %.24s. Check the spelling.",buddySearch);modal_message(line);}
+   }
    if(!strcmp(packet.command,"bf")){if(!social.foundRoom)modal_message("Your buddy is not online right now.");else{const IslandRoom *room=island_room(social.foundRoom);if(room){char prompt[140];snprintf(prompt,sizeof prompt,"Your buddy is in %s. Go there?",room->title);modal_message(prompt);modal.confirm=true;modal.room=room->id;}else modal_message(social.foundRoom>2000?"Your buddy is in an igloo.":"Your buddy is playing a game.");}}
    unsigned room=world_apply(&demo,&packet,pnet_id());profile_apply(&profile,&packet,pnet_id());
    if(!strcmp(packet.command,"cdu")&&packet.count==2){char *end;unsigned long earned=strtoul(packet.args[0],&end,10);if(*packet.args[0]&&!*end&&earned<=100)mining_reply(&mining,(unsigned)earned);}

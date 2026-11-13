@@ -11,14 +11,19 @@ bool social_ignored(const Social *s,unsigned id){for(unsigned i=0;i<s->nIgnored;
 const Buddy *social_friend(const Social *s,unsigned id){for(unsigned i=0;i<s->nFriends;i++)if(s->friends[i].id==id)return &s->friends[i];return NULL;}
 Actor *social_player(Social *s,unsigned id){for(unsigned i=0;i<s->nPlayers;i++)if(s->players[i].id==id)return &s->players[i];return NULL;}
 void social_dismiss(Social *s,unsigned id){remove_buddy(s->requests,&s->nRequests,id);s->revision++;}
+bool social_sent(const Social *s,unsigned id){for(unsigned i=0;i<s->nSent;i++)if(s->sent[i]==id)return true;return false;}
+static void sent_remove(Social *s,unsigned id){for(unsigned i=0;i<s->nSent;i++)if(s->sent[i]==id){memmove(s->sent+i,s->sent+i+1,(--s->nSent-i)*sizeof *s->sent);return;}}
+static void sent_add(Social *s,unsigned id){if(!id||social_sent(s,id))return;if(s->nSent==SOCIAL_LIMIT){memmove(s->sent,s->sent+1,(SOCIAL_LIMIT-1)*sizeof *s->sent);s->nSent--;}s->sent[s->nSent++]=id;}
 static void remember(Social *s,const char *text){Actor a;if(!world_penguin(text,&a))return;Actor *p=social_player(s,a.id);if(!p){if(s->nPlayers==SOCIAL_PLAYERS){memmove(s->players,s->players+1,(SOCIAL_PLAYERS-1)*sizeof *s->players);s->nPlayers--;}p=&s->players[s->nPlayers++];}*p=a;}
 void social_apply(Social *s,const PNetMessage *m){
  unsigned id=m->count?number(m->args[0]):0;
- if(!strcmp(m->command,"gb"))people(s->friends,&s->nFriends,m);
+ if(!strcmp(m->command,"gb")){people(s->friends,&s->nFriends,m);for(unsigned i=0;i<s->nFriends;i++)sent_remove(s,s->friends[i].id);}
  else if(!strcmp(m->command,"gn"))people(s->ignored,&s->nIgnored,m);
  else if(!strcmp(m->command,"go")){for(unsigned i=0;i<s->nFriends;i++){s->friends[i].online=false;for(unsigned j=0;j<m->count;j++)if(s->friends[i].id==number(m->args[j]))s->friends[i].online=true;}}
  else if(!strcmp(m->command,"bon")){Buddy *b=find(s->friends,s->nFriends,id);if(b)b->online=true;}
  else if(!strcmp(m->command,"rb"))remove_buddy(s->friends,&s->nFriends,id);
+ else if(!strcmp(m->command,"ba")||!strcmp(m->command,"bd"))sent_remove(s,id);
+ else if(!strcmp(m->command,"gpbuddy")&&m->count>=2){unsigned who=number(m->args[1]);if(!strcmp(m->args[0],"sent")||!strcmp(m->args[0],"queued"))sent_add(s,who);else{sent_remove(s,who);if(!strcmp(m->args[0],"accepted")||!strcmp(m->args[0],"expired"))remove_buddy(s->requests,&s->nRequests,who);}}
  else if(!strcmp(m->command,"br")&&id&&m->count>=2&&!social_ignored(s,id)&&!find(s->requests,s->nRequests,id)&&s->nRequests<SOCIAL_LIMIT){Buddy *b=&s->requests[s->nRequests++];*b=(Buddy){.id=id,.online=true};snprintf(b->name,sizeof b->name,"%s",m->args[1]);}
  else if((!strcmp(m->command,"gp")||!strcmp(m->command,"ap")||!strcmp(m->command,"lp"))&&m->count)remember(s,m->args[0]);
  else if(!strcmp(m->command,"jr")){for(unsigned i=1;i<m->count;i++)remember(s,m->args[i]);}
