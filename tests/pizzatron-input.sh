@@ -5,7 +5,7 @@ mkdir -p build/input-tests
 flags=(-O2 -std=c11 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror -Isource)
 if [[ "${SANITIZE:-0}" == 1 ]]; then flags+=(-g -fsanitize=address,undefined -fno-omit-frame-pointer); fi
 bank=(tests/game-bank-host.c source/package.c source/hash.c source/movie_meta.c source/swl.c)
-port=(tests/pizzatron-fixture.c source/game_port.c source/game_pizzatron_model.c)
+port=(tests/pizzatron-fixture.c source/game_port.c source/game_pizzatron_model.c tests/game-controller-stubs.c)
 libs=(-lcrypto -lz -ljansson -lm)
 cc "${flags[@]}" tests/catalogue-touch.c source/package.c source/hash.c source/movie_meta.c source/swl.c "${libs[@]}" -o build/input-tests/catalogue
 build/input-tests/catalogue
