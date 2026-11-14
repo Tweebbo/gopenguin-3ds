@@ -7,6 +7,7 @@
 /* public/swf/book/timelines.json SHA256 e23a514f13a7cfdca385a9996677390dd8ef57564a9031842e5cd24a4e669779 */
 /* public/swf/lodge/timelines.json SHA256 a9505d8068fb42bc9b8385a7320e18a13eeef24da7f909894ff7ccd0c305bd48 */
 /* public/swf/attic/timelines.json SHA256 34205b1bc0cc9d5570b659af1ec885e167298aeb47b8eb3adf5c181c1a821b9c */
+/* public/swf/shipquarters/timelines.json SHA256 1b5de4697abdcfb05b35cd0a5d784d039ef4b0238bd91e5bd49995299017f3f9 (Treasure Hunt tables, added by hand from the same geometryForRoom) */
 /* public/swf/mtn/timelines.json SHA256 5705111f24869bbe47f83d26a019fecd17c42dbb9931d4a0cba70ef6b750907f */
 
 typedef struct {
@@ -60,6 +61,22 @@ static const LobbyGeometrySeat lobbyGeometrySeats[]={
  {476,370,478,312,17,"waddle102_mc.seat1_mc","waddle102_mc.done1_mc"},
  {551,333,487,299,24,"waddle103_mc.seat0_mc","waddle103_mc.done0_mc"},
  {581,313,536,274,24,"waddle103_mc.seat1_mc","waddle103_mc.done1_mc"},
+ {248,307,215,336,24,"table300_mc.seat1_mc","table300_mc.done1_mc"},
+ {285,314,260,349,18,"table300_mc.seat2_mc","table300_mc.done2_mc"},
+ {356,320,349,360,24,"table301_mc.seat1_mc","table301_mc.done1_mc"},
+ {403,320,413,360,18,"table301_mc.seat2_mc","table301_mc.done2_mc"},
+ {472,325,500,353,24,"table302_mc.seat1_mc","table302_mc.done1_mc"},
+ {514,316,544,339,18,"table302_mc.seat2_mc","table302_mc.done2_mc"},
+ {89,370,144,350,23,"table303_mc.seat1_mc","table303_mc.done1_mc"},
+ {145,377,180,367,19,"table303_mc.seat2_mc","table303_mc.done2_mc"},
+ {221,387,251,364,24,"table304_mc.seat1_mc","table304_mc.done1_mc"},
+ {278,396,293,374,18,"table304_mc.seat2_mc","table304_mc.done2_mc"},
+ {352,401,404,377,24,"table305_mc.seat1_mc","table305_mc.done1_mc"},
+ {413,400,354,377,18,"table305_mc.seat2_mc","table305_mc.done2_mc"},
+ {497,402,475,373,24,"table306_mc.seat1_mc","table306_mc.done1_mc"},
+ {545,392,519,367,18,"table306_mc.seat2_mc","table306_mc.done2_mc"},
+ {607,365,574,345,23,"table307_mc.seat1_mc","table307_mc.done1_mc"},
+ {655,357,615,337,19,"table307_mc.seat2_mc","table307_mc.done2_mc"},
 };
 static const LobbyGeometryEntry lobbyGeometryEntries[]={
  {111,100,LOBBY_TABLE,1,2,"table100_mc",&lobbyGeometrySeats[0]},
@@ -79,9 +96,17 @@ static const LobbyGeometryEntry lobbyGeometryEntries[]={
  {230,101,LOBBY_WADDLE,0,3,"waddle101_mc",&lobbyGeometrySeats[30]},
  {230,102,LOBBY_WADDLE,0,2,"waddle102_mc",&lobbyGeometrySeats[33]},
  {230,103,LOBBY_WADDLE,0,2,"waddle103_mc",&lobbyGeometrySeats[35]},
+ {422,300,LOBBY_TABLE,1,2,"table300_mc",&lobbyGeometrySeats[37]},
+ {422,301,LOBBY_TABLE,1,2,"table301_mc",&lobbyGeometrySeats[39]},
+ {422,302,LOBBY_TABLE,1,2,"table302_mc",&lobbyGeometrySeats[41]},
+ {422,303,LOBBY_TABLE,1,2,"table303_mc",&lobbyGeometrySeats[43]},
+ {422,304,LOBBY_TABLE,1,2,"table304_mc",&lobbyGeometrySeats[45]},
+ {422,305,LOBBY_TABLE,1,2,"table305_mc",&lobbyGeometrySeats[47]},
+ {422,306,LOBBY_TABLE,1,2,"table306_mc",&lobbyGeometrySeats[49]},
+ {422,307,LOBBY_TABLE,1,2,"table307_mc",&lobbyGeometrySeats[51]},
 };
-#define LOBBY_GEOMETRY_ENTRIES 17u
-#define LOBBY_GEOMETRY_SEATS 37u
+#define LOBBY_GEOMETRY_ENTRIES 25u
+#define LOBBY_GEOMETRY_SEATS 53u
 
 static inline const LobbyGeometryEntry *lobby_geometry_entry(unsigned room,LobbyKind kind,unsigned id){
  for(unsigned i=0;i<LOBBY_GEOMETRY_ENTRIES;i++){

@@ -119,14 +119,14 @@ static const char *gameKeys[]={"hydro","roundup","beans","cart","thinice","fish"
 #endif
  ,"astro","aqua"
  /* Listed in the Games menu; their banks ship in RomFS and have no downloadable movie id. */
- ,"jetpack","dj3k","rescue","dance","waves","book1","book2","book3"
+ ,"jetpack","dj3k","rescue","dance","waves","book1","book2","book3","treasurehunt"
 };
 static const char *gameNames[]={"Hydro Hopper","Puffle Roundup","Bean Counters","Cart Surfer","Thin Ice","Ice Fishing","Find Four","Mancala","Sled Racing","Pizzatron 3000"
 #ifdef GP_NINJA_GAMES
  ,"Card-Jitsu","Card-Jitsu Fire","PSA: Missing Puffles","PSA: G's Secret Mission","PSA: Case of the Missing Coins","PSA: Avalanche Rescue","PSA: Secret of the Fur","PSA: Questions for a Crab","PSA: Clockwork Repairs","PSA: Mysterious Tremors","PSA: Operation: Spy and Seek","PSA: Waddle Squad","PSA: The Veggie Villain"
 #endif
  ,"Astro Barrier","Aqua Grabber"
- ,"Jet Pack Adventure","DJ3K","Puffle Rescue","Dance Contest","Catchin' Waves","Book: My Puffle","Book: Burnt Out Bulbs","Book: Lime Green Dojo Clean"
+ ,"Jet Pack Adventure","DJ3K","Puffle Rescue","Dance Contest","Catchin' Waves","Book: My Puffle","Book: Burnt Out Bulbs","Book: Lime Green Dojo Clean","Treasure Hunt"
 };
 _Static_assert(sizeof gameKeys/sizeof *gameKeys==sizeof gameNames/sizeof *gameNames,"Each game key needs a menu name");
 static IglooGeometry *iglooGeometry;
@@ -1628,9 +1628,9 @@ static void game_start(const char *key){
 #endif
  if(!game_port_supported(key)){modal_message("This game is not available yet.");return;}
  if(book.open||igloo.dirty||igloo.awaitingSave||igloo.awaitingStyle||igloo.awaitingMusic||styles.preparing){modal_message("Close the window and finish saving your igloo before playing.");return;}
- if(!strcmp(key,"four")||!strcmp(key,"mancala")||!strcmp(key,"sled")){
+ if(!strcmp(key,"four")||!strcmp(key,"mancala")||!strcmp(key,"sled")||!strcmp(key,"treasurehunt")){
   if(lobby.needsLeave||lobbyUI.moving||lobbyUI.leavePending){message("Leave the current table or race queue first.");return;}
-  unsigned room=!strcmp(key,"mancala")?111:!strcmp(key,"sled")?230:currentRoomId==221?221:220;
+  unsigned room=!strcmp(key,"mancala")?111:!strcmp(key,"sled")?230:!strcmp(key,"treasurehunt")?422:currentRoomId==221?221:220;
   if(currentRoomId!=room){lobbyUI.routeRoom=room;wantedRoom=room;wantedX=wantedY=-1;}else{lobbyUI.open=true;lobbyUI.refresh=true;demo.tab=17;}
   return;
  }
@@ -1698,6 +1698,7 @@ static void gameplay_test_step(void){
  if(step==13){open_igloo(pnet_id());return;}
  if(step==14){char path[256];asset_cache_pause(true);for(unsigned i=1;i<=32;i++)asset_cache_request(asset_key(ASSET_BOOK,900000+i),path,sizeof path);asset_cache_pause(false);return;}
  if(step==15){book_open("sport");return;}
+ if(step==16){game_start("treasurehunt");return;}
  if(step==10){game_start("mission2");return;}
  if(step==11){open_igloo(pnet_id());return;}
  if(step==7){book_open("clothing");book_page(NULL,6);return;}

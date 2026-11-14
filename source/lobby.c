@@ -19,6 +19,7 @@ const char *lobby_key(unsigned room,LobbyKind kind,unsigned id){
  if(kind==LOBBY_TABLE){
   if(room==111&&id>=100&&id<=104)return "mancala";
   if((room==220&&id>=205&&id<=207)||(room==221&&id>=200&&id<=204))return "four";
+  if(room==422&&id>=300&&id<=307)return "treasurehunt";
  }else if(kind==LOBBY_WADDLE&&room==230&&id>=100&&id<=103)return "sled";
  return NULL;
 }
@@ -29,8 +30,8 @@ bool lobby_enter(Lobby *l,unsigned room,const char *username){
  if(l->needsLeave||(l->state!=LOBBY_IDLE&&l->state!=LOBBY_FAILED)||!name_valid(username))return false;
  LobbySend send=l->send;void *user=l->user;lobby_init(l,send,user);l->room=room;strcpy(l->username,username);
  l->kind=room==230?LOBBY_WADDLE:LOBBY_TABLE;
- unsigned first=room==111?100:room==220?205:room==221?200:room==230?100:0;
- l->entryCount=room==111||room==221?5:room==220?3:room==230?4:0;
+ unsigned first=room==111?100:room==220?205:room==221?200:room==230?100:room==422?300:0;
+ l->entryCount=room==111||room==221?5:room==220?3:room==230?4:room==422?8:0;
  for(unsigned i=0;i<l->entryCount;i++){l->entries[i].id=first+i;l->entries[i].capacity=room==230?(i==0?4:i==1?3:2):2;}
  return true;
 }

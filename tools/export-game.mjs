@@ -311,6 +311,58 @@ const games={
    return data;
   }}},
  },
+ treasurehunt:{
+  code:700045,
+  banks:{main:{pack:'game-treasurehunt',
+   // Player names and the Fragments/Coins/Total counters change at runtime.
+   fonts:{fields:[291,296,297,310,311,312],chars:Array.from({length:95},(_,i)=>String.fromCharCode(32+i)).join('')},
+   transform(data){
+   // GameEngine attaches mapsquare (under the two sand layers), dirtsquare (the shine, over them),
+   // the dig buttons and the sand animations into placer: authored here as hidden slots at their
+   // original positions, in the original stacking order.
+   const symbol=name=>{const id=Object.entries(data.exports).find(([,v])=>v===name)?.[0];if(!id)throw Error('Missing export '+name);return Number(id);};
+   const gm=data.main.frames[0].find(e=>e.name==='gameMC'),game=data.sprites[gm.id];
+   const placerEntry=game.frames[0].find(e=>e.name==='placer'),placer=data.sprites[placerEntry.id];
+   let next=nextId(data);
+   const slot=(id,child)=>{const s=next++;data.sprites[s]={frames:[[],[{depth:1,id,name:child,matrix:[1,0,0,1,0,0]}]],labels:{},actions:{1:[['stop',null]]},scriptFrames:[],sounds:[]};return s;};
+   const mapSlot=slot(symbol('mapsquare'),'m'),dirtSlot=slot(symbol('dirtsquare'),'d');
+   const downSlot=slot(symbol('downbutton'),'b'),rightSlot=slot(symbol('rightbutton'),'b');
+   const sandDown=slot(symbol('sanddownanim'),'a'),sandRight=slot(symbol('sandrightanim'),'a');
+   const at=(id,name,x,y)=>({depth:0,id,name,matrix:[1,0,0,1,x,y]});
+   const entries=placer.frames[0],gems=entries.findIndex(e=>e.name==='gems');if(gems<0)throw Error('Missing placer.gems');
+   const maps=[],dirt=[],buttons=[],sand=[];
+   for(let r=0;r<10;r++)for(let c=0;c<10;c++){maps.push(at(mapSlot,`m${r}_${c}`,21*c+1.3,21*r+1.3));dirt.push(at(dirtSlot,`d${r}_${c}`,21*c,21*r));}
+   for(let n=0;n<10;n++){buttons.push(at(downSlot,`bd${n}`,21*n,-21),at(rightSlot,`br${n}`,-21,21*n));sand.push(at(sandDown,`sd${n}`,21*n,0),at(sandRight,`sr${n}`,0,21*n));}
+   const ordered=[...entries.slice(0,gems+1),...maps,...entries.slice(gems+1),...dirt,...buttons,...sand];
+   placer.frames[0]=ordered.map((e,i)=>({...e,depth:i+1}));
+   for(const name of ['player1Spades','player2Spades'])for(const e of game.frames[0])if(e.name===name)addressable(data,e.id);
+   // The board's sand edges (64 tinted copies of one sprite) and gem tiles carry color transforms on
+   // sprites: each would be a color group (its own render target) per screen and per frame, which
+   // overflows the 3DS GX queue. Push those transforms down to the leaf art instead.
+   const identity=c=>!c||((c.mult??[1,1,1,1]).every(v=>v===1)&&(c.add??[0,0,0,0]).every(v=>v===0));
+   const compose=(child,parent)=>{const mc=child?.mult??[1,1,1,1],ac=child?.add??[0,0,0,0],mp=parent.mult??[1,1,1,1],ap=parent.add??[0,0,0,0];return {mult:mc.map((v,k)=>v*mp[k]),add:ac.map((v,k)=>v*mp[k]+ap[k])};};
+   const tinted=new Map();
+   const tint=(id,color)=>{
+    const key=id+':'+JSON.stringify(color);if(tinted.has(key))return tinted.get(key);
+    const source=data.sprites[id],copy=next++;tinted.set(key,copy);
+    data.sprites[copy]={...source,frames:source.frames.map(frame=>frame.map(e=>{
+     const c=compose(e.color,color);
+     if(data.sprites[e.id])return {...e,id:tint(e.id,c),color:undefined};
+     return {...e,color:c};
+    }))};
+    return copy;
+   };
+   const flatten=(id,seen=new Set())=>{
+    if(seen.has(id))return;seen.add(id);const sprite=data.sprites[id];if(!sprite)return;
+    sprite.frames=sprite.frames.map(frame=>frame.map(e=>{
+     if(data.sprites[e.id]&&!identity(e.color))return {...e,id:tint(e.id,e.color),color:undefined};
+     flatten(e.id,seen);return e;
+    }));
+   };
+   flatten(placerEntry.id);
+   return data;
+  }}},
+ },
  four:{
   code:700007,
   banks:{main:{pack:'games/four/FindFour',transform(data){
