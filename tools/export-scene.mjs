@@ -31,7 +31,7 @@ try{
   const url=new URL(route.request().url());if(url.pathname==='/')return route.fulfill({body:'<!doctype html><body></body>',contentType:'text/html'});
   const file=path.resolve(web+'/public','.'+decodeURIComponent(url.pathname));
   if(!file.startsWith(web+'/public/'))return route.abort();
-  try{const body=await readFile(file);await route.fulfill({body,contentType:file.endsWith('.svg')?'image/svg+xml':file.endsWith('.json')?'application/json':file.endsWith('.ttf')?'font/ttf':file.endsWith('.woff')?'font/woff':'application/octet-stream'});}catch{await route.fulfill({status:404,body:'Not found'});}
+  try{const body=await readFile(file);await route.fulfill({body,contentType:file.endsWith('.svg')?'image/svg+xml':file.endsWith('.json')?'application/json':file.endsWith('.ttf')?'font/ttf':file.endsWith('.woff')?'font/woff':'application/octet-stream'});}catch{if(process.env.EXPORT_DEBUG)console.error("404",url.pathname);await route.fulfill({status:404,body:'Not found'});}
  });
  await page.goto('http://assets.test/');await page.addScriptTag({content:bundle});
  if(shared)shared.page=page;
@@ -122,6 +122,8 @@ try{
   const warm=canvas(380,240),warmctx=warm.getContext('2d');warmctx.scale(.5,.5);room.draw(warmctx);await movie.ready();room.draw(warmctx);
   const protectedPaths=['foreground_mc',...Object.entries(script.buttons??{}).flatMap(([path,button])=>[path,...(button.hover??[]).map(h=>h.path)]),...Object.values(script.triggers??{}).flatMap(t=>t.frames?[t.frames[0]]:[])];
   if(bakeScene)protectedPaths.push('scene');
+  /* The 3DS EPF entrance (source/epf_access.c) drives these clips; keep them animated. */
+  if(pack==='agentlobbymulti')protectedPaths.push('eventplanner_mc','background_mc.pillartr_mc','background_mc.basetr_mc','background_mc.pillartr_mc.epftube_mc.commandstates_mc','triggers_mc.command_mc','block_mc.pillar2_mc','background_mc.phonebooth_mc','foreground_mc.aimer_mc','foreground_mc.camhudtext_mc.namemask_mc','foreground_mc.camhudtext_mc.statusmask_mc');
   if(pack==='assets/missions/2/miniGame')protectedPaths.push('root#1.landscape','root#1.sled',...Array.from({length:21},(_,i)=>'root#1.seg'+(i+1)));
   const targetPath=(from,target)=>{let parts=from.match(/[^.#]+|#\d+/g)??[];for(const p of target.split('.')){if(p==='this')continue;if(p==='_parent')parts.pop();else parts.push(p);}return parts.reduce((s,p)=>s+(s&&!p.startsWith('#')?'.':'')+p,'');};
   const scanned=new Set();
@@ -153,7 +155,9 @@ try{
    const memoKey=JSON.stringify([stable,stable?world:null,parent,list]);if(bakeMemo.has(memoKey))return structuredClone(bakeMemo.get(memoKey));
    if(!stable&&(localRoots||list.reduce((n,e)=>Math.min(3,n+leaves(e,parent)),0)<3))return null;
    const rasterScale=stable?1:.5;let originX=0,originY=0,width=760*rasterScale,height=480*rasterScale;
-   if(!stable||library){let boxes=list.map(e=>movie.entryBounds(e,parent)).filter(Boolean);if(!boxes.length)return [];if(stable)boxes=boxes.map(b=>{const points=[[b[0],b[1]],[b[2],b[1]],[b[0],b[3]],[b[2],b[3]]].map(([x,y])=>[world[0]*x+world[2]*y+world[4],world[1]*x+world[3]*y+world[5]]);return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];});originX=Math.floor(Math.min(...boxes.map(b=>b[0]))*rasterScale)-1;originY=Math.floor(Math.min(...boxes.map(b=>b[1]))*rasterScale)-1;width=Math.ceil(Math.max(...boxes.map(b=>b[2]))*rasterScale)-originX+1;height=Math.ceil(Math.max(...boxes.map(b=>b[3]))*rasterScale)-originY+1;if(width<=0||height<=0)return [];if(width>(stable?1024:128)||height>(stable?1024:128))return null;}
+   if(!stable||library){let boxes=list.map(e=>movie.entryBounds(e,parent)).filter(Boolean);if(!boxes.length)return [];if(stable)boxes=boxes.map(b=>{const points=[[b[0],b[1]],[b[2],b[1]],[b[0],b[3]],[b[2],b[3]]].map(([x,y])=>[world[0]*x+world[2]*y+world[4],world[1]*x+world[3]*y+world[5]]);return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];});originX=Math.floor(Math.min(...boxes.map(b=>b[0]))*rasterScale)-1;originY=Math.floor(Math.min(...boxes.map(b=>b[1]))*rasterScale)-1;width=Math.ceil(Math.max(...boxes.map(b=>b[2]))*rasterScale)-originX+1;height=Math.ceil(Math.max(...boxes.map(b=>b[3]))*rasterScale)-originY+1;if(width<=0||height<=0)return [];if(stable&&catalogue){/* A catalogue page never shows art outside its 760x480 stage, so a static group that
+     spills past the page edge (masked star fields) is baked only where it can be seen. */const right=originX+width,bottom=originY+height;originX=Math.max(originX,-1);originY=Math.max(originY,-1);width=Math.min(right,761)-originX;height=Math.min(bottom,481)-originY;if(width<=0||height<=0)return [];}
+    if(width>(stable?1024:128)||height>(stable?1024:128))return null;}
    const c=canvas(width,height),ctx=c.getContext('2d');ctx.setTransform(rasterScale,0,0,rasterScale,-originX,-originY);if(stable)ctx.transform(...world);for(const e of list)movie.entry(ctx,e,parent);
    const rgba=ctx.getImageData(0,0,width,height).data;let x0=width,y0=height,x1=0,y1=0;
    for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(rgba[(y*width+x)*4+3]){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x+1);y1=Math.max(y1,y+1);}
@@ -172,8 +176,16 @@ try{
    out.originalSymbol=id;
    compiled.set(key,newId);
    optimized[newId]=out;
-   const fixed=source.frames.length===1||(pageOnly&&parent===clip)||(newspaper&&parent==='news#1');
+   const fixedAll=source.frames.length===1||(pageOnly&&parent===clip)||(newspaper&&parent==='news#1');
+   /* A stopped multi-frame timeline (room backgrounds stopped on their 'english' frame) keeps
+      that frame fixed, so its static content can be baked like a one-frame sprite. */
+   let pinned=0;
+   if(!fixedAll&&id!==0&&stable&&!protectedPaths.includes(parent)&&!Object.values(source.actions??{}).some(a=>a.targets?.length)){
+    const state=movie.state.get(parent);
+    if(!((state?.frame===undefined||state?.playing)&&movie.playheads.get(parent)?.playing))pinned=movie.frameOf(parent,source);
+   }
    out.frames=source.frames.map((list,frameIndex)=>{
+    const fixed=fixedAll||frameIndex+1===pinned;
     metadata?.collect(id,parent,frameIndex+1);
     const entries=[];let batch=[],clipUntil=0;
     const fixedChild=e=>stable&&fixed&&!(id===0&&localRoots&&e.renderDepth>=900);
