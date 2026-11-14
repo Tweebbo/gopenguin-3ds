@@ -3,6 +3,7 @@
 #include <tex3ds.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <malloc.h>
 #include <math.h>
 #include <string.h>
 #include <strings.h>
@@ -915,7 +916,9 @@ static void deck_draw(void){
    unsigned index=deckView.page*DECK_VIEW_ROWS+row;if(index>=deckView.kinds)break;const DeckCard *c=&deckView.cards[index];float y=66+row*19;
    unsigned chip=c->element=='f'?0xe2541c:c->element=='w'?0x2f7fd0:c->element=='s'?0x3f93bd:0x9a8b70;
    box(9,y,302,17,0xffffff);box(11,y+2,26,13,chip);char value[8];snprintf(value,sizeof value,"%u",c->value);center(24,y+2,9,0xffffff,value);
-   char label[64];snprintf(label,sizeof label,"%.34s%s",c->name,c->power?" *":"");text(42,y+2,9,0x003366,label);
+   char label[64];snprintf(label,sizeof label,"%.34s",c->name);text(42,y+2,9,0x003366,label);
+   /* Power cards get a small orange tag after the name instead of a bare asterisk. */
+   if(c->power){float tx=42+textWidth(9,label)+5;box(tx,y+3,34,11,0xf39c12);center(tx+17,y+3,8,0xffffff,"Power");}
    char extra[32];if(c->count>1)snprintf(extra,sizeof extra,"%s x%u",deck_view_colour(c->colour),c->count);else snprintf(extra,sizeof extra,"%s",deck_view_colour(c->colour));
    text(306-textWidth(9,extra),y+2,9,0x5a6b7d,extra);
   }
@@ -1378,6 +1381,9 @@ static void music_touch(int x,int y){
 #ifdef GP_LAN_ONLY
 static bool performanceEnabled;
 #endif
+static bool reclaimWanted;
+/** A game bank failed to load: free rebuildable memory at the next frame start (GPU idle), then the port retries once. */
+static void game_reclaim(void *unused){(void)unused;reclaimWanted=true;}
 static void game_notice(void *unused,const char *value){(void)unused;message(value);}
 static void game_coins(void *unused,unsigned value){(void)unused;profile.coins=value;profile.revision++;}
 static bool game_send(void *unused,char extension,const char *command,unsigned count,const char *const *args){
@@ -1645,7 +1651,21 @@ static void game_start(const char *key){
 static unsigned gameplayStep;
 static unsigned performanceStartFrames;
 static void performance_flush(void);
+/* LAN test builds only: the test script writes one command to perf-goto and the client runs it once.
+ *  room <id> | book <key> <frame> | game <key> | close */
+static void perf_goto_step(void){
+ static char last[96];static u64 poll;if(now_ms()-poll<250)return;poll=now_ms();
+ FILE *file=fopen(DATA_DIR "/perf-goto","r");if(!file)return;char line[96]={0};if(!fgets(line,sizeof line,file))line[0]=0;fclose(file);
+ line[strcspn(line,"\r\n")]=0;if(!line[0]||!strcmp(line,last))return;snprintf(last,sizeof last,"%s",line);
+ char verb[16]={0},arg[48]={0};unsigned number=0;int n=sscanf(line,"%15s %47s %u",verb,arg,&number);if(n<1)return;
+ FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){fprintf(trace,"perf-goto %s\n",line);fclose(trace);}
+ if(!strcmp(verb,"close")){if(game)game_port_close(game);if(book.open)book.close=true;modal.open=false;demo.tab=0;return;}
+ if(!strcmp(verb,"room")&&n>=2){if(book.open)book.close=true;modal.open=false;demo.tab=0;wantedRoom=(unsigned)strtoul(arg,NULL,10);wantedX=wantedY=-1;return;}
+ if(!strcmp(verb,"book")&&n>=2){modal.open=false;demo.tab=0;book_open(arg);if(n>=3&&number)book.wanted=number;return;}
+ if(!strcmp(verb,"game")&&n>=2){modal.open=false;demo.tab=0;game_start(arg);return;}
+}
 static void gameplay_test_step(void){
+ perf_goto_step();
  static bool backgroundChecked,backgroundAutomatic,backgroundUI;static unsigned backgroundUiStep;static u64 backgroundUiAt;
  if(!backgroundChecked){FILE *flag=fopen(DATA_DIR "/background-update-auto","r");backgroundAutomatic=flag!=NULL;if(flag)fclose(flag);flag=fopen(DATA_DIR "/background-ui-auto","r");backgroundUI=flag!=NULL;if(flag)fclose(flag);backgroundAutomatic|=backgroundUI;backgroundChecked=true;}
  if(backgroundAutomatic){GPUpdateView update=gp_update_view();if(update.state==GP_UPD_IDLE)gp_update_check();else if(update.state==GP_UPD_AVAILABLE){modal.open=false;gp_update_prepare();}}
@@ -1737,7 +1757,7 @@ static void game_transition(void){
  pnet_manual_room(queuedGame.online&&!queuedGame.table);
  // Texture releases and loading happen after the previous GPU frame has finished.
  release_room_textures();wear_free();gp_audio_scene(queuedGame.key);gp_audio_game(queuedGame.key);modal.open=false;igloo.editing=false;demo.actors[0].walking=false;if(!queuedGame.table)demo.count=1;
- const GameHost host={.notice=game_notice,.coins=game_coins,.resource=game_resource,.send=game_send,.leave=game_leave,.sound=game_sound,.stop_sounds=game_stop_sounds,.text=game_text,.rect=game_rect,.button=game_button,.edit_text=game_edit_text};
+ const GameHost host={.notice=game_notice,.coins=game_coins,.resource=game_resource,.send=game_send,.leave=game_leave,.sound=game_sound,.stop_sounds=game_stop_sounds,.text=game_text,.rect=game_rect,.button=game_button,.edit_text=game_edit_text,.reclaim=game_reclaim};
  game=game_port_open(&queuedGame,&host);gameQueued=false;
  if(!game){gameReturnRoom=queuedGame.returnRoom;gameReturnX=queuedGame.returnX;gameReturnY=queuedGame.returnY;game_restore();message("Could not open this game.");}
 }
@@ -1966,26 +1986,28 @@ static void touch(int x,int y){
  else if(demo.tab==24){if(y>=184&&y<206){if(x<160)book_open("furniture");else demo.tab=4;}}
  else if(demo.tab==5){if(y>=33&&y<55){if(x<100)emoteMenu=false;else if(x<195)emoteMenu=true;else if(safeParent){SafeMessage parent;if(client_safe(clientData,safeParent,&parent))safeParent=parent.parent;safePage=0;}else if(demo.actors[0].look[0]!=428)modal_message("You need to wear your Tour Guide hat to give a tour.");else{actor_say(&demo.actors[0],client_tour(clientData,currentRoomId));char id[20];snprintf(id,sizeof id,"%u",currentRoomId);pnet_send("u#sl",1,(const char *[]){id});demo.tab=0;}return;}if(emoteMenu&&x>=9&&y>=58&&y<203){unsigned id=(unsigned)(y-58)/29*6+(unsigned)(x-9)/51+1;if(id<=30){demo.actors[0].emote=id;demo.actors[0].chat[0]=0;demo.actors[0].bubbleTime=125.0f/24;char number[12];snprintf(number,sizeof number,"%u",id);pnet_send("u#se",1,(const char *[]){number});demo.tab=0;}}else if(!emoteMenu&&y>=58&&y<190){SafeMessage choices[6];unsigned total=client_safe_children(clientData,safeParent,safePage*6,choices,6),index=(unsigned)(y-58)/22;if(index<6&&safePage*6+index<total){SafeMessage choice=choices[index];if(client_safe_children(clientData,choice.id,0,NULL,0)){safeParent=choice.id;safePage=0;}else{actor_say(&demo.actors[0],choice.name);char id[20];snprintf(id,sizeof id,"%u",choice.id);pnet_send("u#ss",1,(const char *[]){id});demo.tab=0;}}}else if(!emoteMenu&&y>=192){unsigned total=client_safe_children(clientData,safeParent,0,NULL,0);if(x<75&&safePage)safePage--;if(x>=246&&(safePage+1)*6<total)safePage++;}}
 }
-static struct {bool checked,enabled;char *csv;size_t used;unsigned rows;u64 last,window;FrameMetrics frames;unsigned drawTotal;char phase[40];} performance;
+static struct {bool checked,enabled;char *csv;size_t used;unsigned rows;u64 last,window;FrameMetrics frames;unsigned drawTotal;char phase[40];float cmdPeak;unsigned starved;} performance;
 /** True once more than ms have passed since start. The frame clock is read before
  *  input, so a start stamped later in the same frame must not wrap to a huge u64. */
 static bool elapsed_after(u64 now,u64 start,u64 ms){return now>start&&now-start>ms;}
 static void performance_flush(void){if(performance.csv&&performance.used){FILE *log=fopen(DATA_DIR "/performance.csv","wb");if(log){fwrite(performance.csv,1,performance.used,log);fclose(log);}}}
 static void performance_record(u64 now,unsigned draw_ms,bool updating){
- if(!performance.checked){FILE *flag=fopen(DATA_DIR "/performance-enabled","r");performance.enabled=flag!=NULL;if(flag)fclose(flag);performance.checked=true;if(performance.enabled){performance.csv=malloc(131072);if(performance.csv)performance.used=(size_t)snprintf(performance.csv,131072,"timestamp_ms,version,family,phase,frames,fps,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,draw_ms,linear_free,cache_pending,gpu_ms,cpu_submit_ms,update_state,update_done,update_total,update_background\n");else performance.enabled=false;}}
+ if(!performance.checked){FILE *flag=fopen(DATA_DIR "/performance-enabled","r");performance.enabled=flag!=NULL;if(flag)fclose(flag);performance.checked=true;if(performance.enabled){performance.csv=malloc(131072);if(performance.csv)performance.used=(size_t)snprintf(performance.csv,131072,"timestamp_ms,version,family,phase,frames,fps,mean_ms,p50_ms,p95_ms,p99_ms,max_ms,draw_ms,linear_free,cache_pending,gpu_ms,cpu_submit_ms,update_state,update_done,update_total,update_background,cmdbuf_peak,starved\n");else performance.enabled=false;}}
 #ifdef GP_LAN_ONLY
- performanceEnabled=performance.enabled;
+ {static int online=-1;if(online<0){FILE *flag=fopen(DATA_DIR "/performance-online","r");online=flag!=NULL;if(flag)fclose(flag);}performanceEnabled=performance.enabled&&!online;}
  game_port_test_tracing(!performanceEnabled);
 #endif
  if(!performance.enabled)return;
- const char *next=updating?"updater":game?queuedGame.key:roomBank?(igloo.editing?(editor.inventory?"igloo-furniture":"igloo-editor"):"igloo"):currentRoom?currentRoom->key:"loading";
+ char bookPhase[24];if(book.open&&book.info)snprintf(bookPhase,sizeof bookPhase,"book-%u-p%u",book.info->id,book.page);
+ const char *next=updating?"updater":game?queuedGame.key:book.open&&book.info?bookPhase:roomBank?(igloo.editing?(editor.inventory?"igloo-furniture":"igloo-editor"):"igloo"):currentRoom?currentRoom->key:"loading";
  if(!performance.last){performance.last=performance.window=now;snprintf(performance.phase,sizeof performance.phase,"%s",next);return;}
- if(strcmp(performance.phase,next)){performance_flush();performance.window=now;performance.frames=(FrameMetrics){0};performance.drawTotal=0;snprintf(performance.phase,sizeof performance.phase,"%s",next);}
+ if(strcmp(performance.phase,next)){performance_flush();performance.window=now;performance.frames=(FrameMetrics){0};performance.drawTotal=0;performance.cmdPeak=0;performance.starved=0;snprintf(performance.phase,sizeof performance.phase,"%s",next);}
+ {float usage=C3D_GetCmdBufUsage();if(usage>performance.cmdPeak)performance.cmdPeak=usage;performance.starved+=swl_gpu_starved();}
  u64 delta=(now-performance.last)*1000;performance.last=now;frame_metrics_add(&performance.frames,delta>UINT32_MAX?UINT32_MAX:(uint32_t)delta);performance.drawTotal+=draw_ms;
  if(now-performance.window<1000)return;
  FrameSummary stats=frame_metrics_summary(&performance.frames);
- if(performance.used<130000){GPUpdateView update=gp_update_view();int n=snprintf(performance.csv+performance.used,131072-performance.used,"%llu,%s,%s,%s,%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%u,%u,%.3f,%.3f,%u,%u,%u,%u\n",(unsigned long long)now,GOPENGUIN_VERSION,isNew3DS?"New3DS-New2DS":"Old3DS-2DS",performance.phase,stats.count,stats.fps,stats.mean_ms,stats.p50_ms,stats.p95_ms,stats.p99_ms,stats.max_ms,stats.count?(double)performance.drawTotal/stats.count:0,(unsigned)linearSpaceFree(),asset_cache_pending(),C3D_GetDrawingTime(),C3D_GetProcessingTime(),(unsigned)update.state,update.done,update.total,update.background);if(n>0&&(size_t)n<131072-performance.used){performance.used+=(size_t)n;if(++performance.rows%10==0)performance_flush();}}
- performance.frames=(FrameMetrics){0};performance.drawTotal=0;performance.window=now;
+ if(performance.used<130000){GPUpdateView update=gp_update_view();int n=snprintf(performance.csv+performance.used,131072-performance.used,"%llu,%s,%s,%s,%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%u,%u,%.3f,%.3f,%u,%u,%u,%u,%.3f,%u\n",(unsigned long long)now,GOPENGUIN_VERSION,isNew3DS?"New3DS-New2DS":"Old3DS-2DS",performance.phase,stats.count,stats.fps,stats.mean_ms,stats.p50_ms,stats.p95_ms,stats.p99_ms,stats.max_ms,stats.count?(double)performance.drawTotal/stats.count:0,(unsigned)linearSpaceFree(),asset_cache_pending(),C3D_GetDrawingTime(),C3D_GetProcessingTime(),(unsigned)update.state,update.done,update.total,update.background,performance.cmdPeak,performance.starved);if(n>0&&(size_t)n<131072-performance.used){performance.used+=(size_t)n;if(++performance.rows%10==0)performance_flush();}}
+ performance.frames=(FrameMetrics){0};performance.drawTotal=0;performance.window=now;performance.cmdPeak=0;performance.starved=0;
 }
 static bool offline_busy(void){return game||gameQueued||book.open||igloo.editing||igloo.awaitingSave||igloo.awaitingStyle||igloo.awaitingMusic||styles.preparing||lobbyUI.open;}
 /** Stops the network and plays against the local store. The online session stays in settings. */
@@ -2067,7 +2089,7 @@ int main(int argc,char **argv){
   static unsigned stabilityPanel=~0u,stabilityPhase=~0u;
   if(stabilityPanel!=(unsigned)demo.tab){stabilityPanel=(unsigned)demo.tab;stability_client_event(now,ST_PANEL,stabilityPanel);}
   unsigned phase=game?(unsigned)game_port_session(game):0;
-  if(game&&phase!=stabilityPhase){stabilityPhase=phase;if(phase==GAME_SESSION_FAILED)stability_client_event(now,ST_ERROR,2001);}
+  if(game&&phase!=stabilityPhase){stabilityPhase=phase;if(phase==GAME_SESSION_FAILED)stability_client_event(now,ST_ERROR,2001+10*game_port_failure(game));}
 #endif
   gp_update_activity(elapsedFrame,asset_cache_pending()||wantedRoom||waitingIgloo||wantedIgloo||gameQueued||book.wanted,gameSuspended,settings.batterySaver||powerProfile.current.cpu==2,isNew3DS);
   bool historyInput=chatHistory.open&&!modal.open&&!game&&!book.open;
@@ -2305,6 +2327,7 @@ int main(int argc,char **argv){
   if(!book.open)for(unsigned i=0;i<puffles.count;i++)if(pet_shown(&puffles.pets[i])||(demo.tab==13&&puffles.pets[i].owner==pnet_id()&&puffles.pets[i].id==petSelected)){unsigned art=asset_key(ASSET_PUFFLE,puffles.pets[i].type+1);wear_want_pose(art,puffles.pets[i].frame,1);wear_want_pose(art,puffles.pets[i].wanted,1);}
   }
   C3D_FrameBegin(C3D_FRAME_SYNCDRAW);game_transition();
+  if(reclaimWanted){reclaimWanted=false;wear_free();if(!book.open){movie_bank_free(book.bank);book.bank=NULL;}malloc_trim(0);}
   if(chatGlyphs)C2D_TextBufClear(chatGlyphs);
   if(game){GameInput input=game_input(down,held,&pad);
 #ifdef GP_LAN_ONLY
