@@ -91,6 +91,16 @@ static bool cancelled(void *unused){
  (void)unused;job_lock(&A.mutex);bool stop=A.quit||(A.active<SLOTS&&!A.slots[A.active].urgent&&urgent_waiting());job_unlock(&A.mutex);return stop;
 }
 static bool path_for(unsigned id,char *path,size_t cap){int n=snprintf(path,cap,"%s/clothing-%u.gpa",A.directory,id);return n>0&&(size_t)n<cap;}
+/* Pages republished on the server after a client cached them. The cache revision is compiled
+ * in, so these are dropped once by key instead of clearing every cached resource.
+ * 2026-11-14: May 2014 page 9 and June 2014 page 19 overflowed the GPU command list on Old 3DS. */
+static void drop_republished(void){
+ static const unsigned keys[]={(ASSET_BOOK<<20)|(47u*1024u+9u),(ASSET_BOOK<<20)|(46u*1024u+19u)};
+ char marker[256];int n=snprintf(marker,sizeof marker,"%s/republished-20261114.txt",A.directory);if(n<0||(size_t)n>=sizeof marker)return;
+ struct stat info;if(cache_lstat(marker,&info)==0)return;
+ for(unsigned i=0;i<sizeof keys/sizeof *keys;i++){char path[256];if(path_for(keys[i],path,sizeof path))discard_file(path);}
+ FILE *file=fopen(marker,"wb");if(file){fputs("done\n",file);fclose(file);}
+}
 typedef struct {FILE *file;size_t bytes,limit;} Download;
 static bool save(const u8 *data,int bytes,void *user){Download *download=user;if(cancelled(NULL)||bytes<0||(size_t)bytes>download->limit-download->bytes)return false;download->bytes+=(size_t)bytes;return fwrite(data,1,(size_t)bytes,download->file)==(size_t)bytes;}
 static bool valid(const char *path,unsigned key){struct stat info;if(cache_lstat(path,&info)||!S_ISREG(info.st_mode))return false;unsigned kind=key>>20;GPPackage package;if(package_open(&package,path))return true;if(kind==ASSET_BOOK||kind==ASSET_MOVIE)return false;if(kind>=ASSET_FURNITURE){Sprite *sprite=sprite_load(path);if(!sprite)return false;sprite_free(sprite);return true;}Garment garment;if(!garment_load(&garment,path))return false;garment_free(&garment);return true;}
@@ -127,7 +137,7 @@ bool asset_cache_start(const char *url,const char *directory){
  if(!endpoint_is_lan(&endpoint))return false;
 #endif
  asset_cache_stop();memset(&A,0,sizeof A);job_mutex_init(&A.mutex);job_event_init(&A.wake);snprintf(A.url,sizeof A.url,"%s",url);size_t n=strlen(A.url);while(n&&A.url[n-1]=='/')A.url[--n]=0;snprintf(A.directory,sizeof A.directory,"%s",directory);
- if(!cache_directory(A.directory)||!prepare_revision()){job_event_free(&A.wake);job_mutex_free(&A.mutex);return false;}A.active=SLOTS;A.started=true;
+ if(!cache_directory(A.directory)||!prepare_revision()){job_event_free(&A.wake);job_mutex_free(&A.mutex);return false;}drop_republished();A.active=SLOTS;A.started=true;
 #ifdef __3DS__
  A.thread=threadCreate(worker,NULL,96*1024,0x32,-2,false);if(!A.thread){A.started=false;job_event_free(&A.wake);job_mutex_free(&A.mutex);return false;}
 #else
