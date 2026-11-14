@@ -72,6 +72,9 @@ typedef struct {
  void (*button)(void *user,float x,float y,float w,float h,const char *label,bool pressed,bool enabled);
  /** Edit a local field with the platform keyboard. False preserves its previous value. */
  bool (*edit_text)(void *user,char *value,size_t capacity,const char *hint);
+ /** Optional: free memory the client can rebuild (other penguins' clothing, cached art) before a bank
+  *  load is retried once after a memory failure. */
+ void (*reclaim)(void *user);
 } GameHost;
 
 /** Immediate-mode drawing the game requests between bank layers (device: citro2d; tests: recorded). */
@@ -87,6 +90,8 @@ bool game_port_supported(const char *key);
 /** NULL for an unsupported key or out of memory. The descriptor and host are copied. */
 GamePort *game_port_open(const GameDescriptor *descriptor,const GameHost *host);
 bool game_port_active(const GamePort *port);
+/** Why the session failed, for diagnostics: 0 none, 1 resource missing, 2 out of memory, 3 bank decode/import, 4 incomplete. */
+unsigned game_port_failure(const GamePort *port);
 /** Fixed 24 Hz logic: elapsed real seconds are accumulated and consumed in ticks. */
 void game_port_update(GamePort *port,float seconds,const GameInput *input);
 void game_port_touch(GamePort *port,GameTouch phase,float x,float y);

@@ -55,6 +55,7 @@ struct GamePort {
  float clock,accumulator,requestAt;bool paused,joinSent,snap,disconnected,rejoining;float deferredAt;unsigned deferred; /* bit per lazy bank shown as "Loading..." for a frame before its blocking load */
  PayState pay;unsigned score,failedBank;
  char status[96];bool retry;
+ bool reclaimed;unsigned failure;float reclaimAt; /* one automatic retry after freeing memory; reason of the last failure */
  GameBankJob *jobs[GAME_PORT_BANKS]; /* banks loading in the background */
  Button buttons[GAME_BUTTONS],next[GAME_BUTTONS];unsigned buttonCount,nextCount,pressed,clicked;
 };
@@ -78,6 +79,7 @@ const GameDescriptor *game_port_descriptor(const GamePort *p){return &p->descrip
 const GameHost *game_port_host(const GamePort *p){return &p->host;}
 GameBank *game_port_bank(GamePort *p,unsigned i){return i<GAME_PORT_BANKS?p->banks[i]:NULL;}
 GameSessionState game_port_session(const GamePort *p){return p->session;}
+unsigned game_port_failure(const GamePort *p){return p?p->failure:0;}
 bool game_port_connected(const GamePort *p){return p&&p->descriptor.online&&!p->disconnected&&!p->rejoining;}
 float game_port_clock(const GamePort *p){return p->clock;}
 const char *game_port_status(const GamePort *p){return p->status;}
@@ -111,19 +113,26 @@ static GameResource load_bank(GamePort *p,unsigned i){
  if(!name)return GAME_RESOURCE_FAILED;
 #endif
  char path[256];GameResource state=p->host.resource?p->host.resource(p->host.user,name,path,sizeof path):GAME_RESOURCE_FAILED;
- if(state!=GAME_RESOURCE_READY){if(state==GAME_RESOURCE_FAILED)set_status(p,"The game resources are not available.",true);return state;}
+ if(state!=GAME_RESOURCE_READY){if(state==GAME_RESOURCE_FAILED){p->failure=1;set_status(p,"The game resources are not available.",true);}return state;}
  const char *error=NULL;
  if(!p->jobs[i]){
   /* One background load at a time keeps the texture limit exact. */
   for(unsigned j=0;j<GAME_PORT_BANKS;j++)if(p->jobs[j])return GAME_RESOURCE_PENDING;
   size_t used=game_port_texture_bytes(p);
   p->jobs[i]=game_bank_job_start(path,used<GAME_PORT_TEXTURE_LIMIT?GAME_PORT_TEXTURE_LIMIT-used:0);
-  if(!p->jobs[i]){set_status(p,"Out of memory.",true);return GAME_RESOURCE_FAILED;}
+  if(!p->jobs[i]){
+   /* Long sessions fragment memory: free what the client can rebuild and try once more. */
+   if(!p->reclaimed&&p->host.reclaim){p->reclaimed=true;p->reclaimAt=p->clock;p->host.reclaim(p->host.user);return GAME_RESOURCE_PENDING;}
+   p->failure=2;set_status(p,"Out of memory.",true);return GAME_RESOURCE_FAILED;
+  }
   p->deferredAt=p->clock;
  }
  if(!game_bank_job_done(p->jobs[i]))return GAME_RESOURCE_PENDING;
  p->banks[i]=game_bank_job_finish(p->jobs[i],&error);p->jobs[i]=NULL;
- if(!p->banks[i]){set_status(p,error?error:"Could not load the game.",true);return GAME_RESOURCE_FAILED;}
+ if(!p->banks[i]){
+  if(!p->reclaimed&&p->host.reclaim){p->reclaimed=true;p->reclaimAt=p->clock;p->host.reclaim(p->host.user);return GAME_RESOURCE_PENDING;}
+  p->failure=error&&strstr(error,"emory")?2:3;set_status(p,error?error:"Could not load the game.",true);return GAME_RESOURCE_FAILED;
+ }
  swl_player_color(game_bank_scene(p->banks[i]),p->descriptor.colourRGB?p->descriptor.colourRGB:0x003366u);
  return GAME_RESOURCE_READY;
 }
@@ -141,6 +150,8 @@ void game_port_release_bank(GamePort *p,unsigned i){
 }
 
 static void load_banks(GamePort *p){
+ /* After a reclaim request the client frees memory at the next frame start; retry after that. */
+ if(p->reclaimed&&p->clock-p->reclaimAt<.2f&&p->clock>=p->reclaimAt)return;
  for(unsigned i=0;i<GAME_PORT_BANKS;i++){
   if(!p->controller->banks[i]||(p->controller->lazy&1u<<i))continue;
   bool fresh=!p->banks[i];
@@ -154,13 +165,13 @@ static void load_banks(GamePort *p){
   (void)fresh;
 #endif
  }
- if(!p->controller->ready(p->game)){p->session=GAME_SESSION_FAILED;set_status(p,"The game resources are incomplete.",true);return;}
+ if(!p->controller->ready(p->game)){p->failure=4;p->session=GAME_SESSION_FAILED;set_status(p,"The game resources are incomplete.",true);return;}
  if(p->descriptor.online&&p->controller->kind==GAME_SOLO){p->session=GAME_SESSION_JOINING;join(p);}else p->session=GAME_SESSION_PLAYING;
 }
 
 void game_port_retry(GamePort *p){
  if(!p||!p->retry)return;
- set_status(p,"",false);
+ set_status(p,"",false);p->reclaimed=false;
  if(p->failedBank){unsigned i=p->failedBank-1;p->failedBank=0;game_port_require_bank(p,i);return;}
  if(p->session==GAME_SESSION_FAILED){for(unsigned i=0;i<GAME_PORT_BANKS;i++)if(!p->banks[i]){p->session=GAME_SESSION_LOADING;break;}if(p->session==GAME_SESSION_FAILED)game_port_leave(p);}
  else if(p->disconnected)set_status(p,"Connection lost. Reconnecting...",false);
