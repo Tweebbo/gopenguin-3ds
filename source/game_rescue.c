@@ -258,7 +258,7 @@ static void draw_arrow(Rescue *r,const Arrow *a){
 static void draw_bottom(void *game){
  Rescue *r=game;GamePort *p=r->port;RescueModel *m=&r->model;char line[80];
  if(r->screen==SCREEN_INTRO){game_port_title_band(p);snprintf(line,sizeof line,"%s",rescue_model_level(m)->name);game_port_text(p,160,70,14,0xffffff,GAME_ALIGN_CENTER,line);game_port_text(p,160,100,10,0xd6ecff,GAME_ALIGN_CENTER,"Collect three puffles and bring them home.");game_port_text(p,160,140,9,0xffffff,GAME_ALIGN_CENTER,"Tap Play or press A to start.");game_port_button(p,BUTTON_PLAY,90,180,140,40,"Play",true);return;}
- if(r->screen==SCREEN_TITLE){game_port_title_band(p);game_port_button(p,BUTTON_PLAY,90,197,140,36,"Play",game_port_session(p)==GAME_SESSION_PLAYING);game_port_button(p,BUTTON_EXIT,196,197,84,36,"Exit",true);return;}
+ if(r->screen==SCREEN_TITLE){game_port_title_band(p);/* Side by side, centred: Play 40-180, Exit 196-280 (they used to overlap by 34 px). */game_port_button(p,BUTTON_PLAY,40,197,140,36,"Play",game_port_session(p)==GAME_SESSION_PLAYING);game_port_button(p,BUTTON_EXIT,196,197,84,36,"Exit",true);return;}
  if(r->screen==SCREEN_RESULTS){snprintf(line,sizeof line,"Score %u",m->score);game_port_text(p,160,40,16,0xffffff,GAME_ALIGN_CENTER,line);if(m->phase==RESCUE_DONE){game_port_text(p,160,70,12,0xffffff,GAME_ALIGN_CENTER,"Level complete!");game_port_button(p,BUTTON_NEXT,90,110,140,42,"Next level",true);}else{game_port_text(p,160,70,12,0xffffff,GAME_ALIGN_CENTER,"All nine levels complete!");game_port_button(p,BUTTON_PAY,90,110,140,44,"Get coins",true);}return;}
  /* Thin header: level and what the upper HUD does not show (carried puffles, moves). */
  game_port_rect(p,0,0,320,LOW_TOP,0x0b2a4a);game_port_rect(p,0,LOW_TOP-1,320,1,0x4fc0ff);
