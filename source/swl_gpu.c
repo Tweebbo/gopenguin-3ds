@@ -23,7 +23,16 @@ static struct {
  const SWLGPUAtlas *atlases;bool (*depth)(void *,float),(*needed)(void *,float);void *depthUser;
 } G;
 static const SWLColor identity={{1,1,1,1},{0,0,0,0}};
-static void flush(void){if(G.count){C3D_DrawArrays(GPU_TRIANGLES,G.pending,G.count);G.count=0;}}
+/* Words kept free in the frame's GPU command list for the 2D interface drawn after the scenes.
+ * libctru stops the program (svcBreak) when a command does not fit, so a scene that would
+ * overflow the list stops drawing for that frame instead. */
+#ifndef SWL_GPU_CMD_RESERVE
+#define SWL_GPU_CMD_RESERVE 8192u
+#endif
+static unsigned starved;
+static bool cmd_room(void){u32 *addr,size,offset;GPUCMD_GetBuffer(&addr,&size,&offset);if(size>offset&&size-offset>SWL_GPU_CMD_RESERVE)return true;starved++;return false;}
+unsigned swl_gpu_starved(void){unsigned n=starved;starved=0;return n;}
+static void flush(void){if(G.count){if(cmd_room())C3D_DrawArrays(GPU_TRIANGLES,G.pending,G.count);G.count=0;}}
 static void shader_state(void){
  C3D_BindProgram(&G.shader);C3D_AttrInfo *a=C3D_GetAttrInfo();AttrInfo_Init(a);AttrInfo_AddLoader(a,0,GPU_FLOAT,3);AttrInfo_AddLoader(a,1,GPU_FLOAT,2);
  C3D_BufInfo *b=C3D_GetBufInfo();BufInfo_Init(b);BufInfo_Add(b,G.vertices,sizeof(Vertex),2,0x10);
@@ -79,6 +88,7 @@ static bool set_color(SWLColor c){
  G.color=c;G.colorSet=true;return true;
 }
 static bool quad(C3D_Tex *texture,const SWLMatrix *m,float left,float top,float width,float height,float u0,float v0,float u1,float v1,SWLColor color){
+ if(!cmd_room())return true; /* skipped for this frame, not an error */
  if(G.used+6>VERTICES||!set_color(color))return false;
  if(G.texture!=texture){flush();C3D_TexBind(0,texture);G.texture=texture;}
  static const unsigned order[]={0,1,2,2,1,3};if(!G.count)G.pending=G.used;

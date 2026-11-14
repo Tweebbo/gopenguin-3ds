@@ -10,6 +10,8 @@ void swl_gpu_free(void);
 /** Select the full screen for previews drawn outside a room's clipped view. */
 void swl_gpu_screen(C3D_RenderTarget *target,unsigned width,unsigned height);
 void swl_gpu_frame(void);
+/** Draws dropped since the last call because the GPU command list was nearly full. */
+unsigned swl_gpu_starved(void);
 /** Flush written vertices once, after both screens and before C3D_FrameEnd. */
 void swl_gpu_commit(void);
 bool swl_gpu_embed(SWLScene *scene,SWLMatrix view,const SWLGPUAtlas *atlases);
