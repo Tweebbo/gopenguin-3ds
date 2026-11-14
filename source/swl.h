@@ -69,4 +69,5 @@ bool swl_visible(SWLScene *scene,const char *path,bool visible);
 void swl_sound_handler(SWLScene *scene,SWLSound handler,void *user);
 bool swl_restart(SWLScene *scene);
 SWLStats swl_stats(const SWLScene *scene);
+unsigned swl_playing(const SWLScene *scene,char *out,size_t capacity);
 SWLMatrix swl_matrix_multiply(SWLMatrix parent,SWLMatrix child);

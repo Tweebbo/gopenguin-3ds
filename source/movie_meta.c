@@ -8,7 +8,7 @@
    font JSON, which cost 15-30 ms per frame on an Old 3DS for one long animated field. */
 typedef struct {char path[SWL_PATH];unsigned id;char *value;SWLArt *glyphs;int count;} GlyphCache;
 #define GLYPH_CACHE 12
-struct MovieMeta {GlyphCache glyphCache[GLYPH_CACHE];unsigned glyphNext;json_t *root,*controls,*assignments,*symbols,*textValues;unsigned frames;char clip[SWL_PATH];struct {char path[SWL_PATH];unsigned count;} secrets[32];unsigned nSecrets;};
+struct MovieMeta {GlyphCache glyphCache[GLYPH_CACHE];unsigned glyphNext;unsigned textIds[64],nTextIds;bool allText;json_t *root,*controls,*assignments,*symbols,*textValues;unsigned frames;char clip[SWL_PATH];struct {char path[SWL_PATH];unsigned count;} secrets[32];unsigned nSecrets;};
 static unsigned number(json_t *root,const char *key){json_t *n=json_object_get(root,key);json_int_t value=json_integer_value(n);return json_is_integer(n)&&value>=0&&value<=0x7fffffff?(unsigned)value:0;}
 static const char *string(json_t *root,const char *key){const char *s=json_string_value(json_object_get(root,key));return s?s:"";}
 static bool commands_valid(json_t *commands){if(!json_is_array(commands)||json_array_size(commands)>32)return false;for(size_t i=0;i<json_array_size(commands);i++){json_t *c=json_array_get(commands,i);unsigned op=number(c,"op");if(!json_is_object(c)||!((op>=1&&op<=4)||(op>=10&&op<=14)||op==24)||strlen(string(c,"target"))>=SWL_PATH||strlen(string(c,"room"))>=48)return false;json_t *frame=json_object_get(c,"frame");if(frame&&!json_is_integer(frame)&&!json_is_string(frame))return false;if(json_is_string(frame)&&strlen(json_string_value(frame))>=64)return false;}return true;}
@@ -26,6 +26,8 @@ MovieMeta *movie_meta_load(const void *bytes,size_t length){
  MovieMeta *m=calloc(1,sizeof *m);if(!m){json_decref(root);return NULL;}m->root=root;m->textValues=json_object();if(!m->textValues)goto bad;m->controls=json_object_get(root,"controls");m->assignments=json_object_get(root,"assignments");m->symbols=json_object_get(root,"symbols");m->frames=number(root,"frames");const char *clip=string(root,"clip");
  if(!*clip||strlen(clip)>=SWL_PATH||!m->frames||m->frames>4096||!json_is_array(m->controls)||json_array_size(m->controls)>2048||!json_is_array(m->assignments)||json_array_size(m->assignments)>8192||!json_is_object(m->symbols))goto bad;
  if(!fonts_valid(json_object_get(root,"nativeFonts")))goto bad;
+ /* Text field ids, so the per-instance text query skips sprites and shapes without a JSON lookup. */
+ {const char *key;json_t *v;json_object_foreach(json_object_get(json_object_get(root,"nativeFonts"),"fields"),key,v){char *end;unsigned long id=strtoul(key,&end,10);(void)v;if(*end||m->nTextIds==64){m->allText=true;break;}m->textIds[m->nTextIds++]=(unsigned)id;}}
  strcpy(m->clip,clip);
  for(size_t i=0;i<json_array_size(m->controls);i++){json_t *c=json_array_get(m->controls,i),*bounds=json_object_get(c,"bounds");if(!number(c,"id")||!commands_valid(json_object_get(c,"commands"))||!json_is_array(bounds)||json_array_size(bounds)>1024)goto bad;for(size_t j=0;j<json_array_size(bounds);j++){json_t *b=json_array_get(bounds,j);if(json_is_null(b))continue;if(!json_is_array(b)||json_array_size(b)!=4)goto bad;for(unsigned k=0;k<4;k++){json_t *v=json_array_get(b,k);double n=json_number_value(v);if(!json_is_number(v)||!isfinite(n)||fabs(n)>1000000)goto bad;}}}
  for(size_t i=0;i<json_array_size(m->assignments);i++){json_t *a=json_array_get(m->assignments,i);if(strlen(string(a,"scope"))>=SWL_PATH||strlen(string(a,"path"))>=SWL_PATH||!number(a,"frame")||!commands_valid(json_object_get(a,"commands")))goto bad;}
@@ -92,6 +94,8 @@ static const char *text_value(MovieMeta *m,const char *path){
 }
 int movie_meta_glyphs(MovieMeta *m,const SWLScene *scene,const char *path,unsigned id,SWLArt *out,unsigned capacity){
  if(!m||!path)return -1;
+ /* Only native-font fields have glyphs (layout_glyphs returns -1 for any other id). */
+ if(!m->allText){bool text=false;for(unsigned i=0;i<m->nTextIds;i++)if(m->textIds[i]==id){text=true;break;}if(!text)return -1;}
  const char *value=text_value(m,path);if(!value||strlen(path)>=SWL_PATH)return layout_glyphs(m,scene,path,id,out,capacity);
  for(unsigned i=0;i<GLYPH_CACHE;i++){GlyphCache *c=&m->glyphCache[i];
   if(c->value&&c->id==id&&!strcmp(c->path,path)&&!strcmp(c->value,value)){

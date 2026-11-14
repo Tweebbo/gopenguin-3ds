@@ -36,8 +36,11 @@ static const uint8_t *row(const SWLScene *s,unsigned t,unsigned n){return s->tab
 static bool range(uint32_t first,uint32_t count,uint32_t total){return first<=total&&count<=total-first;}
 static bool string_valid(const SWLScene *s,uint32_t n){return n<s->count[STRING]&&memchr(s->table[STRING]+n,0,s->count[STRING]-n);}
 static const char *string_at(const SWLScene *s,uint32_t n){return (const char *)s->table[STRING]+n;}
-static uint32_t hash_path(const char *p){uint32_t h=2166136261u;for(;*p;p++)h=(h^(uint8_t)*p)*16777619u;return h;}
-static uint64_t instance_hash(const char *p){uint64_t h=14695981039346656037ull;for(;*p;p++)h=(h^(uint8_t)*p)*1099511628211ull;return h;}
+/* FNV-1a is incremental: a child's hash continues from its parent's over the ".name" or "#depth" suffix. */
+static uint32_t hash_more(uint32_t h,const char *p){for(;*p;p++)h=(h^(uint8_t)*p)*16777619u;return h;}
+static uint32_t hash_path(const char *p){return hash_more(2166136261u,p);}
+static uint64_t instance_more(uint64_t h,const char *p){for(;*p;p++)h=(h^(uint8_t)*p)*1099511628211ull;return h;}
+static uint64_t instance_hash(const char *p){return instance_more(14695981039346656037ull,p);}
 static const uint8_t *symbol(const SWLScene *s,unsigned t,uint32_t id){
  unsigned lo=0,hi=s->count[t];while(lo<hi){unsigned mid=lo+(hi-lo)/2;const uint8_t *r=row(s,t,mid);uint32_t n=u32(r);if(n==id)return r;if(n<id)lo=mid+1;else hi=mid;}return NULL;
 }
@@ -102,11 +105,16 @@ unsigned swl_pages(const SWLScene *s){return s->pages;}
 float swl_rate(const SWLScene *s){return s->rate;}
 const char *swl_error(const SWLScene *s){return s->error;}
 SWLStats swl_stats(const SWLScene *s){SWLStats v=s->stats;v.heads=s->used;v.bytes=sizeof *s+s->fileBytes+SWL_MAX_HEADS*sizeof(Head)+OVERRIDES*sizeof(Override)+2*SWL_MAX_DRAWS*sizeof(Draw)+SWL_MAX_INSTANCES*sizeof(Instance)+SWL_MAX_HITS*sizeof(SWLHit)+1024*sizeof(SWLArt);return v;}
-static Head *head_at(const SWLScene *s,const char *path){uint32_t h=hash_path(path);for(unsigned n=0;n<HASH_SIZE;n++){unsigned slot=(h+n)&(HASH_SIZE-1),v=s->hash[slot];if(!v)return NULL;Head *head=&s->heads[v-1];if(head->hash==h&&!strcmp(head->path,path))return head->active?head:NULL;}return NULL;}
+static Head *head_at_hash(const SWLScene *s,const char *path,uint32_t h);
+static Head *head_at(const SWLScene *s,const char *path){return head_at_hash(s,path,hash_path(path));}
+static Head *head_at_hash(const SWLScene *s,const char *path,uint32_t h){for(unsigned n=0;n<HASH_SIZE;n++){unsigned slot=(h+n)&(HASH_SIZE-1),v=s->hash[slot];if(!v)return NULL;Head *head=&s->heads[v-1];if(head->hash==h&&!strcmp(head->path,path))return head->active?head:NULL;}return NULL;}
 static void rehash(SWLScene *s){memset(s->hash,0,sizeof s->hash);for(unsigned i=0;i<s->used;i++)if(s->heads[i].active){uint32_t h=s->heads[i].hash;for(unsigned n=0;n<HASH_SIZE;n++){unsigned slot=(h+n)&(HASH_SIZE-1);if(!s->hash[slot]){s->hash[slot]=i+1;break;}}}}
 static unsigned clamp_frame(const uint8_t *t,unsigned n){return n<1?1:n>u32(t+8)?u32(t+8):n;}
 static unsigned resolve(const SWLScene *s,uint32_t id,unsigned frame,const char *label){if(label){for(unsigned i=0;i<s->count[LABEL];i++){const uint8_t *r=row(s,LABEL,i);if(u32(r)==id&&!strcmp(label,string_at(s,u32(r+4))))return u32(r+8);}return 0;}const uint8_t *t=symbol(s,TL,id);return t?clamp_frame(t,frame):0;}
-static unsigned override_slot(const SWLScene *s,const char *path){uint32_t h=hash_path(path);for(unsigned n=0;n<OVERRIDE_HASH;n++){unsigned slot=(h+n)&(OVERRIDE_HASH-1),v=s->overrideHash[slot];if(!v||!strcmp(path,s->override[v-1].path))return slot;}return OVERRIDE_HASH;}
+static unsigned override_slot_hash(const SWLScene *s,const char *path,uint32_t h);
+static unsigned override_slot(const SWLScene *s,const char *path){return override_slot_hash(s,path,hash_path(path));}
+static unsigned override_slot_hash(const SWLScene *s,const char *path,uint32_t h){for(unsigned n=0;n<OVERRIDE_HASH;n++){unsigned slot=(h+n)&(OVERRIDE_HASH-1),v=s->overrideHash[slot];if(!v||!strcmp(path,s->override[v-1].path))return slot;}return OVERRIDE_HASH;}
+static Override *override_find(const SWLScene *s,const char *path,uint32_t h){unsigned slot=override_slot_hash(s,path,h);return slot<OVERRIDE_HASH&&s->overrideHash[slot]?(Override *)&s->override[s->overrideHash[slot]-1]:NULL;}
 static Override *override_at(SWLScene *s,const char *path,bool create){unsigned slot=override_slot(s,path);if(slot<OVERRIDE_HASH&&s->overrideHash[slot])return &s->override[s->overrideHash[slot]-1];if(!create)return NULL;if(strlen(path)>=SWL_PATH||s->overrides>=OVERRIDES||slot==OVERRIDE_HASH){fail(s,"Instance override budget exceeded");return NULL;}Override *o=&s->override[s->overrides++];memcpy(o->path,path,strlen(path)+1);s->overrideHash[slot]=(uint16_t)s->overrides;return o;}
 static void reset_children(SWLScene *s,const char *path){size_t len=strlen(path);bool changed=false;for(unsigned i=0;i<s->used;i++)if(s->heads[i].active&&((!len&&s->heads[i].path[0])||(!strncmp(s->heads[i].path,path,len)&&(s->heads[i].path[len]=='.'||s->heads[i].path[len]=='#')))){s->heads[i].active=false;changed=true;}if(changed)rehash(s);}
 static bool relative_path(SWLScene *s,char *out,const char *from,const char *target){
@@ -149,17 +157,17 @@ static bool run(SWLScene *s,Head *h){
  }
  s->actionDepth--;return !s->error;
 }
-static Head *get_head(SWLScene *s,const char *path,uint32_t id){
- Head *h=head_at(s,path);if(h&&h->symbol==id){h->seen=true;return h;}if(h)reset_children(s,path);
+static Head *get_head(SWLScene *s,const char *path,uint32_t hash,uint32_t id){
+ Head *h=head_at_hash(s,path,hash);if(h&&h->symbol==id){h->seen=true;return h;}if(h)reset_children(s,path);
  if(!h)for(unsigned i=0;i<s->used;i++)if(!s->heads[i].active){h=&s->heads[i];break;}
  if(!h){if(s->used>=SWL_MAX_HEADS){fail(s,"Instance budget exceeded");return NULL;}h=&s->heads[s->used++];}
- memset(h,0,sizeof *h);memcpy(h->path,path,strlen(path)+1);h->hash=hash_path(path);h->random=h->hash^0xa341316cu;h->symbol=id;h->frame=1;h->seen=h->active=true;h->playing=u32(symbol(s,TL,id)+8)>1;rehash(s);
+ memset(h,0,sizeof *h);memcpy(h->path,path,strlen(path)+1);h->hash=hash;h->random=h->hash^0xa341316cu;h->symbol=id;h->frame=1;h->seen=h->active=true;h->playing=u32(symbol(s,TL,id)+8)>1;rehash(s);
  for(unsigned i=0;i<s->count[STATE];i++){const uint8_t *r=row(s,STATE,i);if(strcmp(path,string_at(s,u32(r))))continue;unsigned flags=u32(r+8);if(flags&2){h->frame=clamp_frame(symbol(s,TL,id),u32(r+4));h->playing=(flags&4)!=0;}}
  Override *o=override_at(s,path,false);if(o&&o->hasFrame){unsigned frame=resolve(s,id,o->frame,o->label[0]?o->label:NULL);if(!frame){fail(s,"Unknown target label");return NULL;}h->frame=frame;h->playing=o->playing;}
  if(!run(s,h))return NULL;
  return h;
 }
-static bool hidden(SWLScene *s,const char *path){Override *o=override_at(s,path,false);if(o&&o->hasVisible)return !o->visible;for(unsigned i=0;i<s->count[STATE];i++){const uint8_t *r=row(s,STATE,i);if((u32(r+8)&1)&&!strcmp(path,string_at(s,u32(r))))return true;}return false;}
+static bool state_hidden(const SWLScene *s,const char *path){for(unsigned i=0;i<s->count[STATE];i++){const uint8_t *r=row(s,STATE,i);if((u32(r+8)&1)&&!strcmp(path,string_at(s,u32(r))))return true;}return false;}
 static bool append(SWLScene *s,unsigned type,unsigned layer,float depth,SWLMatrix matrix,SWLColor color,uint32_t art,uint32_t token){
  if(s->drawCount>=SWL_MAX_DRAWS)return fail(s,"Draw command budget exceeded");
  if(!finite_matrix(matrix)||!finite_color(color))return fail(s,"Composed transform exceeds budget");
@@ -171,12 +179,14 @@ static bool append(SWLScene *s,unsigned type,unsigned layer,float depth,SWLMatri
  if(type==DRAW&&s->oldView==s->drawView){unsigned slot=(token^art*2654435761u)&(DRAW_HASH-1);while(s->oldHash[slot]){unsigned i=s->oldHash[slot]-1;if(s->old[i].token==token&&s->old[i].art==art){d->previous=(int)i;break;}slot=(slot+1)&(DRAW_HASH-1);}}
  return true;
 }
-static bool walk(SWLScene *s,uint32_t id,const char *path,SWLMatrix matrix,SWLColor color,unsigned depth,unsigned layer,float renderDepth,bool masking);
-static bool entry(SWLScene *s,const uint8_t *r,const char *parent,SWLMatrix matrix,unsigned depth,unsigned layer,float renderDepth,bool force,bool masking){
- const char *name=string_at(s,u32(r+8));char path[SWL_PATH];
- if(*name){size_t a=strlen(parent),b=strlen(name),dot=a?1:0;if(a+dot+b>=sizeof path)return fail(s,"Instance path exceeds budget");memcpy(path,parent,a);if(dot)path[a]='.';memcpy(path+a+dot,name,b+1);}
- else{int n=snprintf(path,sizeof path,"%s#%u",parent,(unsigned)u32(r+4));if(n<0||(size_t)n>=sizeof path)return fail(s,"Instance path exceeds budget");}
- if(!force&&hidden(s,path))return true;
+static bool walk(SWLScene *s,uint32_t id,const char *path,uint32_t pathHash,uint64_t instanceHash,SWLMatrix matrix,SWLColor color,unsigned depth,unsigned layer,float renderDepth,bool masking);
+static bool entry(SWLScene *s,const uint8_t *r,const char *parent,uint32_t parentHash,uint64_t parentInstance,SWLMatrix matrix,unsigned depth,unsigned layer,float renderDepth,bool force,bool masking){
+ const char *name=string_at(s,u32(r+8));char path[SWL_PATH];size_t a=strlen(parent);const char *suffix;
+ if(*name){size_t b=strlen(name),dot=a?1:0;if(a+dot+b>=sizeof path)return fail(s,"Instance path exceeds budget");memcpy(path,parent,a);if(dot)path[a]='.';memcpy(path+a+dot,name,b+1);suffix=path+a;}
+ else{int n=snprintf(path,sizeof path,"%s#%u",parent,(unsigned)u32(r+4));if(n<0||(size_t)n>=sizeof path)return fail(s,"Instance path exceeds budget");suffix=path+a;}
+ uint32_t pathHash=hash_more(parentHash,suffix);uint64_t instanceHash=instance_more(parentInstance,suffix);
+ Override *override=override_find(s,path,pathHash);
+ if(!force){if(override&&override->hasVisible){if(!override->visible)return true;}else if(state_hidden(s,path))return true;}
  unsigned offset=s->version==2?24:20;SWLMatrix local={f32(r+offset),f32(r+offset+4),f32(r+offset+8),f32(r+offset+12),f32(r+offset+16),f32(r+offset+20)};SWLColor color=identity;
  if(!masking)for(unsigned i=0;i<4;i++){color.mult[i]=f32(r+offset+24+i*4);color.add[i]=f32(r+offset+40+i*4);}
  /* Exporters mark the clips the original scripts paint with the player's colour (setRGB) with the sentinel
@@ -184,42 +194,42 @@ static bool entry(SWLScene *s,const uint8_t *r,const char *parent,SWLMatrix matr
  if(!masking&&color.mult[0]==0&&color.mult[1]==0&&color.mult[2]==0&&color.add[0]==1&&color.add[1]==254&&color.add[2]==3){
   if(s->hasPlayer){color.add[0]=s->player[0];color.add[1]=s->player[1];color.add[2]=s->player[2];}else{color.add[0]=0;color.add[1]=0x33;color.add[2]=0x66;}
  }
- Override *override=override_at(s,path,false);if(override){if(override->hasMatrix)local=override->matrix;if(override->hasColor&&!masking)color=override->color;}
+ if(override){if(override->hasMatrix)local=override->matrix;if(override->hasColor&&!masking)color=override->color;}
  if(color.mult[3]==0&&color.add[3]==0)return true;
  SWLMatrix world=swl_matrix_multiply(matrix,local);
  if((u32(r+12)&2)&&!masking){if(s->hitCount>=SWL_MAX_HITS)return fail(s,"Interactive entry budget exceeded");SWLHit *hit=&s->hits[s->hitCount++];hit->id=u32(r+16);hit->matrix=world;memcpy(hit->path,path,strlen(path)+1);}
- return walk(s,u32(r),path,world,color,depth+1,layer,renderDepth,masking);
+ return walk(s,u32(r),path,pathHash,instanceHash,world,color,depth+1,layer,renderDepth,masking);
 }
-static bool list(SWLScene *s,unsigned first,unsigned count,const char *path,SWLMatrix matrix,unsigned depth,unsigned layer,float renderDepth,bool masking){
+static bool list(SWLScene *s,unsigned first,unsigned count,const char *path,uint32_t pathHash,uint64_t instanceHash,SWLMatrix matrix,unsigned depth,unsigned layer,float renderDepth,bool masking){
  for(unsigned i=0;i<count;i++){
   const uint8_t *r=row(s,ENTRY,first+i);unsigned localLayer=layer;float z=renderDepth;
   if(!depth){localLayer=!strcmp(string_at(s,u32(r+8)),"foreground_mc")?1:0;z=s->version==2?f32(r+20):localLayer?900001:(float)u32(r+4);if(!append(s,ROOT,localLayer,z,matrix,identity,0,0))return false;}
   if(u32(r+12)&1){
    if(++s->maskDepth>SWL_MAX_MASKS)return fail(s,"Mask nesting exceeds budget");
    if(s->maskDepth>s->stats.masks)s->stats.masks=s->maskDepth;
-   if(!append(s,MASK_BEGIN,localLayer,z,matrix,identity,0,0)||!entry(s,r,path,matrix,depth,localLayer,z,true,true)||!append(s,MASK_READY,localLayer,z,matrix,identity,0,0))return false;
+   if(!append(s,MASK_BEGIN,localLayer,z,matrix,identity,0,0)||!entry(s,r,path,pathHash,instanceHash,matrix,depth,localLayer,z,true,true)||!append(s,MASK_READY,localLayer,z,matrix,identity,0,0))return false;
    unsigned start=i+1;while(i+1<count&&u32(row(s,ENTRY,first+i+1)+4)<=u32(r+16))i++;
-   if(!list(s,first+start,i-start+1,path,matrix,depth+1,localLayer,z,masking)||!append(s,MASK_END,localLayer,z,matrix,identity,0,0))return false;
+   if(!list(s,first+start,i-start+1,path,pathHash,instanceHash,matrix,depth+1,localLayer,z,masking)||!append(s,MASK_END,localLayer,z,matrix,identity,0,0))return false;
    s->maskDepth--;
-  }else if(!entry(s,r,path,matrix,depth,localLayer,z,false,masking))return false;
+  }else if(!entry(s,r,path,pathHash,instanceHash,matrix,depth,localLayer,z,false,masking))return false;
  }return true;
 }
-static bool walk(SWLScene *s,uint32_t id,const char *path,SWLMatrix matrix,SWLColor color,unsigned depth,unsigned layer,float renderDepth,bool masking){
+static bool walk(SWLScene *s,uint32_t id,const char *path,uint32_t pathHash,uint64_t instanceHash,SWLMatrix matrix,SWLColor color,unsigned depth,unsigned layer,float renderDepth,bool masking){
  if(depth>SWL_MAX_DEPTH)return fail(s,"Timeline nesting exceeds budget");
  if(!finite_matrix(matrix))return fail(s,"Composed matrix exceeds budget");
  const uint8_t *t=symbol(s,TL,id);
  if(s->instanceCount>=SWL_MAX_INSTANCES)return fail(s,"Visible instance budget exceeded");
- uint64_t hash=instance_hash(path);unsigned slot=(unsigned)hash&(INSTANCE_HASH-1);while(s->instanceHash[slot])slot=(slot+1)&(INSTANCE_HASH-1);Instance *instance=&s->instances[s->instanceCount];instance->hash=hash;instance->instance=(SWLInstance){id,1,matrix};s->instanceHash[slot]=(uint16_t)(++s->instanceCount);
- if(s->text&&!masking){int n=s->text(s->textUser,path,id,s->glyphs+s->glyphCount,1024-s->glyphCount);if(n>=0){if((unsigned)n>1024-s->glyphCount)return fail(s,"Dynamic text exceeds glyph budget");for(int i=0;i<n;i++)if(!append(s,DRAW,layer,renderDepth,matrix,color,0x80000000u|s->glyphCount++,hash_path(path)+(unsigned)i))return false;return true;}}
- if(!t){const uint8_t *r=symbol(s,ART,id);if(!r)return fail(s,"Missing art");return append(s,DRAW,layer,renderDepth,matrix,color,(unsigned)((r-s->table[ART])/s->stride[ART]),hash_path(path));}
+ uint64_t hash=instanceHash;unsigned slot=(unsigned)hash&(INSTANCE_HASH-1);while(s->instanceHash[slot])slot=(slot+1)&(INSTANCE_HASH-1);Instance *instance=&s->instances[s->instanceCount];instance->hash=hash;instance->instance=(SWLInstance){id,1,matrix};s->instanceHash[slot]=(uint16_t)(++s->instanceCount);
+ if(s->text&&!masking){int n=s->text(s->textUser,path,id,s->glyphs+s->glyphCount,1024-s->glyphCount);if(n>=0){if((unsigned)n>1024-s->glyphCount)return fail(s,"Dynamic text exceeds glyph budget");for(int i=0;i<n;i++)if(!append(s,DRAW,layer,renderDepth,matrix,color,0x80000000u|s->glyphCount++,pathHash+(unsigned)i))return false;return true;}}
+ if(!t){const uint8_t *r=symbol(s,ART,id);if(!r)return fail(s,"Missing art");return append(s,DRAW,layer,renderDepth,matrix,color,(unsigned)((r-s->table[ART])/s->stride[ART]),pathHash);}
  const uint8_t *first=row(s,FRAME,u32(t+4));Head *h=NULL;
- if(u32(t+8)>1||u32(first+12)){h=get_head(s,path,id);if(!h)return false;}
+ if(u32(t+8)>1||u32(first+12)){h=get_head(s,path,pathHash,id);if(!h)return false;}
  unsigned frame=h?h->frame:1;
  if(s->viewFrame&&!strcmp(path,s->viewPath)){if(s->viewFrame>u32(t+8))return fail(s,"Display frame outside timeline");frame=s->viewFrame;}
  instance->instance.frame=frame;
  bool group=!color_identity(color)&&!masking;unsigned begin=s->drawCount;
  if(group){if(++s->colorDepth>8)return fail(s,"Color nesting exceeds budget");if(s->colorDepth>s->stats.colorGroups)s->stats.colorGroups=s->colorDepth;if(!append(s,COLOR_BEGIN,layer,renderDepth,matrix,color,0,0))return false;}
- const uint8_t *f=row(s,FRAME,u32(t+4)+frame-1);if(!list(s,u32(f),u32(f+4),path,matrix,depth,layer,renderDepth,masking))return false;
+ const uint8_t *f=row(s,FRAME,u32(t+4)+frame-1);if(!list(s,u32(f),u32(f+4),path,pathHash,instanceHash,matrix,depth,layer,renderDepth,masking))return false;
  if(group){
   if(s->drawCount==begin+2&&s->draw[begin+1].type==DRAW){Draw d=s->draw[begin+1];d.color=color_multiply(color,d.color);s->draw[begin]=d;s->drawCount--;}
   else if(!append(s,COLOR_END,layer,renderDepth,matrix,color,0,0))return false;
@@ -235,7 +245,7 @@ static bool prepare(SWLScene *s){
   s->dirty=false;s->drawCount=0;s->stats.draws=s->stats.masks=s->stats.colorGroups=0;s->maskDepth=s->colorDepth=0;
   s->instanceCount=s->hitCount=s->glyphCount=0;memset(s->instanceHash,0,sizeof s->instanceHash);
   for(unsigned i=0;i<s->used;i++)s->heads[i].seen=false;
-  ok=walk(s,s->root,"",(SWLMatrix){1,0,0,1,0,0},identity,0,0,0,false);if(!ok||!s->dirty)break;
+  ok=walk(s,s->root,"",hash_path(""),instance_hash(""),(SWLMatrix){1,0,0,1,0,0},identity,0,0,0,false);if(!ok||!s->dirty)break;
   if(pass==31)ok=fail(s,"Timeline targets did not settle");
  }
  s->stats.preparations++;s->building=false;s->dirty=false;return ok;
@@ -327,3 +337,11 @@ static bool bounds_emit(void *user,const SWLArt *art,const SWLMatrix *m,const SW
 static bool bounds_mask(void *user,unsigned event){Bounds *b=user;if(event==1){if(b->masks==SWL_MAX_MASKS)return false;b->painting[b->masks++]=true;}else if(event==2){if(!b->masks)return false;b->painting[b->masks-1]=false;}else if(event==3){if(!b->masks)return false;b->masks--;}return true;}
 bool swl_bounds(SWLScene *s,float bounds[4]){Bounds b={0};if(!swl_render(s,(SWLMatrix){1,0,0,1,0,0},-1,1,&(SWLRenderer){.emit=bounds_emit,.mask=bounds_mask},&b)||!b.any)return false;memcpy(bounds,b.bounds,sizeof b.bounds);return true;}
 void swl_player_color(SWLScene *s,uint32_t rgb){if(!s)return;float c[3]={(float)(rgb>>16&255),(float)(rgb>>8&255),(float)(rgb&255)};if(s->hasPlayer&&!memcmp(c,s->player,sizeof c))return;memcpy(s->player,c,sizeof c);s->hasPlayer=true;s->dirty=true;}
+
+/** Diagnostics: number of playing timelines and the first paths, comma separated. */
+unsigned swl_playing(const SWLScene *s,char *out,size_t capacity){
+ unsigned n=0;size_t used=0;if(capacity)out[0]=0;
+ for(unsigned i=0;i<s->used;i++){const Head *h=&s->heads[i];if(!h->active||!h->seen||!h->playing)continue;n++;
+  if(used+strlen(h->path)+2<capacity){used+=(size_t)snprintf(out+used,capacity-used,"%s%s",used?",":"",h->path);}}
+ return n;
+}
