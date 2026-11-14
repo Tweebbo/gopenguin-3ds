@@ -360,6 +360,26 @@ const games={
     }));
    };
    flatten(placerEntry.id);
+   // Each sand square (st*/dst*) wraps every frame in a nine-frame clip that stays on frame 1 (stop),
+   // which wraps one more sprite: three timelines per square, 200 squares. The 3DS never moves the
+   // inner clips, so each square's frames carry the leaf art directly (matrices and colours composed).
+   // Old 3DS: the board's scene preparation walks a third of the instances.
+   const mul=(p,q)=>[p[0]*q[0]+p[2]*q[1],p[1]*q[0]+p[3]*q[1],p[0]*q[2]+p[2]*q[3],p[1]*q[2]+p[3]*q[3],p[0]*q[4]+p[2]*q[5]+p[4],p[1]*q[4]+p[3]*q[5]+p[5]];
+   const leaves=(entries,matrix,color,out)=>{
+    for(const e of entries){
+     if(e.clipDepth!==undefined)return false;
+     const m=mul(matrix,e.matrix??[1,0,0,1,0,0]),c=identity(e.color)?color:color?compose(e.color,color):e.color,child=data.sprites[e.id];
+     if(child){if(!leaves(child.frames[0]??[],m,c,out))return false;}
+     else out.push({...e,name:undefined,matrix:m,color:identity(c)?undefined:c});
+    }
+    return true;
+   };
+   const covers=new Set(placer.frames[0].filter(e=>/^d?st\d+$/.test(e.name??'')).map(e=>e.id));
+   for(const id of covers){
+    const sprite=data.sprites[id],frames=[];
+    for(const frame of sprite.frames){const out=[];if(!leaves(frame,[1,0,0,1,0,0],undefined,out))throw Error('Masked sand square '+id);frames.push(out.map((e,i)=>({...e,depth:i+1})));}
+    sprite.frames=frames;
+   }
    return data;
   }}},
  },

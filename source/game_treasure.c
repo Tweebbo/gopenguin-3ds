@@ -18,7 +18,7 @@
 #define TH_OY (-40.0f)
 enum {BUTTON_CLOSE=1,BUTTON_YES,BUTTON_NO};
 
-typedef struct {unsigned frame;int delay;bool active;} Cover;
+typedef struct {unsigned frame;int delay;bool active,shown;} Cover; /* shown: frame pushed to the scene */
 typedef struct {
  GamePort *port;SWLScene *scene;GameBank *bank;
  char names[2][40];int seat,turn;bool started,over,leaving,asking,snapshot,joined,syncFailed,rareShown;
@@ -27,6 +27,7 @@ typedef struct {
  Cover cover[2][TH_SIZE][TH_SIZE]; /* [0] st, [1] dst */
  unsigned sand[2][TH_SIZE];          /* sand animation frame per line (0 = idle) */
  int cursorDir,cursor;float syncAt;unsigned closeTicks;char notice[96];
+ unsigned sandShown[2][TH_SIZE]; /* sand frames already applied by apply_animations() */
 } Hunt;
 
 static bool number(const char *text,unsigned max,unsigned *out){if(!text||!*text)return false;unsigned n=0;for(const unsigned char *p=(const unsigned char *)text;*p;p++){if(*p<'0'||*p>'9'||n>max/10||(n==max/10&&(unsigned)(*p-'0')>max%10))return false;n=n*10+(unsigned)(*p-'0');}*out=n;return true;}
@@ -39,7 +40,7 @@ static bool can_dig(const Hunt *h,int dir,int n){return h->snapshot&&h->started&
 
 /** The treasure frame of a square, or NULL: coins always, gems once part of them is dug out (updateGemStatus). */
 static const char *map_label(const Hunt *h,unsigned r,unsigned c){
- unsigned v=h->map[r][c];if(v==1)return "coin";if(v!=2&&v!=4)return NULL;
+ unsigned v=h->map[r][c];if(v==1)return h->digs[r][c]==2?"coin":NULL;if(v!=2&&v!=4)return NULL;
  bool seen=h->digs[r][c]==2||h->digs[r+1][c]==2||h->digs[r][c+1]==2||h->digs[r+1][c+1]==2;
  return seen?(v==4?"gemrare":"gem"):NULL;
 }
@@ -96,7 +97,7 @@ static void dig(Hunt *h,int dir,unsigned n,bool animate){
  for(unsigned i=0;i<TH_SIZE;i++){
   unsigned r=dir==0?n:i,c=dir==0?i:n,layer=h->digs[r][c]++?1:0;
   if(!layer)set_cover(h,1,r,c,1); /* the lower sand layer only shows once the upper one is dug */
-  if(animate)h->cover[layer][r][c]=(Cover){1,(int)i,true};else set_cover(h,layer,r,c,TH_COVER);
+  if(animate)h->cover[layer][r][c]=(Cover){1,(int)i,true,false};else set_cover(h,layer,r,c,TH_COVER);
  }
  char path[48];snprintf(path,sizeof path,"root.gameMC.player%uSpades.spade%u",turn%2+1,turn/2+1);target(h,path,2,NULL);
  if(animate){h->sand[dir][n]=1;game_port_sound(h->port,"sound_dig",60,false);}
@@ -184,19 +185,34 @@ static void tick(void *game){
  swl_tick_deferred(h->scene);
  if(h->syncFailed||(!h->snapshot&&game_port_clock(h->port)-h->syncAt>10)){const GameHost *host=game_port_host(h->port);if(host->notice)host->notice(host->user,"Could not synchronize the table. Please join again.");leave(h,true);return;}
  /* pcN_right/pcN_down: one square per frame, each sand layer playing out to frame 48. */
+ /* Animation state only; apply_animations() pushes it to the scene once per frame, so catch-up
+  * ticks never prepare the board twice in one frame. */
  for(unsigned layer=0;layer<2;layer++)for(unsigned r=0;r<TH_SIZE;r++)for(unsigned c=0;c<TH_SIZE;c++){
   Cover *k=&h->cover[layer][r][c];if(!k->active)continue;
   if(k->delay>0){k->delay--;continue;}
   if(++k->frame>=TH_COVER){k->frame=TH_COVER;k->active=false;}
-  set_cover(h,layer,r,c,k->frame);
+  k->shown=false;
+ }
+ for(unsigned d=0;d<2;d++)for(unsigned n=0;n<TH_SIZE;n++)if(h->sand[d][n]&&++h->sand[d][n]>11)h->sand[d][n]=0;
+ if(h->closeTicks&&!--h->closeTicks){const GameHost *host=game_port_host(h->port);if(host->notice)host->notice(host->user,h->notice);leave(h,false);}
+}
+
+
+/** Pushes the cover and sand frames computed by tick() to the scene, once per frame before drawing. */
+static void apply_animations(Hunt *h){
+ if(!h->scene)return;
+ for(unsigned layer=0;layer<2;layer++)for(unsigned r=0;r<TH_SIZE;r++)for(unsigned c=0;c<TH_SIZE;c++){
+  Cover *k=&h->cover[layer][r][c];if(k->shown||(!k->active&&!k->frame))continue;
+  if(!k->active||k->delay<=0)set_cover(h,layer,r,c,k->frame?k->frame:1);
+  k->shown=true;
  }
  for(unsigned d=0;d<2;d++)for(unsigned n=0;n<TH_SIZE;n++){
-  if(!h->sand[d][n])continue;
+  unsigned want=h->sand[d][n];if(want==h->sandShown[d][n])continue;h->sandShown[d][n]=want;
   char path[40],child[44];snprintf(path,sizeof path,"root.gameMC.placer.%s%u",d?"sd":"sr",n);snprintf(child,sizeof child,"%s.a",path);
-  if(h->sand[d][n]>10){h->sand[d][n]=0;target_slot(h,path,1,true);continue;}
-  target_slot(h,path,2,false);target(h,child,h->sand[d][n]++,NULL);
+  /* Frames 1-10 of the sand line, then hidden (as the original sand animation). */
+  if(!want||want>10){target_slot(h,path,1,true);continue;}
+  target_slot(h,path,2,false);target(h,child,want,NULL);
  }
- if(h->closeTicks&&!--h->closeTicks){const GameHost *host=game_port_host(h->port);if(host->notice)host->notice(host->user,h->notice);leave(h,false);}
 }
 
 static void send_dig(Hunt *h,int n){
@@ -251,11 +267,14 @@ static void touch(void *game,GameTouch phase,float x,float y){
  else if(h->seat==1&&col>=0&&col<TH_SIZE&&sy>=-TH_TILE){h->cursor=col;send_dig(h,col);}
 }
 /* Top screen: the whole 300x365 window; lower screen: the board under the status strip. */
+/* Called just before each screen draws the bank: the animation frames computed by the ticks are
+ * applied here, after every catch-up tick, so the scene is prepared once per frame. */
+static bool bank_view(void *game,unsigned bank,SWLMatrix *local){(void)bank;(void)local;apply_animations(game);return true;}
 static bool top_view(void *game,SWLMatrix *view){(void)game;*view=(SWLMatrix){0.6575f,0,0,0.6575f,101.4f,0};return true;}
 static bool lower_view(void *game,SWLMatrix *view){(void)game;*view=(SWLMatrix){TH_SCALE,0,0,TH_SCALE,TH_OX,TH_OY};return true;}
 
 const GameController GAME_TREASURE_CONTROLLER={
  .key="treasurehunt",.kind=GAME_TABLE,.stageWidth=300,.stageHeight=365,.backgroundRGB=0x00609c,.banks={"games/treasurehunt.gpk"},.order={0,1,2},
  .create=create,.destroy=destroy,.ready=ready,.frame=frame,.tick=tick,.packet=packet,
- .close=close_game,.draw_bottom=draw_bottom,.touch=touch,.top_view=top_view,.lower_view=lower_view,
+ .close=close_game,.draw_bottom=draw_bottom,.touch=touch,.top_view=top_view,.lower_view=lower_view,.bank_view=bank_view,
 };
