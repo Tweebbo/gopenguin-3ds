@@ -76,6 +76,24 @@
 #include "lobby_geometry.h"
 #include "ui_theme.h"
 #include <jansson.h>
+#ifdef GP_LAN_ONLY
+/* Game frame sections in CPU ticks, written to test-state.log once a second while a game runs. */
+static bool profEnabled,perfLogging;static u64 profWall,profTicks[6],profMax[6],profLoop,profStart,profFrameAt,profFrameMax;static unsigned profFrames;static SWLScene *profScene;
+#define PROF_BEGIN() u64 profT0=svcGetSystemTick()
+#define PROF_END(i) do{u64 profD=svcGetSystemTick()-profT0;profTicks[i]+=profD;if(profD>profMax[i])profMax[i]=profD;}while(0)
+static char profBuf[16384];static size_t profUsed;
+static void prof_write(void){if(!profUsed)return;FILE *t=fopen(DATA_DIR "/test-state.log","a");if(t){fwrite(profBuf,1,profUsed,t);fclose(t);}profUsed=0;}
+static void prof_flush(void){
+ u64 now=osGetTime();if(!profStart){profStart=now;return;}if(now-profStart<1000)return;
+ if(profFrames){static uint64_t lastPreps;uint64_t preps=profScene?swl_stats(profScene).preparations:0;{int n=snprintf(profBuf+profUsed,sizeof profBuf-profUsed,"prof frames=%u preps=%llu top=%.2f lower=%.2f ui=%.2f update=%.2f ms/frame max top=%.1f update=%.1f frame=%.1f rest=%.2f loop=%.2f/%.1f begin=%.2f/%.1f\n",profFrames,(unsigned long long)(preps-lastPreps),profTicks[0]/268111.856/profFrames,profTicks[1]/268111.856/profFrames,profTicks[2]/268111.856/profFrames,profTicks[3]/268111.856/profFrames,profMax[0]/268111.856,profMax[3]/268111.856,profFrameMax/268111.856,(profWall-(profTicks[0]+profTicks[1]+profTicks[2]+profTicks[3]))/268111.856/profFrames,profTicks[4]/268111.856/profFrames,profMax[4]/268111.856,profTicks[5]/268111.856/profFrames,profMax[5]/268111.856);if(n>0&&(size_t)n<sizeof profBuf-profUsed)profUsed+=(size_t)n;}lastPreps=preps;}
+ memset(profTicks,0,sizeof profTicks);memset(profMax,0,sizeof profMax);profFrameMax=0;profWall=0;profFrames=0;profStart=now;
+}
+#else
+#define PROF_BEGIN() do{}while(0)
+#define PROF_END(i) do{}while(0)
+static void prof_flush(void){}
+static void prof_write(void){}
+#endif
 
 typedef struct {C3D_Tex tex;Tex3DS_SubTexture sub;bool loaded;} Texture;
 #define MAP_LOW_TOP 28
@@ -485,7 +503,7 @@ static SWLMatrix book_view(unsigned width,unsigned height,float y,bool zoom){
 static void wrapped(float x,float y,unsigned size,unsigned colour,const char *source,unsigned width,unsigned lines);
 static void top(void){
  GPUpdateView updating=gp_update_view();if(gp_update_blocks_game(updating)){rect(0,0,400,240,0xffffff);center(200,80,16,0x003366,"Updating GoPenguin");wrapped(28,116,14,0x003366,updating.message,344,5);return;}
- if(game){game_port_draw_top(game,sceneTop);return;}
+ if(game){PROF_BEGIN();game_port_draw_top(game,sceneTop);PROF_END(0);return;}
  if(book.open&&book.poster){rect(0,0,400,240,0x000000);if(book.bank){movie_bank_draw(book.bank,sceneTop,400,240,(SWLMatrix){.a=1.48f,.d=1.48f,.x=200-380*1.48f,.y=-35*1.48f},0);C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);}return;}
  if(book.open){rect(0,0,400,240,0xffffff);if(book.bank){movie_bank_draw(book.bank,sceneTop,400,240,book_view(400,240,0,true),book.clock*swl_rate(movie_bank_scene(book.bank)));C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);}return;}
  if(demo.tab==1&&!mapList&&islandMap.loaded){image(&islandMap,26,0,347,240,0xffffffff);return;}
@@ -1665,6 +1683,8 @@ static void perf_goto_step(void){
  if(!strcmp(verb,"game")&&n>=2){modal.open=false;demo.tab=0;game_start(arg);return;}
 }
 static void gameplay_test_step(void){
+ /* While a game is measured the hooks poll less (each poll is an SD open): perf-goto every 3 s, nothing else. */
+ if(game&&perfLogging){static u64 slow;if(now_ms()-slow>=3000){slow=now_ms();perf_goto_step();}return;}
  perf_goto_step();
  static bool backgroundChecked,backgroundAutomatic,backgroundUI;static unsigned backgroundUiStep;static u64 backgroundUiAt;
  if(!backgroundChecked){FILE *flag=fopen(DATA_DIR "/background-update-auto","r");backgroundAutomatic=flag!=NULL;if(flag)fclose(flag);flag=fopen(DATA_DIR "/background-ui-auto","r");backgroundUI=flag!=NULL;if(flag)fclose(flag);backgroundAutomatic|=backgroundUI;backgroundChecked=true;}
@@ -1734,6 +1754,9 @@ static void gameplay_test_step(void){
 }
 #endif
 static void game_restore(void){
+#ifdef GP_LAN_ONLY
+ prof_write();
+#endif
  bool table=queuedGame.table!=0,lost=gameMultiplayerLost||pnet_state()!=PNET_ONLINE;
  const LobbyGeometrySeat *point=table?lobby_geometry_lookup(queuedGame.returnRoom,LOBBY_TABLE,queuedGame.table,queuedGame.seat):NULL;
  pnet_manual_room(false);game_port_free(game);game=NULL;gameLeaving=false;gameQueued=false;wantedRoom=0;demo.tab=0;modal.open=false;sceneOK=room_textures(currentRoom);lobby_release(&lobby);lobbyUI.open=false;lobby_stop();
@@ -1784,7 +1807,7 @@ static const char *section_title(void){
 }
 static void bottom(void){
  if(chatKeyboard.active&&!modal.open){C2D_ViewReset();C2D_SetTintMode(C2D_TintMult);const ChatKeyboardWidgets widgets={box,text,center,keyboard_width};chat_keyboard_draw(&chatKeyboard,osGetTime(),&widgets);return;}
- if(game){ui_game_style(game_port_controller(game)->nightPanel);game_port_draw_lower(game,sceneBottom);game_port_draw_bottom(game);return;}
+ if(game){ui_game_style(game_port_controller(game)->nightPanel);{PROF_BEGIN();game_port_draw_lower(game,sceneBottom);PROF_END(1);}{PROF_BEGIN();game_port_draw_bottom(game);PROF_END(2);}return;}
  ui_frame();ui_background();header(book.open?book.info->title:section_title());
  if(modal.open){modal_draw();return;}
  if(lobbyUI.open||lobbyUI.moving||lobbyUI.leavePending){lobby_draw();return;}
@@ -1997,6 +2020,9 @@ static void performance_record(u64 now,unsigned draw_ms,bool updating){
  {static int online=-1;if(online<0){FILE *flag=fopen(DATA_DIR "/performance-online","r");online=flag!=NULL;if(flag)fclose(flag);}performanceEnabled=performance.enabled&&!online;}
  game_port_test_tracing(!performanceEnabled);
 #endif
+#ifdef GP_LAN_ONLY
+ perfLogging=performance.enabled;
+#endif
  if(!performance.enabled)return;
  char bookPhase[24];if(book.open&&book.info)snprintf(bookPhase,sizeof bookPhase,"book-%u-p%u",book.info->id,book.page);
  const char *next=updating?"updater":game?queuedGame.key:book.open&&book.info?bookPhase:roomBank?(igloo.editing?(editor.inventory?"igloo-furniture":"igloo-editor"):"igloo"):currentRoom?currentRoom->key:"loading";
@@ -2077,6 +2103,9 @@ int main(int argc,char **argv){
  u64 last=osGetTime(),sample=last,lastMove=0,updateCheckAt=last+10000;char offeredUpdate[24]="";unsigned frames=0;float sceneClock=0,lastX=demo.actors[0].x,lastY=demo.actors[0].y;bool wasMoving=false;PNetState previousState=PNET_OFFLINE;
  stability_client_storage(DATA_DIR);
  while(aptMainLoop()){
+#ifdef GP_LAN_ONLY
+  profLoop=svcGetSystemTick();
+#endif
   u64 now=osGetTime();float dt=(now-last)/1000.0f;
   unsigned elapsedFrame=(unsigned)(now-last);
   last=now;if(dt>.1f)dt=.1f;hidScanInput();u32 down=hidKeysDown(),held=hidKeysHeld();
@@ -2326,14 +2355,23 @@ int main(int argc,char **argv){
   wear_begin();if(roomBank&&!book.open){if(igloo.layout.floor)wear_want_pose(asset_key(ASSET_FLOOR,igloo.layout.floor),iglooGeometry->floorFrame,1);for(unsigned i=0;i<igloo.layout.count;i++){IglooFurniture *f=&igloo.layout.items[i];wear_want_pose(asset_key(ASSET_FURNITURE,f->id),f->rotation,f->frame);}}if(igloo.editing&&editor.inventory){editor_inventory();for(unsigned n=editor.page*6;n<editor.count&&n<(editor.page+1)*6;n++)wear_want(asset_key(ASSET_FURNITURE_ICON,editor.items[n]));}if(!book.open&&demo.tab==7){Actor *a=selected_actor();if(a){if(a->look[7])wear_want(asset_key(ASSET_PHOTO,a->look[7]));for(unsigned i=0;i<6;i++)wear_want(asset_key(ASSET_PAPER,a->look[i]));if(a->look[6])wear_want(asset_key(ASSET_ICON,a->look[6]));}}if(!book.open&&demo.tab==2)inventory_prepare(&inventoryUI,clientData,&profile,&demo.actors[0]);for(unsigned i=0;!book.open&&i<demo.count;i++)if(room_actor_visible(i))actor_want(&demo.actors[i]);stadium_vuvuzelas_want();
   if(!book.open)for(unsigned i=0;i<puffles.count;i++)if(pet_shown(&puffles.pets[i])||(demo.tab==13&&puffles.pets[i].owner==pnet_id()&&puffles.pets[i].id==petSelected)){unsigned art=asset_key(ASSET_PUFFLE,puffles.pets[i].type+1);wear_want_pose(art,puffles.pets[i].frame,1);wear_want_pose(art,puffles.pets[i].wanted,1);}
   }
-  C3D_FrameBegin(C3D_FRAME_SYNCDRAW);game_transition();
+#ifdef GP_LAN_ONLY
+  if(game){u64 t=svcGetSystemTick()-profLoop;profTicks[4]+=t;if(t>profMax[4])profMax[4]=t;}
+#endif
+  {PROF_BEGIN();C3D_FrameBegin(C3D_FRAME_SYNCDRAW);if(game)PROF_END(5);}game_transition();
   if(reclaimWanted){reclaimWanted=false;wear_free();if(!book.open){movie_bank_free(book.bank);book.bank=NULL;}malloc_trim(0);}
   if(chatGlyphs)C2D_TextBufClear(chatGlyphs);
   if(game){GameInput input=game_input(down,held,&pad);
 #ifdef GP_LAN_ONLY
    if(performanceStartFrames&&game_port_session(game)==GAME_SESSION_PLAYING){if(performanceStartFrames==2||performanceStartFrames==6||performanceStartFrames==10)input.down|=GAME_KEY_A;if(++performanceStartFrames>10)performanceStartFrames=0;}
 #endif
-   game_port_pause(game,gameSuspended||(queuedGame.online&&networkState!=PNET_ONLINE));game_port_update(game,dt,&input);}
+   game_port_pause(game,gameSuspended||(queuedGame.online&&networkState!=PNET_ONLINE));{PROF_BEGIN();game_port_update(game,dt,&input);PROF_END(3);}
+#ifdef GP_LAN_ONLY
+   {u64 tick=svcGetSystemTick();if(profFrameAt){u64 d=tick-profFrameAt;profWall+=d;if(d>profFrameMax)profFrameMax=d;}profFrameAt=tick;}
+   profScene=game?game_bank_scene(game_port_bank(game,0)):NULL;profFrames++;
+   {static int checked=-1;if(checked<0){FILE *f=fopen(DATA_DIR "/prof-enabled","r");checked=f!=NULL;if(f)fclose(f);profEnabled=checked;}if(profEnabled)prof_flush();}
+#endif
+   }
   else{
    if((wantedRoom||waitingIgloo||wantedIgloo)&&book.open)book.close=true;
    book_update();styles_update();
@@ -2348,7 +2386,8 @@ int main(int argc,char **argv){
   frames++;if(now-sample>=1000){
    fps=frames*1000.0f/(now-sample);frames=0;sample=now;
 #ifdef GP_LAN_ONLY
-   if(!performanceEnabled){unsigned visible=0;for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo))visible++;
+   /* The once-a-second trace opens two SD files; skip it while measuring frame times. */
+   if(!performanceEnabled&&!performance.enabled){unsigned visible=0;for(unsigned i=0;i<puffles.count;i++)if(puffles_visible(&puffles,&puffles.pets[i],&demo))visible++;
    FILE *trace=fopen(DATA_DIR "/test-state.log","a");if(trace){
     if(book.open&&book.bank)fprintf(trace,"camera zoom=%u x=%.3f y=%.3f tracking=%u dragging=%u modal=%u page=%u\n",book.zoom,book.camera.x,book.camera.y,book.camera.tracking,book.camera.dragging,modal.open,book.page);
     FILE *audit=fopen(DATA_DIR "/save-audit","r");if(audit){fclose(audit);fprintf(trace,"savecheck connected=%u saved=%u restore=%u coins=%u head=%u\n",pnet_state()==PNET_ONLINE,settings.session[0]!=0,settings.restoreRequired,profile.coins,demo.actors[0].look[0]);}
