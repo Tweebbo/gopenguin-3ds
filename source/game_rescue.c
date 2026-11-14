@@ -179,7 +179,8 @@ static void *create(GamePort *port){Rescue *r=calloc(1,sizeof *r);if(!r)return N
 static void destroy(void *game){free(game);}
 static bool ready(void *game){
  Rescue *r=game;r->introBank=game_port_bank(r->port,1);r->introScene=game_bank_scene(r->introBank);if(!r->introScene)return false;
- r->screen=SCREEN_TITLE;request_theme(r,0);return true;
+ /* Title: the first level's intro art (frame 18: the puffle on the ice; the last frame fades to black). */
+ r->screen=SCREEN_TITLE;r->introFrame=18;sync_intro(r);request_theme(r,0);return true;
 }
 static void play_effects(Rescue *r){unsigned sounds=rescue_model_take_sounds(&r->model);if(sounds&RESCUE_SOUND_PUFFLE)game_port_sound(r->port,"puffle",55,false);if(sounds&RESCUE_SOUND_HOME)game_port_sound(r->port,"rescue",55,false);if(sounds&RESCUE_SOUND_WIPEOUT)game_port_sound(r->port,"wipeout",55,false);}
 static void enter_game(Rescue *r){r->screen=SCREEN_GAME;r->camSet=false;r->shownLevel=r->shownScore=0;camera_follow(r,true);sync(r);}
@@ -257,8 +258,8 @@ static void draw_arrow(Rescue *r,const Arrow *a){
 }
 static void draw_bottom(void *game){
  Rescue *r=game;GamePort *p=r->port;RescueModel *m=&r->model;char line[80];
- if(r->screen==SCREEN_INTRO){game_port_title_band(p);snprintf(line,sizeof line,"%s",rescue_model_level(m)->name);game_port_text(p,160,70,14,0xffffff,GAME_ALIGN_CENTER,line);game_port_text(p,160,100,10,0xd6ecff,GAME_ALIGN_CENTER,"Collect three puffles and bring them home.");game_port_text(p,160,140,9,0xffffff,GAME_ALIGN_CENTER,"Tap Play or press A to start.");game_port_button(p,BUTTON_PLAY,90,180,140,40,"Play",true);return;}
- if(r->screen==SCREEN_TITLE){game_port_title_band(p);/* Side by side, centred: Play 40-180, Exit 196-280 (they used to overlap by 34 px). */game_port_button(p,BUTTON_PLAY,40,197,140,36,"Play",game_port_session(p)==GAME_SESSION_PLAYING);game_port_button(p,BUTTON_EXIT,196,197,84,36,"Exit",true);return;}
+ if(r->screen==SCREEN_INTRO){game_port_title_band(p);game_port_rect(p,0,60,320,98,0x062646);snprintf(line,sizeof line,"%s",rescue_model_level(m)->name);game_port_text(p,160,70,14,0xffffff,GAME_ALIGN_CENTER,line);game_port_text(p,160,100,10,0xd6ecff,GAME_ALIGN_CENTER,"Collect three puffles and bring them home.");game_port_text(p,160,140,9,0xffffff,GAME_ALIGN_CENTER,"Tap Play or press A to start.");game_port_button(p,BUTTON_PLAY,90,180,140,40,"Play",true);return;}
+ if(r->screen==SCREEN_TITLE){game_port_title_band(p);/* Text over the art needs its own band to stay readable. */game_port_rect(p,0,106,320,62,0x062646);game_port_text(p,160,120,16,0xffffff,GAME_ALIGN_CENTER,"Puffle Rescue");game_port_text(p,160,148,10,0xd6ecff,GAME_ALIGN_CENTER,"Guide the puffles home across nine levels.");/* Side by side, centred: Play 40-180, Exit 196-280 (they used to overlap by 34 px). */game_port_button(p,BUTTON_PLAY,40,197,140,36,"Play",game_port_session(p)==GAME_SESSION_PLAYING);game_port_button(p,BUTTON_EXIT,196,197,84,36,"Exit",true);return;}
  if(r->screen==SCREEN_RESULTS){snprintf(line,sizeof line,"Score %u",m->score);game_port_text(p,160,40,16,0xffffff,GAME_ALIGN_CENTER,line);if(m->phase==RESCUE_DONE){game_port_text(p,160,70,12,0xffffff,GAME_ALIGN_CENTER,"Level complete!");game_port_button(p,BUTTON_NEXT,90,110,140,42,"Next level",true);}else{game_port_text(p,160,70,12,0xffffff,GAME_ALIGN_CENTER,"All nine levels complete!");game_port_button(p,BUTTON_PAY,90,110,140,44,"Get coins",true);}return;}
  /* Thin header: level and what the upper HUD does not show (carried puffles, moves). */
  game_port_rect(p,0,0,320,LOW_TOP,0x0b2a4a);game_port_rect(p,0,LOW_TOP-1,320,1,0x4fc0ff);
@@ -282,7 +283,7 @@ static bool packet(void *game,const char *command,unsigned count,char *const *ar
 #ifdef GP_NINJA_GAMES
 static const char *bank_resource(void *game,unsigned bank){Rescue *r=game;return bank==0?r->resource:bank==1?"games/rescue-intro.gpk":NULL;}
 #endif
-static bool bank_view(void *game,unsigned bank,SWLMatrix *local){(void)local;Rescue *r=game;return bank==0?r->themeReady:(bank==1&&r->screen==SCREEN_INTRO);}
+static bool bank_view(void *game,unsigned bank,SWLMatrix *local){(void)local;Rescue *r=game;return bank==0?r->themeReady&&r->screen!=SCREEN_TITLE:(bank==1&&(r->screen==SCREEN_INTRO||r->screen==SCREEN_TITLE));}
 const GameController GAME_RESCUE_CONTROLLER={.key="rescue",.kind=GAME_SOLO,.room=RESCUE_ROOM,.rate=24,.banks={"games/rescue-snow.gpk","games/rescue-intro.gpk",NULL},.lazy=1,.order={0,1,2},.nightPanel=true,.backgroundRGB=0x071c33,
 #ifdef GP_NINJA_GAMES
  .bank_resource=bank_resource,
