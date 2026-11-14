@@ -31,6 +31,9 @@ typedef struct {
 
 static bool number(const char *text,unsigned max,unsigned *out){if(!text||!*text)return false;unsigned n=0;for(const unsigned char *p=(const unsigned char *)text;*p;p++){if(*p<'0'||*p>'9'||n>max/10||(n==max/10&&(unsigned)(*p-'0')>max%10))return false;n=n*10+(unsigned)(*p-'0');}*out=n;return true;}
 static void target(Hunt *h,const char *path,unsigned frame,const char *label){if(h->scene)swl_target(h->scene,path,frame,label,false);}
+/** Board clips whose frame draws nothing (empty slots, idle sand, a fully dug cover) are also hidden,
+ *  so the scene preparation and the two screen draws skip them; Old 3DS cost grows with every instance. */
+static void target_slot(Hunt *h,const char *path,unsigned frame,bool empty){if(!h->scene)return;swl_target(h->scene,path,frame,NULL,false);swl_visible(h->scene,path,!empty);}
 static const char *myDir(const Hunt *h){return h->seat==0?"right":"down";}
 static bool can_dig(const Hunt *h,int dir,int n){return h->snapshot&&h->started&&!h->over&&h->seat==h->turn&&h->usedCount<TH_TURNS&&dir==h->seat&&n>=0&&n<TH_SIZE&&!h->used[dir][n];}
 
@@ -71,10 +74,10 @@ static void update_board(Hunt *h){
  char path[48],child[52];
  for(unsigned r=0;r<TH_SIZE;r++)for(unsigned c=0;c<TH_SIZE;c++){
   const char *label=map_label(h,r,c);snprintf(path,sizeof path,"root.gameMC.placer.m%u_%u",r,c);snprintf(child,sizeof child,"%s.m",path);
-  target(h,path,label?2:1,NULL);
+  target_slot(h,path,label?2:1,!label);
   if(label)target(h,child,0,label);
   bool shine=h->digs[r][c]==1&&h->map[r][c]!=0;snprintf(path,sizeof path,"root.gameMC.placer.d%u_%u",r,c);snprintf(child,sizeof child,"%s.d",path);
-  target(h,path,shine?2:1,NULL);
+  target_slot(h,path,shine?2:1,!shine);
   if(shine)target(h,child,2,NULL);
  }
  for(unsigned n=0;n<TH_SIZE;n++){
@@ -84,7 +87,7 @@ static void update_board(Hunt *h){
 }
 
 static void set_cover(Hunt *h,unsigned layer,unsigned r,unsigned c,unsigned frame){
- char path[40];snprintf(path,sizeof path,"root.gameMC.placer.%s%u%02u",layer?"dst":"st",(r+1)%10,c+1);target(h,path,frame,NULL);
+ char path[40];snprintf(path,sizeof path,"root.gameMC.placer.%s%u%02u",layer?"dst":"st",(r+1)%10,c+1);target_slot(h,path,frame,frame>=TH_COVER);
 }
 
 static void dig(Hunt *h,int dir,unsigned n,bool animate){
@@ -167,7 +170,7 @@ static bool ready(void *game){
  Hunt *h=game;h->bank=game_port_bank(h->port,0);h->scene=game_bank_scene(h->bank);if(!h->scene)return false;
  /* Frame 48 is empty: the lower layer stays hidden under the upper one until its first dig (halves the board's quads). */
  for(unsigned r=0;r<TH_SIZE;r++)for(unsigned c=0;c<TH_SIZE;c++){set_cover(h,0,r,c,1);set_cover(h,1,r,c,TH_COVER);}
- for(unsigned n=0;n<TH_SIZE;n++){char path[40];snprintf(path,sizeof path,"root.gameMC.placer.sd%u",n);target(h,path,1,NULL);snprintf(path,sizeof path,"root.gameMC.placer.sr%u",n);target(h,path,1,NULL);}
+ for(unsigned n=0;n<TH_SIZE;n++){char path[40];snprintf(path,sizeof path,"root.gameMC.placer.sd%u",n);target_slot(h,path,1,true);snprintf(path,sizeof path,"root.gameMC.placer.sr%u",n);target_slot(h,path,1,true);}
  for(unsigned k=1;k<=6;k++)for(unsigned s=1;s<=2;s++){char path[48];snprintf(path,sizeof path,"root.gameMC.player%uSpades.spade%u",s,k);target(h,path,1,NULL);}
  update_text(h);update_board(h);
  h->syncAt=game_port_clock(h->port);h->syncFailed=!game_port_send(h->port,'z',"gz",1,(const char *[]){""});
@@ -175,7 +178,10 @@ static bool ready(void *game){
 }
 
 static void tick(void *game){
- Hunt *h=game;if(!h->scene)return;swl_tick(h->scene);
+ Hunt *h=game;if(!h->scene)return;
+ /* Deferred: several catch-up ticks in one frame share a single scene preparation at draw time
+  * (681 timelines; the two name animations alone would otherwise re-prepare the scene each tick). */
+ swl_tick_deferred(h->scene);
  if(h->syncFailed||(!h->snapshot&&game_port_clock(h->port)-h->syncAt>10)){const GameHost *host=game_port_host(h->port);if(host->notice)host->notice(host->user,"Could not synchronize the table. Please join again.");leave(h,true);return;}
  /* pcN_right/pcN_down: one square per frame, each sand layer playing out to frame 48. */
  for(unsigned layer=0;layer<2;layer++)for(unsigned r=0;r<TH_SIZE;r++)for(unsigned c=0;c<TH_SIZE;c++){
@@ -187,8 +193,8 @@ static void tick(void *game){
  for(unsigned d=0;d<2;d++)for(unsigned n=0;n<TH_SIZE;n++){
   if(!h->sand[d][n])continue;
   char path[40],child[44];snprintf(path,sizeof path,"root.gameMC.placer.%s%u",d?"sd":"sr",n);snprintf(child,sizeof child,"%s.a",path);
-  if(h->sand[d][n]>10){h->sand[d][n]=0;target(h,path,1,NULL);continue;}
-  target(h,path,2,NULL);target(h,child,h->sand[d][n]++,NULL);
+  if(h->sand[d][n]>10){h->sand[d][n]=0;target_slot(h,path,1,true);continue;}
+  target_slot(h,path,2,false);target(h,child,h->sand[d][n]++,NULL);
  }
  if(h->closeTicks&&!--h->closeTicks){const GameHost *host=game_port_host(h->port);if(host->notice)host->notice(host->user,h->notice);leave(h,false);}
 }
