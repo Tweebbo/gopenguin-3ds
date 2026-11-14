@@ -91,8 +91,8 @@ static void prof_flush(void){
 #else
 #define PROF_BEGIN() do{}while(0)
 #define PROF_END(i) do{}while(0)
-static void prof_flush(void){}
-static void prof_write(void){}
+static inline void prof_flush(void){}
+static inline void prof_write(void){}
 #endif
 
 typedef struct {C3D_Tex tex;Tex3DS_SubTexture sub;bool loaded;} Texture;
