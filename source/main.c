@@ -587,6 +587,15 @@ static bool book_custom(void *unused,unsigned id,const char *path){
   if((name[0]=='c'||name[0]=='s')&&name[1]>='0'&&name[1]<='4'&&!name[2]){if(*name=='c')book.colour=name[1]-'0';else book.symbol=name[1]-'0';swl_target(movie,"book.tshirtbuilt",book.colour*5+book.symbol+1,NULL,false);return true;}
   if(!strcmp(name,"tshirtbuy_btn")){buy(builder[book.colour][book.symbol]);return true;}
  }
+ for(unsigned i=0;i<(unsigned)COUNT(bookKitBuilders);i++)if(bookKitBuilders[i].book==book.info->id&&bookKitBuilders[i].page==book.page){
+  const BookKitBuilder *kit=&bookKitBuilders[i];
+  if(name>path&&((name[0]=='i'&&name[1]>='0'&&name[1]<='1')||((name[0]=='c'||name[0]=='s')&&name[1]>='0'&&name[1]<='3'))&&!name[2]){
+   if(*name=='i')book.item=name[1]-'0';else if(*name=='c')book.colour=name[1]-'0';else book.symbol=name[1]-'0';
+   char target[SWL_PATH];snprintf(target,sizeof target,"%.*s.itembuilt",(int)(name-1-path),path);
+   swl_target(movie,target,book.item*16+book.colour*4+book.symbol+1,NULL,false);return true;
+  }
+  if(!strcmp(name,"soccer_btn")){buy((book.item?kit->multi:kit->single)+book.colour*4+book.symbol);return true;}
+ }
  if(book.info->id==6&&book.page==2){
   if((name[0]=='i'||name[0]=='c'||name[0]=='s')&&name[1]>='0'&&name[1]<='4'&&!name[2]){if(*name=='i')book.item=name[1]-'0';else if(*name=='c')book.colour=name[1]-'0';else book.symbol=name[1]-'0';swl_target(movie,"book.itembuilt",book.item*15+book.colour*5+book.symbol+1,NULL,false);return true;}
   if(!strcmp(name,"furnbuy_btn")){buy_kind(1,1001+book.item*15+book.colour*5+book.symbol);return true;}

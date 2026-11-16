@@ -53,3 +53,8 @@ static const BookBuilder bookBuilders[]={
  {62,12,{{4495,4582,4583,4584,4585},{4500,4586,4587,4588,4589},{4591,4590,4592,4593,4594},{4596,4595,4597,4598,4599},{4601,4600,4602,4603,4604}}},
  {63,8,{{4495,4582,4583,4584,4585},{4500,4586,4587,4588,4589},{4591,4590,4592,4593,4594},{4596,4595,4597,4598,4599},{4601,4600,4602,4603,4604}}},
 };
+/* Soccer kit builders (Penguin Style June and July 2014): pattern i0-i1, colour c0-c3 and stripe s0-s3
+   show itembuilt frame pattern*16+colour*4+stripe+1; soccer_btn buys the original singleStripeItems
+   (pattern 0) or multiStripeItems (pattern 1) plus colour*4+stripe. */
+typedef struct {unsigned short book,page,single,multi;} BookKitBuilder;
+static const BookKitBuilder bookKitBuilders[]={{46,11,24118,24102},{45,20,24118,24102}};

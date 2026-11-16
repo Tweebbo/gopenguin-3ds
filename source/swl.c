@@ -16,6 +16,10 @@ typedef struct {
 } Head;
 typedef struct {char path[SWL_PATH],label[64];uint32_t frame;bool hasFrame,playing,hasVisible,visible,hasColor,hasMatrix;SWLColor color;SWLMatrix matrix;} Override;
 typedef struct {SWLMatrix matrix;SWLColor color;uint32_t token,art;float depth;int previous;uint8_t type,layer;} Draw;
+/* A game that moves a sprite elsewhere in one tick (a shark sent back to its start, a fleeing fish
+ * parked off stage) must not be drawn sliding across the screen between the two ticks: no timeline
+ * or game moves anything this far in 1/24 s, and a mirror flip would squash the art through zero. */
+static bool teleported(const SWLMatrix *a,const SWLMatrix *b){float dx=b->x-a->x,dy=b->y-a->y;return dx*dx+dy*dy>96.0f*96.0f||(a->a*a->d-a->b*a->c)*(b->a*b->d-b->b*b->c)<0;}
 typedef struct {uint64_t hash;SWLInstance instance;} Instance;
 struct SWLScene {
  uint8_t *data;const uint8_t *table[TABLES];uint32_t count[TABLES],root,pages,version,bits;
@@ -176,7 +180,7 @@ static bool append(SWLScene *s,unsigned type,unsigned layer,float depth,SWLMatri
  /* Dual-screen games draw root frame 1 on the upper screen and frame 2 on the lower one, so the list
   * before this one belongs to the other screen. Interpolating against it blended the two layouts and
   * made sprites flicker (Astro Barrier, Puffle Rescue); those games then draw at the model rate. */
- if(type==DRAW&&s->oldView==s->drawView){unsigned slot=(token^art*2654435761u)&(DRAW_HASH-1);while(s->oldHash[slot]){unsigned i=s->oldHash[slot]-1;if(s->old[i].token==token&&s->old[i].art==art){d->previous=(int)i;break;}slot=(slot+1)&(DRAW_HASH-1);}}
+ if(type==DRAW&&s->oldView==s->drawView){unsigned slot=(token^art*2654435761u)&(DRAW_HASH-1);while(s->oldHash[slot]){unsigned i=s->oldHash[slot]-1;if(s->old[i].token==token&&s->old[i].art==art){if(!teleported(&s->old[i].matrix,&matrix))d->previous=(int)i;break;}slot=(slot+1)&(DRAW_HASH-1);}}
  return true;
 }
 static bool walk(SWLScene *s,uint32_t id,const char *path,uint32_t pathHash,uint64_t instanceHash,SWLMatrix matrix,SWLColor color,unsigned depth,unsigned layer,float renderDepth,bool masking);

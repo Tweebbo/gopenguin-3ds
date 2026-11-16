@@ -93,13 +93,19 @@ static bool cancelled(void *unused){
 static bool path_for(unsigned id,char *path,size_t cap){int n=snprintf(path,cap,"%s/clothing-%u.gpa",A.directory,id);return n>0&&(size_t)n<cap;}
 /* Pages republished on the server after a client cached them. The cache revision is compiled
  * in, so these are dropped once by key instead of clearing every cached resource.
- * 2026-11-14: May 2014 page 9 and June 2014 page 19 overflowed the GPU command list on Old 3DS. */
+ * 2026-11-14: May 2014 page 9 and June 2014 page 19 overflowed the GPU command list on Old 3DS.
+ * 2026-11-16: the Dance Floor flooring (7) was a still yellow floor; it now has its colour frames. */
 static void drop_republished(void){
- static const unsigned keys[]={(ASSET_BOOK<<20)|(47u*1024u+9u),(ASSET_BOOK<<20)|(46u*1024u+19u)};
- char marker[256];int n=snprintf(marker,sizeof marker,"%s/republished-20261114.txt",A.directory);if(n<0||(size_t)n>=sizeof marker)return;
- struct stat info;if(cache_lstat(marker,&info)==0)return;
- for(unsigned i=0;i<sizeof keys/sizeof *keys;i++){char path[256];if(path_for(keys[i],path,sizeof path))discard_file(path);}
- FILE *file=fopen(marker,"wb");if(file){fputs("done\n",file);fclose(file);}
+ static const struct {const char *marker;unsigned keys[2];} batches[]={
+  {"republished-20261114.txt",{(ASSET_BOOK<<20)|(47u*1024u+9u),(ASSET_BOOK<<20)|(46u*1024u+19u)}},
+  {"republished-20261116.txt",{(ASSET_FLOOR<<20)|7u,0}},
+ };
+ for(unsigned b=0;b<sizeof batches/sizeof *batches;b++){
+  char marker[256];int n=snprintf(marker,sizeof marker,"%s/%s",A.directory,batches[b].marker);if(n<0||(size_t)n>=sizeof marker)continue;
+  struct stat info;if(cache_lstat(marker,&info)==0)continue;
+  for(unsigned i=0;i<2;i++){char path[256];if(batches[b].keys[i]&&path_for(batches[b].keys[i],path,sizeof path))discard_file(path);}
+  FILE *file=fopen(marker,"wb");if(file){fputs("done\n",file);fclose(file);}
+ }
 }
 typedef struct {FILE *file;size_t bytes,limit;} Download;
 static bool save(const u8 *data,int bytes,void *user){Download *download=user;if(cancelled(NULL)||bytes<0||(size_t)bytes>download->limit-download->bytes)return false;download->bytes+=(size_t)bytes;return fwrite(data,1,(size_t)bytes,download->file)==(size_t)bytes;}
