@@ -58,3 +58,12 @@ static const BookBuilder bookBuilders[]={
    (pattern 0) or multiStripeItems (pattern 1) plus colour*4+stripe. */
 typedef struct {unsigned short book,page,single,multi;} BookKitBuilder;
 static const BookKitBuilder bookKitBuilders[]={{46,11,24118,24102},{45,20,24118,24102}};
+/* Muppet face builders (Penguin Style March and April 2014): hair_N/eye_N/face_N set the frames of
+   muppet_hair/eyes/face (frame-1 = choice 1..3, 0 = none); buy_btn runs buyFace(), whose 27 cases are
+   1806 + (face-1)*9 + hair*3 + eyes with hair and eyes ordered pink (2), blue (1), third (3). */
+static const struct {unsigned short book,page;} bookFaceBuilders[]={{49,6},{48,17}};
+static unsigned book_face_item(unsigned hair,unsigned eyes,unsigned face){
+ static const unsigned char order[4]={0,1,0,2}; /* 1 -> 1, 2 -> 0, 3 -> 2 */
+ if(hair<1||hair>3||eyes<1||eyes>3||face<1||face>3)return 0;
+ return 1806+(face-1)*9+order[hair]*3+order[eyes];
+}

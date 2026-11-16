@@ -596,6 +596,11 @@ static bool book_custom(void *unused,unsigned id,const char *path){
   }
   if(!strcmp(name,"soccer_btn")){buy((book.item?kit->multi:kit->single)+book.colour*4+book.symbol);return true;}
  }
+ for(unsigned i=0;i<(unsigned)COUNT(bookFaceBuilders);i++)if(bookFaceBuilders[i].book==book.info->id&&bookFaceBuilders[i].page==book.page&&name>path&&!strcmp(name,"buy_btn")){
+  unsigned pick[3];static const char *const parts[]={"hair","eyes","face"};
+  for(unsigned n=0;n<3;n++){char part[SWL_PATH];snprintf(part,sizeof part,"%.*s.muppet_%s",(int)(name-1-path),path,parts[n]);unsigned frame=swl_frame(movie,part);pick[n]=frame?frame-1:0;}
+  unsigned item=book_face_item(pick[0],pick[1],pick[2]);if(item)buy(item);else modal_message("Choose the hair, the eyes and the face first.");return true;
+ }
  if(book.info->id==6&&book.page==2){
   if((name[0]=='i'||name[0]=='c'||name[0]=='s')&&name[1]>='0'&&name[1]<='4'&&!name[2]){if(*name=='i')book.item=name[1]-'0';else if(*name=='c')book.colour=name[1]-'0';else book.symbol=name[1]-'0';swl_target(movie,"book.itembuilt",book.item*15+book.colour*5+book.symbol+1,NULL,false);return true;}
   if(!strcmp(name,"furnbuy_btn")){buy_kind(1,1001+book.item*15+book.colour*5+book.symbol);return true;}
