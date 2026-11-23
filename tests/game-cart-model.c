@@ -47,6 +47,20 @@ int main(void){
  for(int i=0;i<200&&m.phase==CART_PLAYING&&m.segment<2;i++)cart_model_step(&m);
  CHECK(m.lives==3);
 
+ /* Standing (surfing), Right (slide) + Jump (olie), then release: trick finishes cleanly and player stays standing. */
+ cart_model_init(&m,STRAIGHT,9);
+ for(int i=0;i<28;i++)cart_model_step(&m);
+ cart_model_press(&m,CART_UP);for(int i=0;i<17;i++)cart_model_step(&m);
+ CHECK(m.stance==CART_SURFING&&m.pose==5);
+ cart_model_press(&m,CART_RIGHT);CHECK(m.move==CART_SLIDE);
+ cart_model_press(&m,CART_SPACE);CHECK(m.trick==CART_OLIE&&m.move==CART_NO_MOVE);
+ cart_model_release(&m,CART_RIGHT);cart_model_release(&m,CART_SPACE);
+ CHECK(m.pose==6&&m.trick==CART_OLIE);
+ for(int i=0;i<20;i++)cart_model_step(&m);
+ CHECK(m.trick==CART_NO_TRICK&&m.stance==CART_SURFING&&m.pose==5&&m.score==20);
+ cart_model_press(&m,CART_UP);for(int i=0;i<17;i++)cart_model_step(&m);
+ CHECK(m.score==100);
+
  /* Both directions held: no repeat. */
  cart_model_init(&m,STRAIGHT,9);
  cart_repeat_direction(&m,true,true);CHECK(m.key==CART_NO_KEY);

@@ -227,14 +227,14 @@ void gp_audio_scene(const char *bank){
  if(!strcmp(bank,A.bank))return;
  stop_effects();snprintf(A.bank,sizeof A.bank,"%s",bank);
 }
-static bool play_effect(unsigned id,unsigned flags,unsigned loops,float volume,bool forever){
+static bool play_effect_in(const char *bank,unsigned id,unsigned flags,unsigned loops,float volume,bool forever){
 #ifdef __3DS__
  if(!A.ready||!id)return false;
  bool stopped=false;
  for(unsigned i=0;i<VOICES;i++)if(A.voices[i].active&&A.voices[i].id==id){if(flags&1){clear_voice(i);stopped=true;}else if(flags&2){if(forever){A.voices[i].forever=true;if(!A.voices[i].remaining)A.voices[i].remaining=1;voice_volume(i,volume);}return true;}}
  if(flags&1)return stopped;
- if(!A.enabled||A.paused||!A.bank[0])return false;
- char logical[192],filename[352];if(snprintf(logical,sizeof logical,"sfx/%s/%u.wav",A.bank,id)>=(int)sizeof logical||!audio_path(logical,filename,sizeof filename))return false;
+ if(!A.enabled||A.paused||!bank||!bank[0])return false;
+ char logical[192],filename[352];if(snprintf(logical,sizeof logical,"sfx/%s/%u.wav",bank,id)>=(int)sizeof logical||!audio_path(logical,filename,sizeof filename))return false;
  GPAudioWav wav;GPPCM *file=gp_pcm_open(filename,&wav);if(!file)return false;
  unsigned voice=A.nextVoice++%VOICES;for(unsigned i=0;i<VOICES;i++)if(!A.voices[i].active){voice=i;break;}clear_voice(voice);
  if(wav.bytes>GP_AUDIO_SFX_BYTES){A.voices[voice].file=file;A.voices[voice].wav=wav;A.voices[voice].unread=wav.bytes;}
@@ -243,10 +243,12 @@ static bool play_effect(unsigned id,unsigned flags,unsigned loops,float volume,b
  for(unsigned i=0;i<MUSIC_BUFFERS;i++)if(!queue_voice(voice,i))break;
  return true;
 #else
- (void)id;(void)flags;(void)loops;(void)volume;(void)forever;return false;
+ (void)bank;(void)id;(void)flags;(void)loops;(void)volume;(void)forever;return false;
 #endif
 }
+static bool play_effect(unsigned id,unsigned flags,unsigned loops,float volume,bool forever){return play_effect_in(A.bank,id,flags,loops,volume,forever);}
 void gp_audio_sound(void *user,const char *path,unsigned id,unsigned flags,unsigned loops){(void)user;(void)path;(void)play_effect(id,flags,loops,.65f,false);}
+bool gp_audio_bank_sound(const char *bank,unsigned id){if(!bank||!component(bank))return false;return play_effect_in(bank,id,0,1,.65f,false);}
 bool gp_audio_named_sound(const char *bank,const char *name,int volume,bool loop){
  if(!bank||!component(bank)||strlen(bank)>=sizeof A.bank||!name||!*name||strlen(name)>=128)return false;
  json_t *id=json_object_get(json_object_get(A.names,bank),name);if(!json_is_integer(id))return false;

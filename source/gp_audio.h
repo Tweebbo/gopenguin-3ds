@@ -25,6 +25,8 @@ bool gp_audio_igloo_track(unsigned index,unsigned *id,const char **name);
 void gp_audio_scene(const char *bank);
 /* Direct SWLSound callback. flags: bit 0 stop, bit 1 noMultiple. */
 void gp_audio_sound(void *user,const char *path,unsigned id,unsigned flags,unsigned loops);
+/* Plays a one-shot effect from another bank without changing the active scene bank. */
+bool gp_audio_bank_sound(const char *bank,unsigned id);
 /* Resolves original SWF exports; volume is clamped to 0..100, loop lasts until stopped. */
 bool gp_audio_named_sound(const char *bank,const char *name,int volume,bool loop);
 void gp_audio_update(void);

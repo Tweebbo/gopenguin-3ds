@@ -32,8 +32,8 @@ void cart_model_press(CartModel *m,CartKey key){
  if(m->stance==CART_SURFING){if(key==CART_SPACE){trick=CART_OLIE;p=6;}else if(key==CART_UP){trick=CART_HANDSTAND;p=18;}}
  else if(m->stance==CART_WHEELIE){if(key==CART_SPACE){trick=CART_BACKFLIP;p=11;}else if(key==CART_DOWN){trick=CART_RUNNING;p=20;}}
  else if(m->stance==CART_JUMPING){if(key==CART_UP){trick=CART_FLAP;p=17;}else if(key==CART_DOWN){trick=CART_SLAM;p=19;}}
- if(trick){m->trick=trick;pose(m,p);return;}
- if(m->stance==CART_NONE){m->stance=key==CART_UP?CART_SURFING:key==CART_DOWN?CART_WHEELIE:CART_JUMPING;pose(m,key==CART_UP?4:key==CART_DOWN?9:14);}
+ if(trick){m->move=CART_NO_MOVE;m->moveTick=m->bonus=0;m->trick=trick;pose(m,p);return;}
+ if(m->stance==CART_NONE){m->move=CART_NO_MOVE;m->moveTick=m->bonus=0;m->stance=key==CART_UP?CART_SURFING:key==CART_DOWN?CART_WHEELIE:CART_JUMPING;pose(m,key==CART_UP?4:key==CART_DOWN?9:14);}
  else if((m->stance==CART_SURFING&&key==CART_DOWN)||(m->stance==CART_WHEELIE&&key==CART_UP))neutral(m);
 }
 
@@ -52,7 +52,7 @@ void cart_model_release(CartModel *m,CartKey key){
   CartMove move=m->move;
   if(move!=CART_LEAN&&(m->moveTick>10||m->bonus))m->score+=js_round_ratio(m->moveTick,move==CART_GRIND?28:32,move==CART_GRIND?80:40)+m->bonus;
   m->move=CART_NO_MOVE;m->moveTick=m->bonus=0;
-  if(move!=CART_SLIDE)neutral(m);else pose(m,5);
+  if(!m->trick){if(move!=CART_SLIDE)neutral(m);else pose(m,5);}
  }
  if(owner)m->key=CART_NO_KEY;
 }
