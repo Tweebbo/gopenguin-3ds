@@ -21,6 +21,8 @@ typedef struct {
  PuffleWalk walks[CAST_COUNT+1];unsigned nWalks;
  PuffleSend send;void *user;
  bool (*poseReady)(const Puffle *pet,unsigned frame);
+ bool (*placeHome)(void *user,const Puffle *pet,unsigned index,float *x,float *y);
+ void *placeHomeUser;
  unsigned long revision,epoch,snapshotEpoch,snapshotRevision;
  unsigned snapshotOwner,actionId,actionItem,adoptType,coins;
  bool snapshotPending,coinsChanged;PuffleAction action;

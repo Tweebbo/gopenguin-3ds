@@ -71,7 +71,9 @@ static void begin(Fishing *f){
  number(f,"root.lives_mc.lives",3);number(f,"root.icebox.fishNum",0);label(f,"root.icebox.fish","fish_txt");label(f,"root.prompt.newWorm","ingame_newworm");label(f,"root.gameOver_mc.gameOver","ui_gameover");label(f,"root.gameOver_mc.collectCoins.label","ingame_collectcoins");
 }
 static void end_level(Fishing *f,unsigned level,unsigned count,const char *tip){
- FishModel *m=&f->model;if(m->fishCaught!=count||m->level!=level)return;if(frame(f,"puffle")==1)play(f,"puffle");swl_visible(f->scene,"root.puffle",true);label(f,"root.puffle.obj.levelTip",tip);m->levelBlock=true;
+ FishModel *m=&f->model;if(m->fishCaught!=count||m->level!=level||m->levelBlock)return;
+ if(frame(f,"puffle")==1)play(f,"puffle");
+ swl_visible(f->scene,"root.puffle",true);label(f,"root.puffle.obj.levelTip",tip);m->levelBlock=true;
 }
 static void choose(Fishing *f,unsigned stopwatch,unsigned item){
  FishModel *m=&f->model;double elapsed=now(f)-m->timer;if(elapsed<stopwatch||elapsed>stopwatch+200)return;

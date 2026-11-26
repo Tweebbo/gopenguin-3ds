@@ -71,17 +71,17 @@ function rescueBank(data,theme,key,tile,parts){
  frame.push({depth:1,id:symbol('bg'),name:'bg',matrix:[1,0,0,1,0,0]});
  // 3DS dual screen: the upper screen shows a wider window (about 12x7 tiles), so more slots.
  for(let i=0;i<144;i++)frame.push({depth:2+i,id:tileId,name:'tile'+i,matrix:[1,0,0,1,0,-10000]});
- for(let i=0;i<64;i++)frame.push({depth:200+i,id:partId,name:'part'+i,matrix:[1,0,0,1,0,-10000]});
+ for(let i=0;i<192;i++)frame.push({depth:200+i,id:partId,name:'part'+i,matrix:[1,0,0,1,0,-10000]});
  const snowball=symbol('snowball'),bat=symbol('bat');
- for(let i=0;i<4;i++)frame.push({depth:300+i,id:snowball,name:'snowball'+i,matrix:[1,0,0,1,0,-10000]});
- for(let i=0;i<4;i++)frame.push({depth:320+i,id:bat,name:'bat'+i,matrix:[1,0,0,1,0,-10000]});
- frame.push({depth:340,id:symbol('kraken'),name:'kraken',matrix:[1,0,0,1,0,-10000]});
- for(let i=0;i<2;i++)frame.push({depth:342+i,id:symbol('secretcoinballoon'),name:'secret'+i,matrix:[1,0,0,1,0,-10000]});
- frame.push({depth:360,id:symbol('player'),name:'player',matrix:[1,0,0,1,0,-10000]});
+ for(let i=0;i<4;i++)frame.push({depth:400+i,id:snowball,name:'snowball'+i,matrix:[1,0,0,1,0,-10000]});
+ for(let i=0;i<4;i++)frame.push({depth:420+i,id:bat,name:'bat'+i,matrix:[1,0,0,1,0,-10000]});
+ frame.push({depth:440,id:symbol('kraken'),name:'kraken',matrix:[1,0,0,1,0,-10000]});
+ for(let i=0;i<2;i++)frame.push({depth:442+i,id:symbol('secretcoinballoon'),name:'secret'+i,matrix:[1,0,0,1,0,-10000]});
+ frame.push({depth:460,id:symbol('player'),name:'player',matrix:[1,0,0,1,0,-10000]});
  // Original in-game HUD (hud_display): level and score fields get names so the game can write them.
  const hud=symbol('hud_display'),hudSprite=data.sprites[hud];
  for(const entry of hudSprite.frames[0]){if(entry.depth===7)entry.name='stage_txt';if(entry.depth===118)entry.name='score_txt';}
- frame.push({depth:400,id:hud,name:'hud',matrix:[1,0,0,1,0,0]});
+ frame.push({depth:500,id:hud,name:'hud',matrix:[1,0,0,1,0,0]});
  // Root frame 2 is the touch-screen composition: the same slots without the HUD.
  data.main={frames:[frame,frame.filter(entry=>entry.name!=='hud')],labels:{},actions:{1:[['stop',null]],2:[['stop',null]]},scriptFrames:[],sounds:[]};
  return data;

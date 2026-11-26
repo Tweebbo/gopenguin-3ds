@@ -151,23 +151,24 @@ try{
    return (t.frames[frame-1]??[]).every(child=>child.clipDepth===undefined&&staticLocal(child,path,depth+1));
   };
   const leaves=(e,parent,depth=0)=>{if(depth>24)return 0;const t=original[e.id];if(!t)return 1;const path=e.name?(parent?parent+'.':'')+e.name:parent+'#'+e.depth,s=movie.state.get(path);const frame=typeof s?.frame==='string'?t.labels[s.frame]??1:s?.frame??1;return (t.frames[frame-1]??[]).reduce((n,child)=>Math.min(3,n+leaves(child,path,depth+1)),0);};
-  const bake=(list,parent,world,stable)=>{
-   const memoKey=JSON.stringify([stable,stable?world:null,parent,list]);if(bakeMemo.has(memoKey))return structuredClone(bakeMemo.get(memoKey));
-   if(!stable&&(localRoots||list.reduce((n,e)=>Math.min(3,n+leaves(e,parent)),0)<3))return null;
-   const rasterScale=stable?1:.5;let originX=0,originY=0,width=760*rasterScale,height=480*rasterScale;
-   if(!stable||library){let boxes=list.map(e=>movie.entryBounds(e,parent)).filter(Boolean);if(!boxes.length)return [];if(stable)boxes=boxes.map(b=>{const points=[[b[0],b[1]],[b[2],b[1]],[b[0],b[3]],[b[2],b[3]]].map(([x,y])=>[world[0]*x+world[2]*y+world[4],world[1]*x+world[3]*y+world[5]]);return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];});originX=Math.floor(Math.min(...boxes.map(b=>b[0]))*rasterScale)-1;originY=Math.floor(Math.min(...boxes.map(b=>b[1]))*rasterScale)-1;width=Math.ceil(Math.max(...boxes.map(b=>b[2]))*rasterScale)-originX+1;height=Math.ceil(Math.max(...boxes.map(b=>b[3]))*rasterScale)-originY+1;if(width<=0||height<=0)return [];if(stable&&catalogue){/* A catalogue page never shows art outside its 760x480 stage, so a static group that
+  const bake=(list,parent,world,stable,localProp=false)=>{
+   const memoKey=JSON.stringify([stable,localProp,(stable||localProp)?world:null,parent,list]);if(bakeMemo.has(memoKey))return structuredClone(bakeMemo.get(memoKey));
+   if(!stable&&!localProp&&(localRoots||list.reduce((n,e)=>Math.min(3,n+leaves(e,parent)),0)<3))return null;
+   if(localProp&&list.reduce((n,e)=>Math.min(2,n+leaves(e,parent)),0)<2)return null;
+   const rasterScale=(stable||localProp)?1:.5;let originX=0,originY=0,width=760*rasterScale,height=480*rasterScale;
+   if(!stable||library||localProp){let boxes=list.map(e=>movie.entryBounds(e,parent)).filter(Boolean);if(!boxes.length)return [];if(stable||localProp)boxes=boxes.map(b=>{const points=[[b[0],b[1]],[b[2],b[1]],[b[0],b[3]],[b[2],b[3]]].map(([x,y])=>[world[0]*x+world[2]*y+world[4],world[1]*x+world[3]*y+world[5]]);return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];});originX=Math.floor(Math.min(...boxes.map(b=>b[0]))*rasterScale)-1;originY=Math.floor(Math.min(...boxes.map(b=>b[1]))*rasterScale)-1;width=Math.ceil(Math.max(...boxes.map(b=>b[2]))*rasterScale)-originX+1;height=Math.ceil(Math.max(...boxes.map(b=>b[3]))*rasterScale)-originY+1;if(width<=0||height<=0)return [];if(stable&&catalogue){/* A catalogue page never shows art outside its 760x480 stage, so a static group that
      spills past the page edge (masked star fields) is baked only where it can be seen. */const right=originX+width,bottom=originY+height;originX=Math.max(originX,-1);originY=Math.max(originY,-1);width=Math.min(right,761)-originX;height=Math.min(bottom,481)-originY;if(width<=0||height<=0)return [];}
-    if(width>(stable?1024:128)||height>(stable?1024:128))return null;}
-   const c=canvas(width,height),ctx=c.getContext('2d');ctx.setTransform(rasterScale,0,0,rasterScale,-originX,-originY);if(stable)ctx.transform(...world);for(const e of list)movie.entry(ctx,e,parent);
+    if(width>((stable||localProp)?1024:128)||height>((stable||localProp)?1024:128))return null;}
+   const c=canvas(width,height),ctx=c.getContext('2d');ctx.setTransform(rasterScale,0,0,rasterScale,-originX,-originY);if(stable||localProp)ctx.transform(...world);for(const e of list)movie.entry(ctx,e,parent);
    const rgba=ctx.getImageData(0,0,width,height).data;let x0=width,y0=height,x1=0,y1=0;
    for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(rgba[(y*width+x)*4+3]){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x+1);y1=Math.max(y1,y+1);}
    if(x1<=x0||y1<=y0)return [];
    const image=canvas(x1-x0+2,y1-y0+2);image.getContext('2d').drawImage(c,x0,y0,x1-x0,y1-y0,1,1,x1-x0,y1-y0);
    const worldWidth=image.width/rasterScale,worldHeight=image.height/rasterScale;let packed=image;
-   if(stable&&!library&&roomBakeScale<1){packed=canvas(Math.max(1,Math.ceil(image.width*roomBakeScale)),Math.max(1,Math.ceil(image.height*roomBakeScale)));const reduced=packed.getContext('2d');reduced.imageSmoothingQuality='high';reduced.drawImage(image,0,0,packed.width,packed.height);}
+   if((stable||localProp)&&!library&&roomBakeScale<1){packed=canvas(Math.max(1,Math.ceil(image.width*roomBakeScale)),Math.max(1,Math.ceil(image.height*roomBakeScale)));const reduced=packed.getContext('2d');reduced.imageSmoothingQuality='high';reduced.drawImage(image,0,0,packed.width,packed.height);}
    const png=packed.toDataURL(),left=(originX+x0-1)/rasterScale,top=(originY+y0-1)/rasterScale,key=JSON.stringify([png,packed.width,packed.height,worldWidth,worldHeight]);let id=bakeImages.get(key);
    if(!id){id=nextId++;bakeImages.set(key,id);art.push({id,w:packed.width,h:packed.height,left:0,top:0,width:worldWidth,height:worldHeight,png,baked:true});baked++;}
-   const output=[{id,depth:list[0].depth,renderDepth:list[0].renderDepth,name:list.length===1?list[0].name:undefined,matrix:multiply(stable?inverse(world):[1,0,0,1,0,0],[1,0,0,1,left,top])}];bakeMemo.set(memoKey,output);return structuredClone(output);
+   const output=[{id,depth:list[0].depth,renderDepth:list[0].renderDepth,name:list.length===1?list[0].name:undefined,matrix:multiply((stable||localProp)?inverse(world):[1,0,0,1,0,0],[1,0,0,1,left,top])}];bakeMemo.set(memoKey,output);return structuredClone(output);
   };
   const optimize=(id,parent,world,stable)=>{
    const key=`${id}:${parent}:${stable?world.join(','):'dynamic'}`;
@@ -200,7 +201,7 @@ try{
      else{const matrix=multiply(world,entry.matrix??[1,0,0,1,0,0]),scale=Math.max(Math.hypot(matrix[0],matrix[1]),Math.hypot(matrix[2],matrix[3]));rasterScales.set(entry.id,Math.max(rasterScales.get(entry.id)??0,scale));}
      return entry;
     };
-    const flush=()=>{if(batch.length){const baked=bake(batch,parent,world,stable&&fixed&&!(id===0&&localRoots&&batch[0].renderDepth>=900));if(baked)entries.push(...baked);else for(const e of batch)entries.push(convert(e));batch=[];}};
+    const flush=()=>{if(batch.length){const lp=id===0&&localRoots&&batch[0].renderDepth>=900;const baked=bake(batch,parent,world,stable&&fixed&&!lp,lp&&stable&&fixed);if(baked)entries.push(...baked);else for(const e of batch)entries.push(convert(e));batch=[];}};
     for(const e of list){
      if(id===0)flush();
      const path=e.name?(parent?parent+'.':'')+e.name:parent+'#'+e.depth;

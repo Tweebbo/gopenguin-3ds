@@ -18,9 +18,16 @@ export function encodeScene({width,height,fps,root=0,pages,art,timelines,states=
  for(const [id,t] of Object.entries(timelines).sort((a,b)=>Number(a[0])-Number(b[0]))){
   tls.push(put(['u','u','u'],[Number(id),frames.length,t.frames.length]));
   const resolve=arg=>typeof arg==='string'?t.labels?.[arg]:arg;
+  let randomLabelFn=null;
+  for(const a of Object.values(t.actions??{})){
+   const src=Array.isArray(a)?'':a?.source??'';
+   const m=/function\s+(\w+)\s*\(\s*\)\s*\{[^}]*?(?:random\(\s*\d+\s*\)\s*\+\s*\d+|randBetween\(\s*\d+\s*,\s*\d+\s*\))[^}]*?gotoAndPlay\(/.exec(src);
+   if(m){randomLabelFn=new RegExp(`\\b${m[1]}\\(\\s*\\)`);break;}
+  }
   for(const [name,frame] of Object.entries(t.labels??{}))labels.push(put(['u','u','u'],[Number(id),str(name),frame]));
   for(const [index,list] of t.frames.entries()){
    const action=t.actions?.[index+1],cmds=[];
+   const skipRandomStop=Boolean(randomLabelFn&&!Array.isArray(action)&&randomLabelFn.test(action?.source??''));
    const command=(op,arg=0,arg2=0,arg3=0,target='',counter='',flags=0)=>cmds.push(put(Array(8).fill('u'),[op,arg,arg2,arg3,str(target),str(counter),flags,0]));
    for(const sound of t.sounds??[])if(sound.frame===index+1)for(const start of sound.starts??sound.ids.map(id=>[id,0,0,1]))command(10,start[0],(start[1]?1:0)|(start[2]?2:0),start[3]);
    if(!Array.isArray(action)){
@@ -44,7 +51,7 @@ export function encodeScene({width,height,fps,root=0,pages,art,timelines,states=
     if(name.startsWith('goto')&&(!Number.isInteger(frame)||frame<1))throw Error(`SWL2: unresolved frame ${arg} in ${id}`);
     command(ops[name],frame??0,randomOffset,0,target,'',flags);
    };
-   for(const [name,arg] of Array.isArray(action)?action:action?.commands??[])addCommand(name,arg);
+   for(const [name,arg] of Array.isArray(action)?action:action?.commands??[]){if(skipRandomStop&&name==='stop')continue;addCommand(name,arg);}
    for(const [target,name,arg] of action?.targets??[])addCommand(name,arg,target);
    const frameEntries=[];
    for(const e of list){

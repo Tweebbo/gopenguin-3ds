@@ -50,7 +50,9 @@ static void pose(const Puffles *p,Puffle *pet,unsigned frame){
 static void place(Puffle *pet,float x,float y){pet->x=pet->oldX=x;pet->y=pet->oldY=y;}
 static void home(const Puffles *p,Puffle *pet){
  unsigned index=0;for(unsigned i=0;i<p->count&&&p->pets[i]!=pet;i++)index+=p->pets[i].owner==pet->owner;
- place(pet,280+(index%5)*46,300+(index/5%4)*38);
+ float x=280+(index%5)*46,y=300+(index/5%4)*38;
+ if(p->placeHome&&p->placeHome(p->placeHomeUser,pet,index,&x,&y)){place(pet,x,y);return;}
+ place(pet,x,y);
 }
 static unsigned owned(const Puffles *p){unsigned n=0;for(unsigned i=0;i<p->count;i++)n+=p->pets[i].owner==p->mine;return n;}
 static Puffle *put(Puffles *p,const Puffle *info,unsigned index){

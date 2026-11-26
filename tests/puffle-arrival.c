@@ -5,6 +5,7 @@
 #include <string.h>
 static unsigned resident=1;
 static bool ready(const Puffle *pet,unsigned frame){(void)pet;return frame==resident;}
+static bool custom_home(void *user,const Puffle *pet,unsigned index,float *x,float *y){(void)user;(void)pet;*x=410.f+index*20.f;*y=360.f;return true;}
 static bool packet(Puffles *p,Demo *w,const char *command,unsigned count,char **args){PNetMessage m={.count=count,.args=args};snprintf(m.command,sizeof m.command,"%s",command);return puffles_apply(p,&m,w);}
 static void step(Puffles *p,Demo *w,unsigned ticks){demo_index(w);for(unsigned i=0;i<ticks;i++)puffles_step(p,w,1.f/24);}
 int main(void){
@@ -16,6 +17,8 @@ int main(void){
  w.count=1;w.actors[0].x=200;w.actors[0].y=350;puffles_room(&p,10,0);step(&p,&w,1);assert(hypotf(blue->x-180,blue->y-358)<.01f);
  // A resting pet returns home in the igloo instead of keeping coordinates from outside.
  char *stop[]={"10","1|Blue|0|100|100|100|100|100|100|0|0|0|0"};assert(packet(&p,&w,"pw",2,stop));w.actors[0].x=700;w.actors[0].y=60;puffles_room(&p,10,10);step(&p,&w,1);assert(blue->x==280&&blue->y==300);
+ // When the igloo provides floor geometry, resting pets spawn on the legal floor instead of (280, 300).
+ p.placeHome=custom_home;puffles_room(&p,10,10);step(&p,&w,1);assert(blue->x==410&&blue->y==360);p.placeHome=NULL;
  // The old pose stays on screen until the next page is resident.
  assert(packet(&p,&w,"pw",2,mine));step(&p,&w,1);w.actors[0].x+=100;w.actors[0].walking=true;p.poseReady=ready;resident=1;blue->frame=1;step(&p,&w,5);assert(blue->frame==1&&blue->wanted>=9);resident=blue->wanted;step(&p,&w,1);assert(blue->frame>=9);
  // A lost reply must not disable the puffle buttons until reconnection.

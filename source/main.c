@@ -450,6 +450,7 @@ static bool enter_pending_igloo(void){
  if(roomBank)movie_bank_free(roomBank);else swl_free(scene);igloo_geometry_free(iglooGeometry);island_free(navigation);roomBank=bank;scene=movie_bank_scene(bank);iglooGeometry=geometry;movie_bank_content(bank,floor_content,NULL);navigation=geometry->navigation;geometry->navigation=NULL;
  }
  floorPresent=false;memset(furnitureTime,0,sizeof furnitureTime);
+ for(unsigned i=0;i<puffles.count;i++)if(!puffles.pets[i].walking)puffles.pets[i].present=false;
  currentRoom=&iglooRoomInfo;currentRoomId=igloo.layout.owner+2000;island_set_id(navigation,currentRoomId);sceneOK=true;demo.blocked=island_blocked;demo.room=navigation;demo.mask=NULL;float x,y;island_start(navigation,&x,&y);Actor *me=&demo.actors[0];me->x=me->tx=x;me->y=me->ty=y;me->walking=false;me->action=me->direction=1;me->clock=0;triggerDelay=1;activeTrigger=hoveredIndex=~0u;hoverCount=0;memset(&overlay,0,sizeof overlay);
  if(!serverRoom){demo.count=1;if(pnet_state()==PNET_ONLINE)pnet_join(currentRoomId,(int)x,(int)y);}serverRoom=false;wantedIgloo=false;igloo.wantedOwner=0;demo.tab=0;renderedIglooType=type;
  if(!strcmp(notice,"Loading igloo...")){notice[0]=0;noticeTime=0;}
@@ -1314,6 +1315,21 @@ static void styles_update(void){
  char slot[20],type[20],place[20],music[20],owner[20];snprintf(slot,sizeof slot,"%u",igloo.activeSlot);snprintf(type,sizeof type,"%u",styles.type);snprintf(place,sizeof place,"%u",location);snprintf(music,sizeof music,"%u",igloo.targetMusic);snprintf(owner,sizeof owner,"%u",pnet_id());
  if(!pnet_send("g#uic",6,(const char *[]){slot,type,"0",place,music,""})||!pnet_send_to('r',"gm",1,(const char *[]){owner})){igloo.awaitingStyle=false;modal_message("The igloo change could not be sent. Refresh before retrying.");return;}
  styles.started=osGetTime();
+}
+static bool pets_place_home(void *user,const Puffle *pet,unsigned index,float *x,float *y){
+ (void)user;(void)index;
+ if(!iglooGeometry)return false;
+ int cx=380,cy=320;
+ if(!igloo_geometry_center(iglooGeometry,1,&cx,&cy))return false;
+ int occupied[PUFFLES_LIMIT*2];unsigned count=0;
+ for(unsigned i=0;i<puffles.count&&count<PUFFLES_LIMIT;i++){
+  const Puffle *other=&puffles.pets[i];
+  if(other==pet||other->owner!=pet->owner||other->walking||!other->present)continue;
+  occupied[count*2]=(int)other->x;occupied[count*2+1]=(int)other->y;count++;
+ }
+ int sx=cx,sy=cy;
+ if(!igloo_geometry_spawn(iglooGeometry,1,cx,cy,occupied,count,&sx,&sy))return false;
+ *x=(float)sx;*y=(float)sy;return true;
 }
 static bool pets_send(void *unused,const char *command,unsigned count,const char *const *args){(void)unused;return pnet_state()==PNET_ONLINE&&pnet_send(command,count,args);}
 static bool pets_pose_ready(const Puffle *pet,unsigned frame){return wear_pose_ready(asset_key(ASSET_PUFFLE,pet->type+1),frame,1);}
@@ -2333,7 +2349,7 @@ int main(int argc,char **argv){
   for(unsigned slot=0;slot<6;slot++)if(miner->look[slot]&&!profile_has(&profile,miner->look[slot]))miningEnabled=false;
   mining.room=currentRoomId;
   if(mining_update(&mining,dt,miningEnabled,miner->look,(unsigned)miner->action,miner->walking,miner->x,miner->y)&&!pnet_send("r#cdu",0,NULL))mining.pending=0;
-  demo_index(&demo);puffles.poseReady=pets_pose_ready;puffles_step(&puffles,&demo,dt);if(*puffles.error){modal_message(puffles.error);puffles.error[0]=0;}
+  demo_index(&demo);puffles.poseReady=pets_pose_ready;puffles.placeHome=pets_place_home;puffles.placeHomeUser=NULL;puffles_step(&puffles,&demo,dt);if(*puffles.error){modal_message(puffles.error);puffles.error[0]=0;}
   if(igloo.awaitingStyle&&elapsed_after(now,styles.started,15000)){igloo.awaitingStyle=false;igloo.slotsReady=igloo.activeKnown=false;modal_message("The igloo change timed out. Refresh to check the server state before retrying.");}
   if(igloo.awaitingMusic&&elapsed_after(now,musicStarted,15000)){igloo.awaitingMusic=false;modal_message("The music change timed out. Reopen your igloo to check its saved music.");}
   if(*profile.error){if(game)message(profile.error);else modal_message(profile.error);profile.error[0]=0;}

@@ -8,7 +8,7 @@
 
 #define RESCUE_ROOM 949
 #define TILE_SLOTS 144
-#define PART_SLOTS 64
+#define PART_SLOTS 192
 /* Dual screen: the upper screen is the wide view (12.5 x 7.5 tiles at 0.4) with the original HUD;
    the touch screen is the same scene at twice that size around the penguin. */
 #define TOP_SCALE .4f
@@ -122,18 +122,9 @@ static void sync(Rescue *r){
  if(wide){camX=r->camX;camY=r->camY;}
  else{double width=l->width*80.0,height=l->height*80.0;camX=clampd(m->x*80+40-380,0,fmax(0,width-760));camY=clampd(m->y*80+40-240,0,fmax(0,height-480));}
  char path[32];bool used[TILE_SLOTS]={false};r->wantedCount=0;
- for(unsigned y=(unsigned)(camY/80);y<l->height&&y*80<camY+viewH;y++)for(unsigned x=(unsigned)(camX/80);x<l->width&&x*80<camX+viewW;x++){
-  unsigned at=y*l->width+x,tile=m->map[at];
-  /* One stable slot per map cell (like the PC's t<x>-<y> instances): the visible window is at most
-   * 14 x 9 cells, so (row mod 9, column mod 16) never collides. Reassigning slots in scan order made a
-   * slot change frame whenever the camera moved, restarting its nested clips (tiles flickered). */
-  if(tile!=1){unsigned cell=(y%9)*16+(x%16);used[cell]=true;snprintf(path,sizeof path,"root.tile%u",cell);target(r,path,tile,(double)x*80-camX,(double)y*80-camY);}
-  unsigned part=m->parts[at],part2=m->parts2[at];
-  if(part==3&&!m->broken[at])place_part(r,0x1000000u|at*4u,3,(double)x*80-camX,(double)y*80-camY);
-  if(part>=30&&part<=38)place_part(r,0x1000001u|at*4u,part,(double)x*80-camX,(double)y*80-camY);
-  if(part2>=30&&part2<=38)place_part(r,0x1000002u|at*4u,part2,(double)x*80-camX,(double)y*80-camY);
- }
- for(unsigned i=0;i<TILE_SLOTS;i++)if(!used[i]){snprintf(path,sizeof path,"root.tile%u",i);hide(r,path);}
+ /* Queue gameplay-critical objects first (puffles, moving platforms, turrets, hazards, cracking ice)
+  * before static floor/platform decorations so they can never be starved by dense levels. */
+ for(unsigned i=0;i<3;i++)if(!m->collected[i])place_part(r,0x5000000u|i,40,(double)l->puffleX[i]*80-camX,(double)l->puffleY[i]*80-camY);
  for(unsigned i=0;i<m->platformCount;i++){unsigned x=0,y=0,frame=0;if(rescue_model_platform_cell(m,i,&x,&y,&frame))place_part(r,0x2000000u|i,frame,(double)x*80-camX,(double)y*80-camY);}
  unsigned snowSlot=0,batSlot=0,secretSlot=0;
  for(unsigned i=0;i<m->turretCount;i++)place_part(r,0x3000000u|i,25,(double)m->turrets[i].x*80-camX,(double)m->turrets[i].y*80-camY);
@@ -148,7 +139,18 @@ static void sync(Rescue *r){
  for(unsigned i=snowSlot;i<4;i++){snprintf(path,sizeof path,"root.snowball%u",i);hide(r,path);}
  for(unsigned i=batSlot;i<4;i++){snprintf(path,sizeof path,"root.bat%u",i);hide(r,path);}
  for(unsigned i=secretSlot;i<2;i++){snprintf(path,sizeof path,"root.secret%u",i);hide(r,path);}
- for(unsigned i=0;i<3;i++)if(!m->collected[i])place_part(r,0x5000000u|i,40,(double)l->puffleX[i]*80-camX,(double)l->puffleY[i]*80-camY);
+ for(unsigned y=(unsigned)(camY/80);y<l->height&&y*80<camY+viewH;y++)for(unsigned x=(unsigned)(camX/80);x<l->width&&x*80<camX+viewW;x++){
+  unsigned at=y*l->width+x,tile=m->map[at];
+  /* One stable slot per map cell (like the PC's t<x>-<y> instances): the visible window is at most
+   * 14 x 9 cells, so (row mod 9, column mod 16) never collides. Reassigning slots in scan order made a
+   * slot change frame whenever the camera moved, restarting its nested clips (tiles flickered). */
+  if(tile!=1){unsigned cell=(y%9)*16+(x%16);used[cell]=true;snprintf(path,sizeof path,"root.tile%u",cell);target(r,path,tile,(double)x*80-camX,(double)y*80-camY);}
+  unsigned part=m->parts[at],part2=m->parts2[at];
+  if(part==3&&!m->broken[at])place_part(r,0x1000000u|at*4u,3,(double)x*80-camX,(double)y*80-camY);
+  if(part>=30&&part<=38)place_part(r,0x1000001u|at*4u,part,(double)x*80-camX,(double)y*80-camY);
+  if(part2>=30&&part2<=38)place_part(r,0x1000002u|at*4u,part2,(double)x*80-camX,(double)y*80-camY);
+ }
+ for(unsigned i=0;i<TILE_SLOTS;i++)if(!used[i]){snprintf(path,sizeof path,"root.tile%u",i);hide(r,path);}
  flush_parts(r);
  swl_transform(sc,"root.player",(SWLMatrix){1,0,0,1,(float)(m->x*80-camX),(float)(m->y*80-camY)});
  sync_hud(r);
